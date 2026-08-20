@@ -16,6 +16,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ToolsPanel } from "@/components/ToolsPanel";
 import { VolumesPanel } from "@/components/VolumesPanel";
 import { LorePanel } from "@/components/LorePanel";
+import { OriginalPanel } from "@/components/OriginalPanel";
+import { attachOriginalContext } from "@/lib/original";
 import { useProjectStore } from "@/hooks/useProjectStore";
 import { BoardSwitcher } from "@/components/BoardSwitcher";
 import { ConvertModeWizard } from "@/components/ConvertModeWizard";
@@ -48,6 +50,7 @@ import {
 } from "@/lib/types";
 
 type Tab =
+  | "original"
   | "characters"
   | "background"
   | "settings"
@@ -61,6 +64,7 @@ type Tab =
   | "tools";
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: "original", label: "原作焕新" },
   { id: "characters", label: "人物设定" },
   { id: "background", label: "故事背景" },
   { id: "tags", label: "本书标签" },
@@ -84,7 +88,15 @@ const STAGES: {
   {
     id: "setup",
     label: "设定",
-    tabs: ["characters", "background", "lore", "tags", "volumes", "settings"],
+    tabs: [
+      "original",
+      "characters",
+      "background",
+      "lore",
+      "tags",
+      "volumes",
+      "settings",
+    ],
   },
   { id: "write", label: "创作", tabs: ["outline", "chapters"] },
   { id: "review", label: "检视", tabs: ["plot", "progress", "tools"] },
@@ -266,14 +278,16 @@ export default function ProjectPage() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "outline",
-          writingBoard: project.writingBoard,
-          characters: project.characters,
-          background: project.background,
-          settings: project.settings,
-          projectTags: project.tags || [],
-        }),
+        body: JSON.stringify(
+          attachOriginalContext(project, {
+            mode: "outline",
+            writingBoard: project.writingBoard,
+            characters: project.characters,
+            background: project.background,
+            settings: project.settings,
+            projectTags: project.tags || [],
+          })
+        ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "生成失败");
@@ -376,7 +390,7 @@ export default function ProjectPage() {
       const prior = buildPreviousContext(fresh, liveChapter.order);
 
       const text = await streamGenerate(
-        {
+        attachOriginalContext(fresh, {
           mode: "chapter",
           writingBoard: fresh.writingBoard,
           characters: fresh.characters,
@@ -393,7 +407,7 @@ export default function ProjectPage() {
             formatPlotThreadsForPrompt(fresh.plotThreads),
           lore: prior.lore,
           projectTags: fresh.tags || [],
-        },
+        }),
         {
           signal: ac.signal,
           onDelta: (_d, full) => setStreamPreview(full),
@@ -743,13 +757,15 @@ export default function ProjectPage() {
     if (rows.length < 2) return;
     try {
       setBusy("consistency");
-      const data = await postGenerate({
-        mode: "consistency_check",
-        writingBoard: live.writingBoard,
-        characters: live.characters,
-        background: live.background,
-        chapters: rows.slice(0, 12),
-      });
+      const data = await postGenerate(
+        attachOriginalContext(live, {
+          mode: "consistency_check",
+          writingBoard: live.writingBoard,
+          characters: live.characters,
+          background: live.background,
+          chapters: rows.slice(0, 12),
+        })
+      );
       const score = data.result?.score;
       const summary = data.result?.summary || "";
       setInfo(
@@ -1057,11 +1073,25 @@ export default function ProjectPage() {
           />
         )}
 
+        {tab === "original" && (
+          <OriginalPanel
+            original={project.original}
+            canon={project.canon || []}
+            writingBoard={project.writingBoard}
+            onOriginalChange={(original) =>
+              update((p) => ({ ...p, original }))
+            }
+            onCanonChange={(canon) => update((p) => ({ ...p, canon }))}
+            onError={setError}
+          />
+        )}
         {tab === "characters" && (
           <CharactersPanel
             characters={project.characters}
             background={project.background}
             writingBoard={project.writingBoard}
+            original={project.original}
+            canon={project.canon}
             onChange={(charactersOrFn) =>
               update((p) => ({
                 ...p,
@@ -1082,6 +1112,8 @@ export default function ProjectPage() {
             background={project.background}
             characters={project.characters}
             writingBoard={project.writingBoard}
+            original={project.original}
+            canon={project.canon}
             onChange={(backgroundOrFn) =>
               update((p) => ({
                 ...p,
@@ -1130,6 +1162,8 @@ export default function ProjectPage() {
             characters={project.characters}
             background={project.background}
             writingBoard={project.writingBoard}
+            original={project.original}
+            canon={project.canon}
             onChange={(settings) => update((p) => ({ ...p, settings }))}
             onApplyStyle={applyLearnedStyle}
             onClearStyle={clearLearnedStyle}
@@ -1182,16 +1216,18 @@ export default function ProjectPage() {
                     "请先勾选本章标签（或本书标签），再点击「优化大纲」"
                   );
                 }
-                const data = await postGenerate({
-                  mode: "polish_chapter_outline",
-                  writingBoard: fresh.writingBoard,
-                  characters: fresh.characters,
-                  background: fresh.background,
-                  settings: fresh.settings,
-                  outline: fresh.outline,
-                  chapter: live,
-                  projectTags: fresh.tags || [],
-                });
+                const data = await postGenerate(
+                  attachOriginalContext(fresh, {
+                    mode: "polish_chapter_outline",
+                    writingBoard: fresh.writingBoard,
+                    characters: fresh.characters,
+                    background: fresh.background,
+                    settings: fresh.settings,
+                    outline: fresh.outline,
+                    chapter: live,
+                    projectTags: fresh.tags || [],
+                  })
+                );
                 const polished = data.chapter as {
                   title: string;
                   summary: string;

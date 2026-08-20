@@ -18,6 +18,8 @@ import {
   type StoryBackground,
   type WritingStyle,
   type WritingBoard,
+  type OriginalManuscript,
+  type LockedCanonFact,
 } from "@/lib/types";
 
 export function SettingsPanel({
@@ -26,6 +28,8 @@ export function SettingsPanel({
   characters,
   background,
   writingBoard = "erotic",
+  original,
+  canon,
   onChange,
   onApplyStyle,
   onClearStyle,
@@ -40,6 +44,8 @@ export function SettingsPanel({
   onClearStyle: () => void;
   onError: (msg: string) => void;
   writingBoard?: WritingBoard;
+  original?: OriginalManuscript | null;
+  canon?: LockedCanonFact[];
 }) {
   const [seed, setSeed] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,6 +65,8 @@ export function SettingsPanel({
         characters,
         background,
         instruction: seed.trim() || undefined,
+        original,
+        canon,
       });
       onChange(data.settings as GenerationSettings);
     } catch (e) {

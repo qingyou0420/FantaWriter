@@ -48,6 +48,7 @@ describe("assemble isolation", () => {
       "expand_cast",
       "rewrite",
       "learn_style",
+      "extract_canon",
     ] as const;
     for (const task of tasks) {
       const { system, user } = assemble(task, "general", {
@@ -61,6 +62,7 @@ describe("assemble isolation", () => {
         selectedText: "一段正文",
         seed: "灵感",
         sampleText: "范文".repeat(40),
+        titleHint: "醉词",
         character: general.characters[0],
       });
       const hits = bannedHits(system + "\n" + user);

@@ -40,6 +40,10 @@ import {
   buildSceneChapterUserPrompt,
   buildScenePlanUserPrompt,
 } from "../prompts";
+import {
+  buildExtractCanonUserPrompt,
+  injectOriginalGrounding,
+} from "../original";
 
 export type GenerateTaskMode =
   | "outline"
@@ -58,7 +62,8 @@ export type GenerateTaskMode =
   | "expand_cast"
   | "optimize_settings"
   | "learn_style"
-  | "polish_chapter_outline";
+  | "polish_chapter_outline"
+  | "extract_canon";
 
 export const GENERAL_BANNED_SUBSTRINGS = [
   "色情尺度",
@@ -143,9 +148,10 @@ export function assemble(
     writingBoard === "erotic"
       ? assembleErotic(task, payload)
       : assembleGeneral(task, payload);
+  const grounded = injectOriginalGrounding(assembled, task, payload);
   return {
-    system: appendExtraRules(assembled.system, extraRulesRaw),
-    user: assembled.user,
+    system: appendExtraRules(grounded.system, extraRulesRaw),
+    user: grounded.user,
   };
 }
 
@@ -258,6 +264,14 @@ function assembleErotic(
         system: buildOutlineSystemPrompt(),
         user: buildPolishChapterOutlineUserPrompt(payload as never),
       };
+    case "extract_canon":
+      return {
+        system: SETTING_SYSTEM,
+        user: buildExtractCanonUserPrompt({
+          sampleText: String(payload.sampleText || payload.originalText || ""),
+          titleHint: String(payload.titleHint || payload.nameHint || ""),
+        }),
+      };
     default:
       return { system: ADULT_SYSTEM, user: "" };
   }
@@ -357,6 +371,14 @@ function assembleGeneral(
       return {
         system: chapterSys,
         user: generalPolishOutlineUser(payload as never),
+      };
+    case "extract_canon":
+      return {
+        system: GENERAL_SETTING_SYSTEM,
+        user: buildExtractCanonUserPrompt({
+          sampleText: String(payload.sampleText || payload.originalText || ""),
+          titleHint: String(payload.titleHint || payload.nameHint || ""),
+        }),
       };
     default:
       return { system: chapterSys, user: "" };
