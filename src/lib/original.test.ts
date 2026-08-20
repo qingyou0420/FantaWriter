@@ -137,12 +137,14 @@ describe("fact lock survives generation payload", () => {
       seed: "清溪",
       character: p.characters[0],
     });
-    expect(body.canon).toHaveLength(1);
-    expect(body.canon?.[0].name).toBe("清溪");
-    expect(body.canon?.[0].statement).toContain("白色战马");
-    expect(body.canon?.[0].locked).toBe(true);
-    expect(body.original?.title).toBe("醉词");
-    expect(body.original?.text).toContain("清溪");
+    const canon = body.canon as LockedCanonFact[] | undefined;
+    const original = body.original as OriginalManuscript | undefined;
+    expect(canon).toHaveLength(1);
+    expect(canon?.[0].name).toBe("清溪");
+    expect(canon?.[0].statement).toContain("白色战马");
+    expect(canon?.[0].locked).toBe(true);
+    expect(original?.title).toBe("醉词");
+    expect(original?.text).toContain("清溪");
 
     const attached = attachOriginalContext(p, { mode: "chapter" });
     expect(attached.canon?.[0].statement).toContain("不是女性");
