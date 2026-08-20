@@ -499,6 +499,74 @@ function registerIpc() {
     if (err) return { ok: false, path: dir, message: err };
     return { ok: true, path: dir };
   });
+
+  ipcMain.handle("fs:getSuggestedExportRoot", () => {
+    if (!app.isPackaged) {
+      return { ok: true, path: process.cwd() };
+    }
+    try {
+      return {
+        ok: true,
+        path: path.join(app.getPath("documents"), "Fantasy Writer"),
+      };
+    } catch {
+      return { ok: true, path: path.dirname(app.getPath("exe")) };
+    }
+  });
+
+  ipcMain.handle("fs:pickDirectory", async (_e, opts) => {
+    const win = mainWindow || undefined;
+    const res = await dialog.showOpenDialog(win, {
+      title: (opts && opts.title) || "选择章节 Markdown 写入目录",
+      properties: ["openDirectory", "createDirectory"],
+      defaultPath: opts && opts.defaultPath ? String(opts.defaultPath) : undefined,
+    });
+    if (res.canceled || !res.filePaths?.[0]) {
+      return { ok: false, canceled: true, message: "已取消" };
+    }
+    return { ok: true, path: res.filePaths[0], message: "已选择" };
+  });
+
+  ipcMain.handle("fs:writeTextFiles", async (_e, payload) => {
+    const root = String((payload && payload.root) || "").trim();
+    const files = Array.isArray(payload && payload.files) ? payload.files : [];
+    if (!root) return { ok: false, written: [], message: "导出根目录为空" };
+    if (!files.length) return { ok: false, written: [], message: "没有要写入的文件" };
+
+    let rootAbs;
+    try {
+      rootAbs = path.resolve(root);
+    } catch {
+      return { ok: false, written: [], message: "根目录无效" };
+    }
+    const rootPrefix = rootAbs.endsWith(path.sep) ? rootAbs : rootAbs + path.sep;
+    const written = [];
+
+    try {
+      ensureDir(rootAbs);
+      for (const item of files) {
+        const rel = String((item && item.relativePath) || "").replace(/\\/g, "/");
+        if (!rel || rel.startsWith("/") || /^[a-zA-Z]:/.test(rel)) {
+          return { ok: false, written, message: "相对路径非法" };
+        }
+        const parts = rel.split("/").filter(Boolean);
+        if (!parts.length || parts.some((p) => p === ".." || p === ".")) {
+          return { ok: false, written, message: "相对路径含越界片段" };
+        }
+        const target = path.resolve(rootAbs, ...parts);
+        if (target !== rootAbs && !target.startsWith(rootPrefix)) {
+          return { ok: false, written, message: "拒绝写出根目录之外" };
+        }
+        ensureDir(path.dirname(target));
+        fs.writeFileSync(target, String((item && item.content) || ""), "utf8");
+        written.push(target);
+      }
+      return { ok: true, written, message: `已写入 ${written.length} 个文件` };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, written, message: msg };
+    }
+  });
 }
 
 function fetchJson(url) {

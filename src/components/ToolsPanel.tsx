@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GlobalFindReplace } from "@/components/GlobalFindReplace";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
+import { useToast } from "@/components/Toast";
 import { postGenerate } from "@/lib/api";
+import { getDesktop, isDesktopApp } from "@/lib/desktop";
 import {
   buildTocPreview,
   exportBook,
   projectWordCount,
   type ExportFormat,
 } from "@/lib/export-book";
+import {
+  DEFAULT_CHAPTER_EXPORT_SUBDIR,
+  exportChaptersToRepo,
+  pickChapterRepoRoot,
+} from "@/lib/export-chapters";
 import {
   downloadFullBackup,
   getAutoBackup,
@@ -64,11 +71,37 @@ export function ToolsPanel({
     project.outline?.chapters[0]?.id || ""
   );
   const [backupInfo, setBackupInfo] = useState("");
+  const [repoRoot, setRepoRoot] = useState("");
+  const [repoSubdir, setRepoSubdir] = useState(DEFAULT_CHAPTER_EXPORT_SUBDIR);
+  const [repoInfo, setRepoInfo] = useState("");
+  const [singleChapterId, setSingleChapterId] = useState(
+    project.outline?.chapters[0]?.id || ""
+  );
+  const toast = useToast();
+  const desktop = isDesktopApp();
   const toc = buildTocPreview(project);
   const totalWords = projectWordCount(project);
   const chapters = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
     : [];
+
+  useEffect(() => {
+    const prefs = loadAppPrefs();
+    setRepoRoot(prefs.chapterRepoRoot || "");
+    setRepoSubdir(
+      prefs.chapterExportSubdir ?? DEFAULT_CHAPTER_EXPORT_SUBDIR
+    );
+  }, []);
+
+  useEffect(() => {
+    if (
+      singleChapterId &&
+      chapters.some((c) => c.id === singleChapterId)
+    ) {
+      return;
+    }
+    setSingleChapterId(chapters[0]?.id || "");
+  }, [chapters, singleChapterId]);
 
   async function runConsistency() {
     onError("");
@@ -143,6 +176,75 @@ export function ToolsPanel({
 
   function doExport(fmt: ExportFormat) {
     exportBook(project, fmt);
+  }
+
+  function persistRepoPrefs(root: string, subdir: string) {
+    const prefs = loadAppPrefs();
+    saveAppPrefs({
+      ...prefs,
+      chapterRepoRoot: root,
+      chapterExportSubdir: subdir,
+    });
+  }
+
+  async function chooseRepoRoot() {
+    onError("");
+    const picked = await pickChapterRepoRoot();
+    if (picked.ok && picked.path) {
+      setRepoRoot(picked.path);
+      persistRepoPrefs(picked.path, repoSubdir);
+      setRepoInfo(`导出根目录：${picked.path}`);
+      toast.success("已保存导出根目录");
+      return;
+    }
+    if (!picked.canceled) {
+      onError(picked.message);
+    }
+  }
+
+  function saveSubdir() {
+    persistRepoPrefs(repoRoot, repoSubdir);
+    setRepoInfo(
+      repoSubdir.trim()
+        ? `子目录已保存：${repoSubdir.trim()}`
+        : "将直接写在所选根目录下"
+    );
+  }
+
+  async function runRepoExport(mode: "current" | "done") {
+    onError("");
+    onBusy("repo_export");
+    try {
+      persistRepoPrefs(repoRoot, repoSubdir);
+      const result = await exportChaptersToRepo(project, {
+        mode,
+        currentChapterId: mode === "current" ? singleChapterId : undefined,
+        root: repoRoot || undefined,
+        subdir: repoSubdir,
+      });
+      if (!result.ok) throw new Error(result.message);
+      if (result.root) setRepoRoot(result.root);
+      const sample = result.files.slice(0, 2).join("；");
+      const more =
+        result.files.length > 2 ? ` 等 ${result.files.length} 个` : "";
+      setRepoInfo(
+        result.root
+          ? `${result.message}：${result.root}${sample ? ` · ${sample}${more}` : ""}`
+          : `${result.message}${sample ? ` · ${sample}${more}` : ""}`
+      );
+      toast.success(result.message);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      onBusy(null);
+    }
+  }
+
+  async function openRepoRoot() {
+    const bridge = getDesktop();
+    if (!bridge || !repoRoot) return;
+    const r = await bridge.openPath(repoRoot);
+    if (!r.ok) onError(r.message || "无法打开目录");
   }
 
   function toggleAutoConsistency(on: boolean) {
@@ -263,6 +365,111 @@ export function ToolsPanel({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="card">
+        <h2 className="text-base font-semibold m-0 mb-1">写进仓库</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-0 mb-3">
+          把章节正文写成{" "}
+          <code className="text-xs">novels/书名/ch-章节id.md</code>
+          ，方便用 Cursor 在磁盘上润色。桌面端写入你选择的目录（同一 chapterId
+          再导出覆盖）；浏览器会下载 Markdown 或 ZIP，不会假装写入成功。
+        </p>
+        {desktop ? (
+          <div className="space-y-2 mb-3">
+            <label className="field-label">导出根目录（仓库或任意文件夹）</label>
+            <div className="flex flex-wrap gap-2 items-center">
+              <input
+                className="flex-1 min-w-[12rem]"
+                value={repoRoot}
+                onChange={(e) => setRepoRoot(e.target.value)}
+                onBlur={() => persistRepoPrefs(repoRoot, repoSubdir)}
+                placeholder="尚未选择；首次导出时会弹出文件夹选择"
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void chooseRepoRoot()}
+              >
+                选择文件夹
+              </button>
+              {repoRoot ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void openRepoRoot()}
+                >
+                  打开
+                </button>
+              ) : null}
+            </div>
+            <label className="field-label">相对子目录</label>
+            <div className="flex flex-wrap gap-2 items-center">
+              <input
+                className="!w-auto min-w-[8rem]"
+                value={repoSubdir}
+                onChange={(e) => setRepoSubdir(e.target.value)}
+                onBlur={saveSubdir}
+                placeholder={DEFAULT_CHAPTER_EXPORT_SUBDIR}
+              />
+              <span className="text-xs text-[var(--text-muted)]">
+                默认 novels；留空则直接写在根目录下
+              </span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-muted)] mt-0 mb-3">
+            当前是浏览器：将下载{" "}
+            <code className="text-xs">.md</code> 或按路径打包的 ZIP，请自行放到仓库的{" "}
+            <code className="text-xs">{repoSubdir || "novels"}/</code> 下。
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2 items-end mb-2">
+          <div className="flex-1 min-w-[12rem]">
+            <label className="field-label">本章</label>
+            <select
+              value={singleChapterId}
+              onChange={(e) => setSingleChapterId(e.target.value)}
+            >
+              {chapters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  第{c.order}章 {c.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={!!busy || !chapters.length}
+            onClick={() => void runRepoExport("current")}
+          >
+            {busy === "repo_export" ? (
+              <>
+                <span className="spinner" /> 写入中
+              </>
+            ) : (
+              "把本章写进仓库"
+            )}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!!busy || !chapters.length}
+            onClick={() => void runRepoExport("done")}
+          >
+            导出全部已完成章
+          </button>
+        </div>
+        {repoInfo ? (
+          <p className="text-xs text-[var(--text-muted)] mt-2 mb-0 break-all">
+            {repoInfo}
+          </p>
+        ) : (
+          <p className="text-xs text-[var(--text-muted)] mt-2 mb-0">
+            已完成指章节状态为 done 且有正文。文件头含书名、章序、chapterId，正文只含本章散文。
+          </p>
+        )}
       </div>
 
       {/* 一致性 */}

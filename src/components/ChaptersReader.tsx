@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TagSelector } from "@/components/TagEditor";
+import { useToast } from "@/components/Toast";
 import {
   buildPreviousContext,
   formatPlotThreadsForPrompt,
@@ -9,6 +10,7 @@ import {
   streamGenerate,
 } from "@/lib/api";
 import { exportBook } from "@/lib/export-book";
+import { exportChaptersToRepo } from "@/lib/export-chapters";
 import { loadReaderPrefs, saveReaderPrefs } from "@/lib/storage";
 import type { RewriteMode } from "@/lib/prompts";
 import {
@@ -98,6 +100,7 @@ export function ChaptersReader({
   const [localStreaming, setLocalStreaming] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const toast = useToast();
 
   const chapters = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
@@ -478,6 +481,24 @@ export function ChaptersReader({
     }
   }
 
+  async function writeChapterToRepo() {
+    if (!selectedOutline) return;
+    onError("");
+    onBusy("repo_export");
+    try {
+      const result = await exportChaptersToRepo(project, {
+        mode: "current",
+        currentChapterId: selectedOutline.id,
+      });
+      if (!result.ok) throw new Error(result.message);
+      toast.success(result.message);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      onBusy(null);
+    }
+  }
+
   function restoreVersion(v: ChapterVersion) {
     if (!selectedOutline) return;
     if (!confirm("恢复此版本？当前正文会进入历史。")) return;
@@ -565,10 +586,24 @@ export function ChaptersReader({
         <div className="shrink-0 mt-2 space-y-1">
           <button
             type="button"
+            className="btn btn-primary btn-sm w-full"
+            disabled={!!busy || !selectedOutline}
+            onClick={() => void writeChapterToRepo()}
+          >
+            {busy === "repo_export" ? (
+              <>
+                <span className="spinner" /> 写入中
+              </>
+            ) : (
+              "把本章写进仓库"
+            )}
+          </button>
+          <button
+            type="button"
             className="btn btn-secondary btn-sm w-full"
             onClick={() => exportBook(project, "md")}
           >
-            导出 Markdown
+            导出全书 Markdown
           </button>
           <div className="grid grid-cols-3 gap-1">
             <button
