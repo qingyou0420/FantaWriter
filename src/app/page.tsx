@@ -1,65 +1,438 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { TagLibraryManager } from "@/components/TagEditor";
+import { StyleLearnPanel } from "@/components/StyleLearnPanel";
+import { AppSettingsMenu } from "@/components/AppSettingsMenu";
+import { AgeGate, FirstBoardChooser } from "@/components/AgeGate";
+import { BoardSwitcher } from "@/components/BoardSwitcher";
+import { ModeBadge } from "@/components/ModeBadge";
+import { filterProjectsByBoard, shouldShowAgeGate } from "@/lib/board";
+import { boardCopy } from "@/lib/copy";
+import { resolveFlag } from "@/lib/flags";
+import {
+  createEmptyProject,
+  type LearnedStyle,
+  type NovelProject,
+  type WritingBoard,
+} from "@/lib/types";
+import { loadAppPrefs, saveAppPrefs } from "@/lib/theme";
+import {
+  deleteProject,
+  exportProjectJson,
+  importProjectJson,
+  initStorage,
+  loadProjects,
+  loadStyleLibraryFor,
+  loadTagLibraryFor,
+  loadUsageStats,
+  resetTagLibraryToDefaultFor,
+  saveTagLibraryFor,
+  upsertProject,
+} from "@/lib/storage";
+
+type HomeTab = "projects" | "tags" | "styles";
+
+export default function HomePage() {
+  const router = useRouter();
+  const [homeTab, setHomeTab] = useState<HomeTab>("projects");
+  const [projects, setProjects] = useState<NovelProject[]>([]);
+  const [ready, setReady] = useState(false);
+  const [newName, setNewName] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [keyPrefix, setKeyPrefix] = useState("");
+
+  const [tagLibrary, setTagLibrary] = useState<string[]>([]);
+  const [styleLibrary, setStyleLibrary] = useState<LearnedStyle[]>([]);
+  const [libError, setLibError] = useState("");
+  const [usageHint, setUsageHint] = useState("");
+  const [board, setBoard] = useState<WritingBoard>("general");
+  const [showAgeGate, setShowAgeGate] = useState(false);
+  const [showFirstPick, setShowFirstPick] = useState(false);
+  const dualBoard = resolveFlag("dualBoard", loadAppPrefs());
+
+  function applyBoard(next: WritingBoard) {
+    setBoard(next);
+    setTagLibrary(loadTagLibraryFor(next));
+    setStyleLibrary(loadStyleLibraryFor(next));
+  }
+
+  useEffect(() => {
+    (async () => {
+      await initStorage();
+      setProjects(loadProjects());
+      const prefs = loadAppPrefs();
+      if (!prefs.defaultBoard) {
+        setShowFirstPick(true);
+        applyBoard("general");
+      } else if (shouldShowAgeGate(prefs)) {
+        setShowAgeGate(true);
+        applyBoard("general");
+      } else {
+        applyBoard(prefs.defaultBoard);
+      }
+      const u = loadUsageStats();
+      if (u.totalRequests > 0) {
+        setUsageHint(
+          `用量：${u.totalRequests} 次 · 出 ${u.totalCharsOut.toLocaleString()} 字`
+        );
+      }
+      setReady(true);
+      refreshApiStatus();
+    })();
+  }, []);
+
+  function persistBoard(next: WritingBoard, extra?: Partial<ReturnType<typeof loadAppPrefs>>) {
+    const prefs = loadAppPrefs();
+    saveAppPrefs({ ...prefs, defaultBoard: next, ...extra });
+    applyBoard(next);
+  }
+
+  function requestBoard(next: WritingBoard) {
+    if (next === board) return;
+    const prefs = loadAppPrefs();
+    if (next === "erotic" && !prefs.adultConfirmedAt) {
+      setShowAgeGate(true);
+      return;
+    }
+    persistBoard(next);
+  }
+
+  function confirmAgeGate() {
+    persistBoard("erotic", {
+      adultConfirmedAt: new Date().toISOString(),
+    });
+    setShowAgeGate(false);
+    setShowFirstPick(false);
+  }
+
+  function refuseAgeGate() {
+    setShowAgeGate(false);
+    applyBoard("general");
+  }
+
+  function updateTagLibrary(next: string[]) {
+    saveTagLibraryFor(board, next);
+    setTagLibrary(next);
+  }
+
+  async function refreshApiStatus() {
+    try {
+      const res = await fetch("/api/config");
+      const data = await res.json();
+      if (data.env) {
+        setHasKey(Boolean(data.env.hasKey));
+        setKeyPrefix(data.env.keyPrefix || "");
+      }
+    } catch {
+      setHasKey(null);
+    }
+  }
+
+  function refresh() {
+    setProjects(loadProjects());
+  }
+
+  function handleCreate() {
+    const copy = boardCopy(board);
+    if (!confirm(copy.createConfirm)) return;
+    const project = createEmptyProject(newName.trim() || "未命名小说", board);
+    if (newName.trim()) {
+      project.background.title = newName.trim();
+    }
+    upsertProject(project);
+    router.push(`/project/${project.id}`);
+  }
+
+  function handleDelete(id: string, name: string) {
+    if (!confirm(`确定删除「${name}」？此操作不可恢复。`)) return;
+    deleteProject(id);
+    refresh();
+  }
+
+  function handleExport(p: NovelProject) {
+    const blob = new Blob([exportProjectJson(p)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${p.name || "novel"}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImport(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const project = importProjectJson(String(reader.result));
+        upsertProject(project);
+        refresh();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "导入失败");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function formatDate(iso: string) {
+    try {
+      return new Date(iso).toLocaleString("zh-CN", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  const visibleProjects = dualBoard
+    ? filterProjectsByBoard(projects, board)
+    : projects;
+  const copy = boardCopy(board);
+
+  const navItems: { id: HomeTab; label: string; badge?: string }[] = [
+    { id: "projects", label: "我的项目", badge: String(visibleProjects.length) },
+    { id: "tags", label: copy.homeTagsTitle, badge: String(tagLibrary.length) },
+    { id: "styles", label: "文风学习", badge: String(styleLibrary.length) },
+  ];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <main className="flex-1 flex flex-col">
+      <header className="border-b border-[var(--border-soft)] bg-[var(--bg-elevated)]/80 backdrop-blur sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight m-0">
+              幻想作家 / Fantasy Writer
+            </h1>
+            <p className="text-xs text-[var(--text-muted)] m-0 mt-0.5">
+              {copy.audience}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {dualBoard ? (
+              <BoardSwitcher value={board} onChange={requestBoard} />
+            ) : null}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImport(f);
+                e.target.value = "";
+              }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <AppSettingsMenu
+              hasKey={hasKey}
+              keyPrefix={keyPrefix}
+              usageHint={usageHint}
+              onImportClick={() => fileRef.current?.click()}
+              onHasKeyChange={() => void refreshApiStatus()}
+            />
+          </div>
         </div>
-      </main>
-    </div>
+        <div className="max-w-5xl mx-auto px-5 pb-3">
+          <div className="tabs">
+            {navItems.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`tab ${homeTab === t.id ? "active" : ""}`}
+                onClick={() => {
+                  setHomeTab(t.id);
+                  setLibError("");
+                }}
+              >
+                {t.label}
+                {t.badge != null ? (
+                  <span className="opacity-60 text-[0.75em] ml-1">
+                    ({t.badge})
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-5xl mx-auto w-full px-5 py-8 flex-1">
+        {hasKey === false ? (
+          <div className="card mb-6 !py-3 text-sm text-[#f0c0a0] border-[rgba(212,162,76,0.4)]">
+            尚未配置 API Key。请打开右上角「设置 → API 设置」。
+          </div>
+        ) : null}
+
+        {libError ? (
+          <div className="card mb-4 !py-2.5 text-sm text-[var(--danger-text)] flex justify-between gap-3">
+            <span>{libError}</span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setLibError("")}
+            >
+              关闭
+            </button>
+          </div>
+        ) : null}
+
+        {homeTab === "projects" && (
+          <>
+            <section className="card mb-8">
+              <h2 className="card-title">新建小说项目</h2>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  placeholder="项目名称"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleCreate}
+                >
+                  创建并打开
+                </button>
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold m-0">我的项目</h2>
+                <span className="badge badge-muted">{visibleProjects.length} 部</span>
+              </div>
+
+              {!ready ? (
+                <div className="empty">加载中…</div>
+              ) : visibleProjects.length === 0 ? (
+                <div className="card empty">
+                  {copy.emptyProjects}
+                </div>
+              ) : (
+                <ul className="grid gap-3 sm:grid-cols-2 list-none p-0 m-0">
+                  {visibleProjects.map((p) => (
+                    <li key={p.id} className="card !p-0 overflow-hidden group">
+                      <button
+                        type="button"
+                        className="w-full text-left p-4 bg-transparent border-0 cursor-pointer text-inherit"
+                        onClick={() => router.push(`/project/${p.id}`)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-[0.95rem] font-semibold m-0 leading-snug">
+                            {p.name || "未命名"}
+                          </h3>
+                          <div className="flex items-center gap-1 shrink-0">
+                          <ModeBadge board={p.writingBoard} />
+                          <span className="badge shrink-0">
+                            {p.outline?.chapters.length
+                              ? `${p.outline.chapters.length} 章大纲`
+                              : "待写大纲"}
+                          </span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] mt-2 mb-0 line-clamp-2 leading-relaxed">
+                          {p.background.synopsis ||
+                            p.background.setting ||
+                            "尚未填写故事背景"}
+                        </p>
+                        <div className="flex items-center gap-3 mt-3 text-[0.7rem] text-[var(--text-muted)]">
+                          <span>
+                            {(p.tags || []).length
+                              ? `${p.tags.length} 标签`
+                              : "无标签"}
+                          </span>
+                          <span>·</span>
+                          <span>
+                            {p.settings?.learnedStyleName
+                              ? p.settings.learnedStyleName
+                              : "默认文风"}
+                          </span>
+                          <span>·</span>
+                          <span>更新 {formatDate(p.updatedAt)}</span>
+                        </div>
+                      </button>
+                      <div className="flex border-t border-[var(--border-soft)] px-2 py-1.5 gap-1">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm flex-1"
+                          onClick={() => handleExport(p)}
+                        >
+                          导出
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm flex-1 !text-[#d45c6a]"
+                          onClick={() => handleDelete(p.id, p.name)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        )}
+
+        {homeTab === "tags" && (
+          <section className="card max-w-3xl">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h2 className="text-base font-semibold m-0">{copy.homeTagsTitle}</h2>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  if (confirm(copy.resetTagsConfirm)) {
+                    updateTagLibrary(resetTagLibraryToDefaultFor(board));
+                  }
+                }}
+              >
+                恢复默认示例
+              </button>
+            </div>
+            <TagLibraryManager
+              library={tagLibrary}
+              onChange={updateTagLibrary}
+            />
+          </section>
+        )}
+
+        {homeTab === "styles" && (
+          <StyleLearnPanel
+            homeMode
+            writingBoard={board}
+            styles={styleLibrary}
+            onStylesChange={setStyleLibrary}
+            onError={setLibError}
+          />
+        )}
+      </div>
+
+      <footer className="text-center text-[0.7rem] text-[var(--text-muted)] py-6 border-t border-[var(--border-soft)]">
+        {copy.footer}
+      </footer>
+      {showFirstPick ? (
+        <FirstBoardChooser
+          onGeneral={() => {
+            persistBoard("general");
+            setShowFirstPick(false);
+          }}
+          onErotic={() => {
+            setShowFirstPick(false);
+            setShowAgeGate(true);
+          }}
+        />
+      ) : null}
+      {showAgeGate ? (
+        <AgeGate onConfirm={confirmAgeGate} onRefuse={refuseAgeGate} />
+      ) : null}
+    </main>
   );
 }

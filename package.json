@@ -1,26 +1,93 @@
 {
-  "name": "erotic-novel-studio",
-  "version": "0.1.0",
+  "name": "h-novelist",
+  "version": "2.0.1",
   "private": true,
+  "description": "Fantasy Writer / 幻想作家 — 常规与 18+ 双写作台 AI 长篇编辑器",
+  "author": "Fantasy Writer",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "electron:dev": "node scripts/electron-dev.mjs",
+    "prepare:standalone": "node scripts/prepare-standalone.mjs",
+    "publish:update": "node scripts/publish-update.mjs",
+    "dist:win": "npm run build && npm run prepare:standalone && electron-builder --win nsis && npm run publish:update",
+    "dist:dir": "npm run build && npm run prepare:standalone && electron-builder --win dir"
   },
   "dependencies": {
     "next": "16.2.12",
+    "openai": "^7.1.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
+    "electron": "^37.10.3",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "fake-indexeddb": "^6.2.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.11"
+  },
+  "build": {
+    "appId": "com.hnovelist.app",
+    "productName": "Fantasy Writer",
+    "copyright": "Copyright © 2026",
+    "afterPack": "./scripts/after-pack.cjs",
+    "directories": {
+      "output": "dist-installer",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "standalone",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Fantasy-Writer-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Fantasy Writer",
+      "uninstallDisplayName": "Fantasy Writer",
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "language": "2052"
+    },
+    "asar": true
   }
 }

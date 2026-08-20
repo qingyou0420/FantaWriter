@@ -1,0 +1,604 @@
+/** 色情尺度 1–5 */
+export type EroticLevel = 1 | 2 | 3 | 4 | 5;
+
+/** 人称 */
+export type NarrativePerson = "first" | "second" | "third";
+
+/** 文笔文风预设 */
+export type WritingStyle =
+  | "literary" // 文学细腻
+  | "plain" // 朴实直白
+  | "poetic" // 诗意唯美
+  | "passionate" // 热情奔放
+  | "restrained" // 克制暧昧
+  | "dark" // 黑暗沉重
+  | "humorous" // 轻松幽默
+  | "custom" // 自定义描述
+  | "learned"; // 从范文学习的固定文风
+
+/** 写作台。对外文案：常规 / 色情。禁止使用 "literary"（与 WritingStyle 撞名）。 */
+export type WritingBoard = "general" | "erotic";
+
+export const CURRENT_SCHEMA_VERSION = 2 as const;
+
+export function defaultVolumeId(projectId: string): string {
+  return `${projectId}:vol:1`;
+}
+
+export interface Volume {
+  id: string;
+  order: number;
+  title: string;
+  summary: string;
+}
+
+export interface LoreEntry {
+  id: string;
+  title: string;
+  body: string;
+  keys: string[];
+  category: "place" | "org" | "item" | "rule" | "other";
+  enabled: boolean;
+}
+
+/** 预留；2.0 政策与 UI 不读取。禁止据此做第三写作台。 */
+export type ContentRating = "unrated" | "general" | "mature" | "adult";
+
+export interface Character {
+  id: string;
+  name: string;
+  gender: string;
+  age: string;
+  appearance: string;
+  personality: string;
+  background: string;
+  relationships: string;
+  /** 角色在故事中的定位，如主角/配角/对手 */
+  role: string;
+  /** 额外备注（癖好、禁忌、说话方式等） */
+  notes: string;
+  /** 可选别名，生成时一并注入 */
+  aliases?: string[];
+  /** 可选说话风格 */
+  speechStyle?: string;
+}
+
+export interface StoryBackground {
+  title: string;
+  synopsis: string;
+  setting: string;
+  era: string;
+  themes: string;
+  tone: string;
+  extra: string;
+}
+
+/** 从范文学习得到的固定文风档案 */
+export interface LearnedStyle {
+  id: string;
+  name: string;
+  /** 旧数据缺省时由库迁移补 erotic */
+  writingBoard: WritingBoard;
+  createdAt: string;
+  updatedAt: string;
+  /** 来源说明：文件名或「粘贴导入」 */
+  sourceLabel: string;
+  /** 原文采样字数 */
+  sourceChars: number;
+  overall: string;
+  vocabulary: string;
+  rhythm: string;
+  narrative: string;
+  dialogue: string;
+  /** 仅 erotic 档案；常规学习不请求、不落盘 */
+  erotic?: string;
+  sensory: string;
+  structure: string;
+  avoid: string;
+  /** 合并后的固定风格指南（注入生成 Prompt） */
+  styleGuide: string;
+  /** 风格指纹短句，便于对照 */
+  fingerprints: string[];
+}
+
+export interface GenerationSettings {
+  eroticLevel: EroticLevel;
+  writingStyle: WritingStyle;
+  customStyle: string;
+  /** 启用的学习文风 ID（writingStyle === 'learned' 时使用） */
+  learnedStyleId: string;
+  /** 启用时的风格指南快照（导出项目/生成时不依赖库是否还在） */
+  learnedStyleGuide: string;
+  learnedStyleName: string;
+  person: NarrativePerson;
+  /** 目标篇幅：短/中/长 */
+  length: "short" | "medium" | "long";
+  language: "zh" | "en";
+  /** 大纲章节数建议 */
+  chapterCount: number;
+  /** 额外写作指令 */
+  extraInstructions: string;
+  /** 写入 assemble system 末尾的用户附加规则；空则只用内置 pack */
+  extraRules?: string;
+}
+
+export interface OutlineChapter {
+  id: string;
+  volumeId?: string;
+  order: number;
+  title: string;
+  summary: string;
+  /** 本章关键情节/冲突点 */
+  keyPoints: string;
+  /** 本章是否含情色段落及强度提示；存储字段保留，常规 UI 隐藏 */
+  eroticNote: string;
+  /** 常规大纲 JSON 别名；parse 时写入 eroticNote 若后者为空 */
+  intensityNote?: string;
+  /** 本章强制体现的行为标签（生成本章时生效） */
+  tags: string[];
+}
+
+export interface Outline {
+  premise: string;
+  chapters: OutlineChapter[];
+  endingNote: string;
+  raw?: string;
+}
+
+export interface ChapterVersion {
+  id: string;
+  content: string;
+  createdAt: string;
+  /** auto | manual | rewrite | continue | restore */
+  label: string;
+}
+
+export interface ChapterScene {
+  id: string;
+  order: number;
+  title: string;
+  summary: string;
+}
+
+export interface ChapterContent {
+  chapterId: string;
+  title: string;
+  content: string;
+  status: "idle" | "generating" | "done" | "error";
+  error?: string;
+  updatedAt: string;
+  /** 最近版本快照（不含当前正文，生成前自动压栈） */
+  versions?: ChapterVersion[];
+  /** 分场景规划 */
+  scenes?: ChapterScene[];
+  /** AI 生成的本章摘要（供后续章衔接） */
+  summary?: string;
+}
+
+export type PlotThreadStatus = "planted" | "active" | "resolved";
+
+/** 伏笔 / 线索 */
+export interface PlotThread {
+  id: string;
+  title: string;
+  note: string;
+  status: PlotThreadStatus;
+  plantChapterId?: string;
+  resolveChapterId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 全书批量生成任务（可序列化，暂停/续跑） */
+export interface BookGenerationJob {
+  id: string;
+  status: "idle" | "running" | "paused" | "done" | "error";
+  items: {
+    chapterId: string;
+    order: number;
+    title: string;
+    status: "pending" | "running" | "done" | "error" | "skipped";
+    error?: string;
+    partialContent?: string;
+  }[];
+  currentChapterId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  mode: "all" | "missing" | "retry_errors";
+  /** M3「仅生成本卷」；禁止复用 mode */
+  volumeId?: string;
+}
+
+export interface NovelProject {
+  id: string;
+  name: string;
+  schemaVersion: typeof CURRENT_SCHEMA_VERSION;
+  writingBoard: WritingBoard;
+  /** 预留；默认 erotic→adult，general→unrated。2.0 UI 不读取 */
+  contentRating: ContentRating;
+  createdAt: string;
+  updatedAt: string;
+  characters: Character[];
+  background: StoryBackground;
+  lore?: LoreEntry[];
+  volumes?: Volume[];
+  settings: GenerationSettings;
+  /** general=类型标签；erotic=行为标签。同一字段，词汇表由 pack 定义 */
+  tags: string[];
+  /** 转换向导归档用；assemble 永不读取 */
+  archivedActTags?: string[];
+  outline: Outline | null;
+  chapters: ChapterContent[];
+  /** 伏笔 / 线索板 */
+  plotThreads?: PlotThread[];
+  /** 全书生成队列（中断后可续跑） */
+  bookJob?: BookGenerationJob | null;
+  promptPackId?: string;
+}
+
+/** 正文阅读偏好（全局） */
+export interface ReaderPrefs {
+  fontSize: number;
+  /** system | serif | sans | mono */
+  fontFamily: "system" | "serif" | "sans" | "mono";
+  /** 内容最大宽度 rem */
+  lineWidth: number;
+  /** default | paper | night | sepia */
+  theme: "default" | "paper" | "night" | "sepia";
+  lineHeight: number;
+}
+
+export const DEFAULT_READER_PREFS: ReaderPrefs = {
+  fontSize: 17,
+  fontFamily: "system",
+  lineWidth: 48,
+  theme: "default",
+  lineHeight: 2,
+};
+
+/** API 用量粗估 */
+export interface UsageStats {
+  totalRequests: number;
+  totalCharsIn: number;
+  totalCharsOut: number;
+  byMode: Record<string, { requests: number; charsOut: number }>;
+  lastUsedAt?: string;
+}
+
+export function createEmptyUsageStats(): UsageStats {
+  return {
+    totalRequests: 0,
+    totalCharsIn: 0,
+    totalCharsOut: 0,
+    byMode: {},
+  };
+}
+
+export function createEmptyPlotThread(title = ""): PlotThread {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    title,
+    note: "",
+    status: "planted",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export const MAX_CHAPTER_VERSIONS = 12;
+
+/** 生成前把当前正文压入版本栈 */
+export function pushChapterVersion(
+  chapter: ChapterContent,
+  label: string
+): ChapterContent {
+  const content = chapter.content || "";
+  if (!content.trim()) return chapter;
+  const versions = [...(chapter.versions || [])];
+  versions.unshift({
+    id: crypto.randomUUID(),
+    content,
+    createdAt: new Date().toISOString(),
+    label,
+  });
+  return {
+    ...chapter,
+    versions: versions.slice(0, MAX_CHAPTER_VERSIONS),
+  };
+}
+
+/** 常规写作台默认类型标签（附录 A.9） */
+export const DEFAULT_GENERAL_TAG_LIBRARY = [
+  "悬疑",
+  "成长",
+  "反转",
+  "群像",
+  "冒险",
+  "科幻",
+  "奇幻",
+  "历史",
+  "都市",
+  "爱情",
+  "复仇",
+  "权谋",
+  "公路",
+  "日常",
+  "悲剧",
+  "喜剧",
+  "武侠",
+  "校园",
+  "克苏鲁",
+  "蒸汽朋克",
+] as const;
+
+/** 默认标签库示例（用 / 分隔的批量格式同源） */
+export const DEFAULT_TAG_LIBRARY = [
+  "口交",
+  "肛交",
+  "舔阴",
+  "舔肛",
+  "后背式",
+  "传教式",
+  "女同",
+] as const;
+
+/** 解析「口交/肛交/舔阴」这类批量文本为去重标签列表 */
+export function parseTagsFromText(text: string): string[] {
+  if (!text?.trim()) return [];
+  const parts = text
+    .split(/[/／|｜,，;；\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of parts) {
+    if (!seen.has(p)) {
+      seen.add(p);
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+export function mergeTags(...lists: (string[] | undefined)[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const t of list || []) {
+      const s = t.trim();
+      if (s && !seen.has(s)) {
+        seen.add(s);
+        out.push(s);
+      }
+    }
+  }
+  return out;
+}
+
+export function defaultContentRating(board: WritingBoard): ContentRating {
+  return board === "erotic" ? "adult" : "unrated";
+}
+
+function resolveWritingBoard(value: unknown): WritingBoard {
+  return value === "general" ? "general" : "erotic";
+}
+
+function ensureVolumes(projectId: string, volumes?: Volume[]): Volume[] {
+  const existing = Array.isArray(volumes) ? volumes.filter(Boolean) : [];
+  if (existing.length) {
+    return existing.map((v, i) => ({
+      id: v.id || defaultVolumeId(projectId),
+      order: typeof v.order === "number" ? v.order : i + 1,
+      title: v.title || `第 ${i + 1} 卷`,
+      summary: v.summary || "",
+    }));
+  }
+  return [
+    {
+      id: defaultVolumeId(projectId),
+      order: 1,
+      title: "第一卷",
+      summary: "",
+    },
+  ];
+}
+
+/** 兼容旧项目数据，补齐 writingBoard / schemaVersion / 默认卷 / tags / 文风 / 伏笔 / 版本字段 */
+export function normalizeProject(p: NovelProject): NovelProject {
+  const settings = p.settings || createDefaultSettings();
+  const writingBoard = resolveWritingBoard(p.writingBoard);
+  const volumes = ensureVolumes(p.id, p.volumes);
+  const defaultVolId = volumes[0]?.id || defaultVolumeId(p.id);
+  return {
+    ...p,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    writingBoard,
+    contentRating: p.contentRating || defaultContentRating(writingBoard),
+    volumes,
+    lore: Array.isArray(p.lore) ? p.lore : [],
+    tags: Array.isArray(p.tags) ? p.tags : [],
+    archivedActTags: Array.isArray(p.archivedActTags) ? p.archivedActTags : [],
+    plotThreads: Array.isArray(p.plotThreads) ? p.plotThreads : [],
+    bookJob: p.bookJob ?? null,
+    settings: {
+      ...createDefaultSettings(),
+      ...settings,
+      learnedStyleId: settings.learnedStyleId || "",
+      learnedStyleGuide: settings.learnedStyleGuide || "",
+      learnedStyleName: settings.learnedStyleName || "",
+    },
+    outline: p.outline
+      ? {
+          ...p.outline,
+          chapters: (p.outline.chapters || []).map((c) => {
+            const eroticNote =
+              c.eroticNote ||
+              (typeof c.intensityNote === "string" ? c.intensityNote : "") ||
+              "";
+            return {
+              ...c,
+              volumeId: c.volumeId || defaultVolId,
+              tags: Array.isArray(c.tags) ? c.tags : [],
+              eroticNote,
+              intensityNote: c.intensityNote || eroticNote || undefined,
+            };
+          }),
+        }
+      : null,
+    chapters: (p.chapters || []).map((c) => ({
+      ...c,
+      versions: Array.isArray(c.versions) ? c.versions : [],
+      scenes: Array.isArray(c.scenes) ? c.scenes : undefined,
+      summary: c.summary || "",
+    })),
+  };
+}
+
+export function assertWritingBoardImmutable(
+  prev: NovelProject | undefined,
+  next: NovelProject
+): void {
+  if (prev && prev.writingBoard !== next.writingBoard) {
+    throw new Error("WRITING_BOARD_LOCKED");
+  }
+}
+
+export function normalizeLearnedStyle(s: LearnedStyle): LearnedStyle {
+  return {
+    ...s,
+    writingBoard: s.writingBoard === "general" ? "general" : "erotic",
+  };
+}
+
+/** 长文采样：头+中+尾，控制学习请求体量 */
+export function sampleTextForStyleLearning(
+  text: string,
+  maxChars = 14000
+): string {
+  const clean = text.replace(/\r\n/g, "\n").trim();
+  if (clean.length <= maxChars) return clean;
+  const chunk = Math.floor(maxChars / 3);
+  const midStart = Math.max(0, Math.floor(clean.length / 2) - Math.floor(chunk / 2));
+  const head = clean.slice(0, chunk);
+  const mid = clean.slice(midStart, midStart + chunk);
+  const tail = clean.slice(-chunk);
+  return [
+    "【开头采样】\n" + head,
+    "\n\n【中段采样】\n" + mid,
+    "\n\n【结尾采样】\n" + tail,
+  ].join("");
+}
+
+export const EROTIC_LEVEL_LABELS: Record<EroticLevel, string> = {
+  1: "含蓄暗示 — 点到为止，氛围为主",
+  2: "暧昧挑逗 — 有感官描写，无露骨细节",
+  3: "适中情欲 — 有明确性描写，文雅而不回避",
+  4: "露骨详细 — 过程与感官充分展开",
+  5: "极致直白 — 最大尺度、细节不删减",
+};
+
+export const STYLE_LABELS: Record<WritingStyle, string> = {
+  literary: "文学细腻",
+  plain: "朴实直白",
+  poetic: "诗意唯美",
+  passionate: "热情奔放",
+  restrained: "克制暧昧",
+  dark: "黑暗沉重",
+  humorous: "轻松幽默",
+  custom: "自定义",
+  learned: "学习文风（固定）",
+};
+
+export const PERSON_LABELS: Record<NarrativePerson, string> = {
+  first: "第一人称（我）",
+  second: "第二人称（你）",
+  third: "第三人称",
+};
+
+export const LENGTH_LABELS = {
+  short: "短篇（约800–1500字/章）",
+  medium: "中篇（约1500–3000字/章）",
+  long: "长篇（约3000–5000字/章）",
+} as const;
+
+export function createEmptyCharacter(): Character {
+  return {
+    id: crypto.randomUUID(),
+    name: "",
+    gender: "",
+    age: "",
+    appearance: "",
+    personality: "",
+    background: "",
+    relationships: "",
+    role: "主角",
+    notes: "",
+    aliases: [],
+    speechStyle: "",
+  };
+}
+
+export function createDefaultBackground(): StoryBackground {
+  return {
+    title: "",
+    synopsis: "",
+    setting: "",
+    era: "现代",
+    themes: "",
+    tone: "",
+    extra: "",
+  };
+}
+
+export function createDefaultSettings(): GenerationSettings {
+  return {
+    eroticLevel: 3,
+    writingStyle: "literary",
+    customStyle: "",
+    learnedStyleId: "",
+    learnedStyleGuide: "",
+    learnedStyleName: "",
+    person: "third",
+    length: "medium",
+    language: "zh",
+    chapterCount: 5,
+    extraInstructions: "",
+    extraRules: "",
+  };
+}
+
+export function createEmptyProject(
+  name = "未命名小说",
+  writingBoard: WritingBoard = "erotic"
+): NovelProject {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  return {
+    id,
+    name,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    writingBoard,
+    contentRating: defaultContentRating(writingBoard),
+    createdAt: now,
+    updatedAt: now,
+    characters: [createEmptyCharacter()],
+    background: createDefaultBackground(),
+    lore: [],
+    volumes: [
+      {
+        id: defaultVolumeId(id),
+        order: 1,
+        title: "第一卷",
+        summary: "",
+      },
+    ],
+    settings: createDefaultSettings(),
+    tags: [],
+    archivedActTags: [],
+    outline: null,
+    chapters: [],
+    plotThreads: [],
+    bookJob: null,
+  };
+}

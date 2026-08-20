@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fantasy Writer / 幻想作家
 
-## Getting Started
+本地优先的 Web / 桌面 **AI 长篇写作**应用。设定人物与世界 → AI 生成大纲 → 你改大纲 → 一键生成正文。
 
-First, run the development server:
+两个一等写作台，看板一键切换，互不污染：
+
+- **常规**：类型 / 文学 / 网文长篇
+- **色情**：成年情色虚构（18+），1.8.1 能力完整保留
+
+AI 默认使用 **DeepSeek**（OpenAI 兼容接口，可改 Base URL / 模型）。
+
+当前版本：**2.0.1**
+
+## 功能
+
+| 模块 | 说明 |
+|------|------|
+| 双写作台 | 首页看板切换；项目徽章与 `writingBoard` 绑定；转换向导默认另存 |
+| 项目 | 多项目、**IndexedDB 主存** + 旧键只读回退、JSON 导入导出、完整备份 |
+| 人物设定 | 复数角色 + AI 扩写/优化；可选别名与说话风格 |
+| 故事背景 | 标题、梗概等 + AI 扩写 / 优化 |
+| 世界观 | 地点/组织/物品/规则；关键词命中后注入生成提示（最多 8 条 / 2000 字） |
+| 分卷 | 作品 → 卷 → 章；按卷生成队列；导出与目录预览按卷分组 |
+| 生成参数 | 文风/人称/篇幅；色情台另有尺度 1–5；附加系统规则写入 prompt 末尾 |
+| 标签 | 常规=类型标签；色情=行为标签。库按台分桶 |
+| 文风学习 | 主页学习与维护文风库；项目「生成参数」中选用 |
+| 大纲 | AI 生成 JSON 大纲；可编辑/增删/排序章节 |
+| 正文 | 流式生成/可取消；润色选中、续写；版本历史；分场景生成；查找替换 |
+| **全书队列** | 一键生成可 **暂停 / 续跑 / 跳过 / 重试失败章**；可仅生成本卷 |
+| **跨章记忆** | 角色状态卡 + 前情摘要 + 上章结尾 + 未回收伏笔 + 命中设定 |
+| 阅读 / 主题 | 字号/字体/行宽；浅色/深色 |
+| 工具 | 人物一致性、大纲对照、目录预览、用量统计、导出 MD/TXT/EPUB/DOC |
+| API | 可配置 Base URL + 模型（OpenAI 兼容） |
+
+## 环境要求
+
+- Node.js 18+
+- DeepSeek API Key：[platform.deepseek.com](https://platform.deepseek.com/api_keys)
+
+## 快速开始
 
 ```bash
+cd h-novelist   # 或你的项目目录
+cp .env.example .env.local
+# 编辑 .env.local，填入 DEEPSEEK_API_KEY=...
+
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+浏览器打开 [http://localhost:3000](http://localhost:3000)。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+桌面安装包：`Fantasy-Writer-Setup-2.0.1.exe`。库存 1.8.1 客户端请用字节相同的 `H-NoveList-Setup-2.0.1.exe`（同一二进制，更新器只认旧文件名）。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 推荐工作流
 
-## Learn More
+1. **新建项目**，选择常规或色情写作台  
+2. **人物设定**：至少主角 + 关键配角  
+3. **故事背景 / 世界观**：梗概、场景与关键词设定写清楚  
+4. **生成参数**：文风 / 人称 / 建议章节数（色情台再选尺度）  
+5. 点 **AI 生成大纲**，在大纲页逐章微调；需要时添加分卷  
+6. **生成本章**，或 **一键生成全部正文** / **仅生成本卷**  
+7. 长书中途可 **暂停**，之后 **续跑**；失败章可 **重试**  
+8. 在正文页润色，**导出全书**（Markdown / TXT / EPUB / Word）
 
-To learn more about Next.js, take a look at the following resources:
+## 数据存储
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- 项目数据优先写入浏览器 **IndexedDB**（库名 `fantasy-writer`）  
+- 2.0 起停止写入旧键 `erotic-novel-studio:*` / `h-novelist:*`，读仍回退一轮  
+- 旧完整备份（`ens-backup-*.json`）可在首页设置里 `importFullBackup` 一次  
+- API Key 仅在服务端 `.env.local` 或桌面端用户目录 `config.env`，不会进前端包  
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+详见 `docs/迁移说明.md`。
 
-## Deploy on Vercel
+## 技术栈
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Next.js 16 (App Router) + TypeScript + Tailwind CSS + React 19  
+- `openai` SDK → `https://api.deepseek.com`，默认模型 `deepseek-v4-pro`  
+- Electron 桌面打包（Windows NSIS）
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 注意
+
+- 色情写作台仅用于 **成年角色（18+）** 的虚构创作；两台均禁止未成年人色情  
+- 生成会产生 API 费用，全书一键生成前请确认章节数  
+- 生产部署请自行做好访问控制，勿把 Key 提交到 Git
