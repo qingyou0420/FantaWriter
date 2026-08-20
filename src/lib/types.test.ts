@@ -117,6 +117,12 @@ describe("normalizeProject", () => {
     expect(p.writingBoard).toBe("general");
     expect(p.contentRating).toBe("unrated");
   });
+
+  it("defaults missing original/canon without breaking old books", () => {
+    const p = normalizeProject(createEmptyProject("g", "general"));
+    expect(p.original).toBeNull();
+    expect(p.canon).toEqual([]);
+  });
 });
 
 describe("assertWritingBoardImmutable", () => {

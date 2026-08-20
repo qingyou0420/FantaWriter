@@ -1,4 +1,5 @@
 import { buildMemoryPack } from "./memory-pack";
+import { originalContextFrom } from "./original";
 import { recordUsage } from "./storage";
 import type { GenerateTaskMode } from "./prompts/registry";
 import type { NovelProject, WritingBoard } from "./types";
@@ -11,11 +12,16 @@ export type GenerateRequest = {
 };
 
 export function generateBody(
-  project: Pick<NovelProject, "writingBoard">,
+  project: Pick<NovelProject, "writingBoard" | "original" | "canon">,
   task: GenerateTaskMode,
   rest: Omit<GenerateRequest, "mode" | "writingBoard"> = {}
 ): GenerateRequest {
-  return { ...rest, mode: task, writingBoard: project.writingBoard };
+  return {
+    ...rest,
+    ...originalContextFrom(project),
+    mode: task,
+    writingBoard: project.writingBoard,
+  };
 }
 
 /** 统一调用 /api/generate（非流式） */

@@ -10,6 +10,7 @@ import {
   streamGenerate,
 } from "@/lib/api";
 import { exportBook } from "@/lib/export-book";
+import { attachOriginalContext } from "@/lib/original";
 import { exportChaptersToRepo } from "@/lib/export-chapters";
 import { loadReaderPrefs, saveReaderPrefs } from "@/lib/storage";
 import type { RewriteMode } from "@/lib/prompts";
@@ -280,7 +281,7 @@ export function ChaptersReader({
     try {
       // push version via parent when applying - we'll replace selection
       const rewritten = await streamGenerate(
-        {
+        attachOriginalContext(project, {
           mode: "rewrite",
           writingBoard: project.writingBoard,
           rewriteMode,
@@ -290,7 +291,7 @@ export function ChaptersReader({
           characters: project.characters,
           background: project.background,
           settings: project.settings,
-        },
+        }),
         {
           signal: ac.signal,
           onDelta: (_d, full) => {
@@ -328,7 +329,7 @@ export function ChaptersReader({
     try {
       const prior = buildPreviousContext(project, selectedOutline.order);
       const cont = await streamGenerate(
-        {
+        attachOriginalContext(project, {
           mode: "continue",
           writingBoard: project.writingBoard,
           existingText: base,
@@ -344,7 +345,7 @@ export function ChaptersReader({
             formatPlotThreadsForPrompt(project.plotThreads),
           lore: prior.lore,
           priorBlock: prior.priorBlock,
-        },
+        }),
         {
           signal: ac.signal,
           onDelta: (_d, full) => setLocalStreaming(base + full),
@@ -372,15 +373,17 @@ export function ChaptersReader({
     onError("");
     onBusy("scene_plan");
     try {
-      const data = await postGenerate({
-        mode: "scene_plan",
-        writingBoard: project.writingBoard,
-        characters: project.characters,
-        background: project.background,
-        settings: project.settings,
-        chapter: selectedOutline,
-        projectTags: project.tags || [],
-      });
+      const data = await postGenerate(
+        attachOriginalContext(project, {
+          mode: "scene_plan",
+          writingBoard: project.writingBoard,
+          characters: project.characters,
+          background: project.background,
+          settings: project.settings,
+          chapter: selectedOutline,
+          projectTags: project.tags || [],
+        })
+      );
       const scenes: ChapterScene[] = (data.scenes || []).map(
         (
           s: { order: number; title: string; summary: string },
@@ -431,7 +434,7 @@ export function ChaptersReader({
       )) {
         if (ac.signal.aborted) break;
         const piece = await streamGenerate(
-          {
+          attachOriginalContext(project, {
             mode: "scene_chapter",
             writingBoard: project.writingBoard,
             characters: project.characters,
@@ -453,7 +456,7 @@ export function ChaptersReader({
               prior.plotThreads ||
               formatPlotThreadsForPrompt(project.plotThreads),
             lore: prior.lore,
-          },
+          }),
           {
             signal: ac.signal,
             onDelta: (_d, full) =>

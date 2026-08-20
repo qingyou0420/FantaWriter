@@ -12,11 +12,13 @@ import { filterProjectsByBoard, shouldShowAgeGate } from "@/lib/board";
 import { boardCopy } from "@/lib/copy";
 import { resolveFlag } from "@/lib/flags";
 import {
+  createEmptyOriginalManuscript,
   createEmptyProject,
   type LearnedStyle,
   type NovelProject,
   type WritingBoard,
 } from "@/lib/types";
+import { hasOriginalText } from "@/lib/original";
 import { loadAppPrefs, saveAppPrefs } from "@/lib/theme";
 import {
   deleteProject,
@@ -24,6 +26,7 @@ import {
   importProjectJson,
   initStorage,
   loadProjects,
+  writeProjectTab,
   loadStyleLibraryFor,
   loadTagLibraryFor,
   loadUsageStats,
@@ -40,7 +43,12 @@ export default function HomePage() {
   const [projects, setProjects] = useState<NovelProject[]>([]);
   const [ready, setReady] = useState(false);
   const [newName, setNewName] = useState("");
+  const [createMode, setCreateMode] = useState<"scratch" | "renew">("scratch");
+  const [origTitle, setOrigTitle] = useState("");
+  const [origText, setOrigText] = useState("");
+  const [origSource, setOrigSource] = useState("粘贴导入");
   const fileRef = useRef<HTMLInputElement>(null);
+  const origFileRef = useRef<HTMLInputElement>(null);
 
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [keyPrefix, setKeyPrefix] = useState("");
@@ -138,13 +146,48 @@ export default function HomePage() {
 
   function handleCreate() {
     const copy = boardCopy(board);
-    if (!confirm(copy.createConfirm)) return;
-    const project = createEmptyProject(newName.trim() || "未命名小说", board);
-    if (newName.trim()) {
-      project.background.title = newName.trim();
+    const confirmMsg =
+      createMode === "renew"
+        ? `这是「原作焕新」：依据旧稿扩写，而不是从零遍构。${copy.createConfirm}`
+        : copy.createConfirm;
+    if (!confirm(confirmMsg)) return;
+    const titleHint = origTitle.trim() || newName.trim();
+    const project = createEmptyProject(
+      newName.trim() || titleHint || "未命名小说",
+      board
+    );
+    if (titleHint) {
+      project.background.title = titleHint;
+    }
+    if (createMode === "renew") {
+      const ms = createEmptyOriginalManuscript(
+        origTitle.trim() || project.name,
+        origSource || "粘贴导入"
+      );
+      ms.text = origText;
+      project.original = ms;
     }
     upsertProject(project);
+    if (createMode === "renew") {
+      writeProjectTab(project.id, "original");
+    }
     router.push(`/project/${project.id}`);
+  }
+
+  function onOriginalFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || "");
+      setOrigText(text);
+      setOrigSource(file.name);
+      if (!origTitle.trim()) {
+        setOrigTitle(file.name.replace(/\.[^.]+$/, ""));
+      }
+      if (!newName.trim()) {
+        setNewName(file.name.replace(/\.[^.]+$/, ""));
+      }
+    };
+    reader.readAsText(file, "UTF-8");
   }
 
   function handleDelete(id: string, name: string) {
@@ -285,21 +328,103 @@ export default function HomePage() {
           <>
             <section className="card mb-8">
               <h2 className="card-title">新建小说项目</h2>
+              <div className="tabs mb-3">
+                <button
+                  type="button"
+                  className={`tab ${createMode === "scratch" ? "active" : ""}`}
+                  onClick={() => setCreateMode("scratch")}
+                >
+                  从零开写
+                </button>
+                <button
+                  type="button"
+                  className={`tab ${createMode === "renew" ? "active" : ""}`}
+                  onClick={() => setCreateMode("renew")}
+                >
+                  原作焕新
+                </button>
+              </div>
+              {createMode === "renew" ? (
+                <p className="text-sm text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
+                  贴入旧稿后扩写、润色；人设与情节以原文为准，<strong>不是从零遍构</strong>。
+                  创建后请先锁定身份（例如：清溪 = 流渊的白色战马，不是人，不是女性）。
+                </p>
+              ) : (
+                <p className="text-sm text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
+                  {copy.emptyProjects}
+                </p>
+              )}
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
                   placeholder="项目名称"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && createMode === "scratch" && handleCreate()
+                  }
                 />
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleCreate}
-                >
-                  创建并打开
-                </button>
+                {createMode === "scratch" ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleCreate}
+                  >
+                    创建并打开
+                  </button>
+                ) : null}
               </div>
+              {createMode === "renew" ? (
+                <div className="mt-3 space-y-3">
+                  <input
+                    placeholder="原作标题（如：醉词）"
+                    value={origTitle}
+                    onChange={(e) => setOrigTitle(e.target.value)}
+                  />
+                  <textarea
+                    rows={8}
+                    className="!font-mono !text-[0.85rem]"
+                    placeholder="把旧稿全文贴在这里…"
+                    value={origText}
+                    onChange={(e) => {
+                      setOrigText(e.target.value);
+                      if (origSource === "粘贴导入" || !origSource) {
+                        setOrigSource("粘贴导入");
+                      }
+                    }}
+                  />
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <input
+                      ref={origFileRef}
+                      type="file"
+                      accept=".txt,.md,.text,text/plain"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) onOriginalFile(f);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => origFileRef.current?.click()}
+                    >
+                      导入文件
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleCreate}
+                    >
+                      挂上原作并打开
+                    </button>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {origText.length} 字
+                      {origSource ? ` · ${origSource}` : ""}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section>
@@ -329,6 +454,9 @@ export default function HomePage() {
                           </h3>
                           <div className="flex items-center gap-1 shrink-0">
                           <ModeBadge board={p.writingBoard} />
+                          {hasOriginalText(p.original) ? (
+                            <span className="badge shrink-0">原作焕新</span>
+                          ) : null}
                           <span className="badge shrink-0">
                             {p.outline?.chapters.length
                               ? `${p.outline.chapters.length} 章大纲`

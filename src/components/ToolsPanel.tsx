@@ -5,6 +5,7 @@ import { GlobalFindReplace } from "@/components/GlobalFindReplace";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
 import { useToast } from "@/components/Toast";
 import { postGenerate } from "@/lib/api";
+import { attachOriginalContext } from "@/lib/original";
 import { getDesktop, isDesktopApp } from "@/lib/desktop";
 import {
   buildTocPreview,
@@ -121,13 +122,15 @@ export function ToolsPanel({
         content: string;
       }[];
       if (!rows.length) throw new Error("请先生成至少一章正文");
-      const data = await postGenerate({
-        mode: "consistency_check",
-        writingBoard: project.writingBoard,
-        characters: project.characters,
-        background: project.background,
-        chapters: rows.slice(0, 12),
-      });
+      const data = await postGenerate(
+        attachOriginalContext(project, {
+          mode: "consistency_check",
+          writingBoard: project.writingBoard,
+          characters: project.characters,
+          background: project.background,
+          chapters: rows.slice(0, 12),
+        })
+      );
       setConsistency(data.result);
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -149,13 +152,15 @@ export function ToolsPanel({
     }
     onBusy("outline_check");
     try {
-      const data = await postGenerate({
-        mode: "outline_vs_content",
-        writingBoard: project.writingBoard,
-        chapter: ch,
-        content,
-        projectTags: project.tags || [],
-      });
+      const data = await postGenerate(
+        attachOriginalContext(project, {
+          mode: "outline_vs_content",
+          writingBoard: project.writingBoard,
+          chapter: ch,
+          content,
+          projectTags: project.tags || [],
+        })
+      );
       setOutlineCheck(data.result);
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));

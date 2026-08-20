@@ -41,6 +41,34 @@ export interface LoreEntry {
   enabled: boolean;
 }
 
+/** 锁定设定种类：身份/物种优先于「人物」 */
+export type CanonKind =
+  | "character"
+  | "identity"
+  | "relationship"
+  | "place"
+  | "fact";
+
+/** 从原作抽出、作者可锁定的硬事实 */
+export interface LockedCanonFact {
+  id: string;
+  name: string;
+  kind: CanonKind;
+  /** 如：流渊的白色战马，不是人，不是女性 */
+  statement: string;
+  locked: boolean;
+  aliases?: string[];
+}
+
+/** 本书挂载的原作底稿（焕新/扩写，不是从零遍构） */
+export interface OriginalManuscript {
+  title: string;
+  /** 来源说明：文件名或「粘贴导入」 */
+  sourceLabel: string;
+  text: string;
+  updatedAt: string;
+}
+
 /** 预留；2.0 政策与 UI 不读取。禁止据此做第三写作台。 */
 export type ContentRating = "unrated" | "general" | "mature" | "adult";
 
@@ -227,6 +255,10 @@ export interface NovelProject {
   tags: string[];
   /** 转换向导归档用；assemble 永不读取 */
   archivedActTags?: string[];
+  /** 原作底稿；空则走从零开写 */
+  original?: OriginalManuscript | null;
+  /** 从原作锁定的硬事实（人设/大纲/正文生成必须遵守） */
+  canon?: LockedCanonFact[];
   outline: Outline | null;
   chapters: ChapterContent[];
   /** 伏笔 / 线索板 */
@@ -384,6 +416,86 @@ function resolveWritingBoard(value: unknown): WritingBoard {
   return value === "general" ? "general" : "erotic";
 }
 
+const CANON_KINDS: CanonKind[] = [
+  "character",
+  "identity",
+  "relationship",
+  "place",
+  "fact",
+];
+
+function resolveCanonKind(value: unknown): CanonKind {
+  return CANON_KINDS.includes(value as CanonKind)
+    ? (value as CanonKind)
+    : "fact";
+}
+
+export function createEmptyCanonFact(
+  name = "",
+  statement = "",
+  kind: CanonKind = "fact"
+): LockedCanonFact {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    kind,
+    statement,
+    locked: true,
+    aliases: [],
+  };
+}
+
+export function createEmptyOriginalManuscript(
+  title = "",
+  sourceLabel = "粘贴导入"
+): OriginalManuscript {
+  return {
+    title,
+    sourceLabel,
+    text: "",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function normalizeOriginalManuscript(
+  raw: NovelProject["original"] | undefined
+): OriginalManuscript | null {
+  if (!raw || typeof raw !== "object") return null;
+  const text = typeof raw.text === "string" ? raw.text : "";
+  const title = typeof raw.title === "string" ? raw.title : "";
+  const sourceLabel =
+    typeof raw.sourceLabel === "string" ? raw.sourceLabel : "";
+  if (!text.trim() && !title.trim() && !sourceLabel.trim()) return null;
+  return {
+    title,
+    sourceLabel: sourceLabel || "粘贴导入",
+    text,
+    updatedAt:
+      typeof raw.updatedAt === "string" && raw.updatedAt
+        ? raw.updatedAt
+        : "",
+  };
+}
+
+export function normalizeLockedCanon(
+  raw: NovelProject["canon"] | undefined
+): LockedCanonFact[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((f): f is LockedCanonFact => Boolean(f && typeof f === "object"))
+    .map((f) => ({
+      id: f.id || crypto.randomUUID(),
+      name: String(f.name || "").trim(),
+      kind: resolveCanonKind(f.kind),
+      statement: String(f.statement || "").trim(),
+      locked: f.locked !== false,
+      aliases: Array.isArray(f.aliases)
+        ? f.aliases.map((a) => String(a).trim()).filter(Boolean)
+        : [],
+    }))
+    .filter((f) => f.name || f.statement);
+}
+
 function ensureVolumes(projectId: string, volumes?: Volume[]): Volume[] {
   const existing = Array.isArray(volumes) ? volumes.filter(Boolean) : [];
   if (existing.length) {
@@ -417,6 +529,8 @@ export function normalizeProject(p: NovelProject): NovelProject {
     contentRating: p.contentRating || defaultContentRating(writingBoard),
     volumes,
     lore: Array.isArray(p.lore) ? p.lore : [],
+    original: normalizeOriginalManuscript(p.original),
+    canon: normalizeLockedCanon(p.canon),
     tags: Array.isArray(p.tags) ? p.tags : [],
     archivedActTags: Array.isArray(p.archivedActTags) ? p.archivedActTags : [],
     plotThreads: Array.isArray(p.plotThreads) ? p.plotThreads : [],
@@ -585,6 +699,8 @@ export function createEmptyProject(
     characters: [createEmptyCharacter()],
     background: createDefaultBackground(),
     lore: [],
+    original: null,
+    canon: [],
     volumes: [
       {
         id: defaultVolumeId(id),

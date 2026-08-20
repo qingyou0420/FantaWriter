@@ -4,9 +4,12 @@ import { useState } from "react";
 import { AiBox } from "@/components/AiBox";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
+import { assertCharactersRespectCanon, hasOriginalGrounding } from "@/lib/original";
 import {
   createEmptyCharacter,
   type Character,
+  type LockedCanonFact,
+  type OriginalManuscript,
   type StoryBackground,
   type WritingBoard,
 } from "@/lib/types";
@@ -15,6 +18,8 @@ export function CharactersPanel({
   characters,
   background,
   writingBoard = "erotic",
+  original,
+  canon,
   onChange,
   onCastGenerated,
   onError,
@@ -22,6 +27,8 @@ export function CharactersPanel({
   characters: Character[];
   background: StoryBackground;
   writingBoard?: WritingBoard;
+  original?: OriginalManuscript | null;
+  canon?: LockedCanonFact[];
   onChange: (c: Character[] | ((prev: Character[]) => Character[])) => void;
   onCastGenerated: (c: Character[], b: StoryBackground) => void;
   onError: (msg: string) => void;
@@ -81,8 +88,11 @@ export function CharactersPanel({
         character: current,
         otherCharacters: characters.filter((c) => c.id !== current.id),
         background,
+        original,
+        canon,
       });
       const fields = data.character as Omit<Character, "id">;
+      assertCharactersRespectCanon([fields], canon);
       const targetId = current.id;
       onChange((prev) =>
         prev.map((c) => (c.id === targetId ? { ...c, ...fields } : c))
@@ -115,8 +125,11 @@ export function CharactersPanel({
         otherCharacters: characters.filter((c) => c.id !== current.id),
         background,
         instruction: seed.trim() || undefined,
+        original,
+        canon,
       });
       const fields = data.character as Omit<Character, "id">;
+      assertCharactersRespectCanon([fields], canon);
       const targetId = current.id;
       onChange((prev) =>
         prev.map((c) => (c.id === targetId ? { ...c, ...fields } : c))
@@ -154,12 +167,15 @@ export function CharactersPanel({
         writingBoard,
         seed: castSeed.trim(),
         characterCount: castCount,
+        original,
+        canon,
       });
       const list = (data.characters as Omit<Character, "id">[]).map((f) => ({
         ...createEmptyCharacter(),
         ...f,
         id: crypto.randomUUID(),
       }));
+      assertCharactersRespectCanon(list, canon);
       const bg = data.background as StoryBackground;
       onCastGenerated(list.length ? list : [createEmptyCharacter()], bg);
       if (list[0]) setActive(list[0].id);
@@ -173,10 +189,19 @@ export function CharactersPanel({
 
   return (
     <div className="space-y-4">
+      {hasOriginalGrounding({ original, canon }) ? (
+        <div className="card !py-3 text-sm text-[var(--text-muted)]">
+          本书挂了原作底稿。扩写人物会读原文与锁定设定；已锁定的非人存在（如战马「清溪」）不能被写成女人。
+        </div>
+      ) : null}
       <div className="card">
         <AiBox
           title="一句话生成全部设定"
-          hint="输入一句灵感，AI 同时生成故事背景 + 多名人物。生成后仍可逐项修改。"
+          hint={
+            hasOriginalGrounding({ original, canon })
+              ? "有原作时请按旧稿扩写，不要从零编一批新角色。生成后仍可逐项修改。"
+              : "输入一句灵感，AI 同时生成故事背景 + 多名人物。生成后仍可逐项修改。"
+          }
           seed={castSeed}
           onSeedChange={setCastSeed}
           busy={busy}

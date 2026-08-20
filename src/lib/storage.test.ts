@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { idbGet, idbOpen } from "./idb";
 import {
+  exportProjectJson,
   flushStorage,
   importFullBackup,
+  importProjectJson,
   initStorage,
   loadProjects,
   resetStorageState,
@@ -91,6 +93,32 @@ describe("storage dual-write", () => {
     expect(() =>
       upsertProject({ ...p, writingBoard: "general" })
     ).toThrow("WRITING_BOARD_LOCKED");
+  });
+
+  it("export/import project JSON keeps original manuscript and locked canon", async () => {
+    await initStorage();
+    const p = createEmptyProject("醉词", "general");
+    p.original = {
+      title: "醉词",
+      sourceLabel: "粘贴导入",
+      text: "清溪是流渊的白色战马。",
+      updatedAt: "2026-08-20T00:00:00.000Z",
+    };
+    p.canon = [
+      {
+        id: "c1",
+        name: "清溪",
+        kind: "identity",
+        statement: "流渊的白色战马，不是人，不是女性。",
+        locked: true,
+        aliases: [],
+      },
+    ];
+    const json = exportProjectJson(p);
+    const imported = importProjectJson(json);
+    expect(imported.original?.text).toContain("白色战马");
+    expect(imported.canon?.[0].name).toBe("清溪");
+    expect(imported.canon?.[0].locked).toBe(true);
   });
 
   it("importFullBackup skips existing ids", async () => {

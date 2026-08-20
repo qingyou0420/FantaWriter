@@ -4,18 +4,28 @@ import { useState } from "react";
 import { AiBox } from "@/components/AiBox";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
-import type { Character, StoryBackground, WritingBoard } from "@/lib/types";
+import type {
+  Character,
+  LockedCanonFact,
+  OriginalManuscript,
+  StoryBackground,
+  WritingBoard,
+} from "@/lib/types";
 
 export function BackgroundPanel({
   background,
   characters,
   writingBoard = "erotic",
+  original,
+  canon,
   onChange,
   onError,
 }: {
   background: StoryBackground;
   characters: Character[];
   writingBoard?: WritingBoard;
+  original?: OriginalManuscript | null;
+  canon?: LockedCanonFact[];
   onChange: (
     b: StoryBackground | ((prev: StoryBackground) => StoryBackground)
   ) => void;
@@ -47,6 +57,8 @@ export function BackgroundPanel({
         seed: idea,
         background,
         characters,
+        original,
+        canon,
       });
       onChange(data.background as StoryBackground);
       setSeed("");
@@ -73,6 +85,8 @@ export function BackgroundPanel({
         background,
         characters,
         instruction: seed.trim() || undefined,
+        original,
+        canon,
       });
       onChange(data.background as StoryBackground);
     } catch (e) {

@@ -20,11 +20,18 @@ import {
 import type {
   Character,
   GenerationSettings,
+  LockedCanonFact,
   OutlineChapter,
   StoryBackground,
   WritingBoard,
 } from "@/lib/types";
 import { AssembleError, assemble } from "@/lib/prompts/registry";
+import {
+  assertCharactersRespectCanon,
+  CanonViolationError,
+  parseCanonFacts,
+} from "@/lib/original";
+import { sampleTextForStyleLearning } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -302,6 +309,7 @@ export async function POST(req: NextRequest) {
         maxTokens: 2048,
       });
       const fields = parseCharacterFields(text);
+      assertCharactersRespectCanon([fields], body.canon);
       return NextResponse.json({ ok: true, character: fields, raw: text });
     }
 
@@ -312,6 +320,7 @@ export async function POST(req: NextRequest) {
         maxTokens: 2048,
       });
       const fields = parseCharacterFields(text);
+      assertCharactersRespectCanon([fields], body.canon);
       return NextResponse.json({ ok: true, character: fields, raw: text });
     }
 
@@ -342,6 +351,7 @@ export async function POST(req: NextRequest) {
         maxTokens: 4096,
       });
       const bundle = parseCastBundle(text);
+      assertCharactersRespectCanon(bundle.characters, body.canon);
       return NextResponse.json({ ok: true, ...bundle, raw: text });
     }
 
@@ -391,6 +401,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, style: fields, raw: text });
     }
 
+    if (body.mode === "extract_canon") {
+      const sample = String(body.sampleText || body.originalText || "").trim();
+      if (sample.length < 40) {
+        return NextResponse.json(
+          { error: "原文过短，请先粘贴或导入原作后再抽取设定" },
+          { status: 400 }
+        );
+      }
+      const capped =
+        sample.length > 16000 ? sampleTextForStyleLearning(sample, 14000) : sample;
+      const { system, user } = assemble("extract_canon", writingBoard, {
+        ...body,
+        sampleText: capped,
+        titleHint: body.titleHint || body.original?.title,
+      });
+      const text = await chatComplete(system, user, {
+        temperature: 0.4,
+        maxTokens: 3072,
+      });
+      const facts = parseCanonFacts(text);
+      if (!facts.length) {
+        return NextResponse.json(
+          { error: "未能抽出设定条目，请检查原文或改为手工添加锁定", raw: text },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json({ ok: true, facts, raw: text });
+    }
+
     if (body.mode === "polish_chapter_outline") {
       const tags = [
         ...(body.projectTags || []),
@@ -427,6 +466,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: e.message, code: e.code },
         { status: e.status }
+      );
+    }
+    if (e instanceof CanonViolationError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code, violations: e.violations },
+        { status: 400 }
       );
     }
     const message = e instanceof Error ? e.message : String(e);
