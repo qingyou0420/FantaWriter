@@ -21,6 +21,19 @@ export type UpdateCheckResult = {
   searchedDirs?: string[];
 };
 
+export type PickDirectoryResult = {
+  ok: boolean;
+  path?: string;
+  canceled?: boolean;
+  message: string;
+};
+
+export type WriteTextFilesResult = {
+  ok: boolean;
+  written: string[];
+  message: string;
+};
+
 export type DesktopBridge = {
   isDesktop: true;
   platform: string;
@@ -30,6 +43,19 @@ export type DesktopBridge = {
   pickInstaller: () => Promise<{ ok: boolean; path?: string; version?: string; message: string }>;
   openPath: (target: string) => Promise<{ ok: boolean; message?: string }>;
   openUpdateDir: () => Promise<{ ok: boolean; path: string; message?: string }>;
+  pickDirectory?: (opts?: {
+    title?: string;
+    defaultPath?: string;
+  }) => Promise<PickDirectoryResult>;
+  writeTextFiles?: (payload: {
+    root: string;
+    files: { relativePath: string; content: string }[];
+  }) => Promise<WriteTextFilesResult>;
+  getSuggestedExportRoot?: () => Promise<{
+    ok: boolean;
+    path: string;
+    message?: string;
+  }>;
 };
 
 declare global {

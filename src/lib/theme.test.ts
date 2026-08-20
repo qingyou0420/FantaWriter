@@ -48,6 +48,19 @@ describe("AppPrefs dual keys", () => {
     expect(prefs.autoConsistencyAfterBookJob).toBe(true);
   });
 
+  it("persists chapter repo export root with the rest of local prefs", () => {
+    saveAppPrefs({
+      theme: "dark",
+      autoConsistencyAfterBookJob: false,
+      chapterRepoRoot: "/home/author/fantasy-writer",
+      chapterExportSubdir: "novels",
+    });
+    const prefs = loadAppPrefs();
+    expect(prefs.chapterRepoRoot).toBe("/home/author/fantasy-writer");
+    expect(prefs.chapterExportSubdir).toBe("novels");
+    expect(localStorage.getItem(APP_PREFS_KEY_NEW)).toContain("chapterRepoRoot");
+  });
+
   it("writes new keys only after brand rename; still reads old keys", () => {
     saveAppPrefs({
       theme: "light",

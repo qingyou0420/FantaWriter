@@ -22,6 +22,10 @@ export interface AppPrefs {
   /** ISO；每用户配置确认一次；有值则跳过 AgeGate */
   adultConfirmedAt?: string;
   flags?: Record<string, boolean>;
+  /** 桌面端：章节 Markdown 写入的仓库/文件夹绝对路径。仅存本机，不进 git。 */
+  chapterRepoRoot?: string;
+  /** 相对仓库根的子目录，默认 novels；空表示直接写在根下 */
+  chapterExportSubdir?: string;
 }
 
 export const DEFAULT_APP_PREFS: AppPrefs = {

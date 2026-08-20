@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **写进仓库**：把当前章或全部已完成章（`status === "done"`）写成 `novels/<书名>/ch-<chapterId>.md`。桌面端写入本地所选目录（同章再导出覆盖）；浏览器下载 Markdown / ZIP。导出根目录与子目录存在本机 AppPrefs。全书 MD/TXT/EPUB/DOC 导出不变。
+
 ## 2.0.1
 
 - 修复安装后主进程崩溃：`Cannot find module '../scripts/setup-artifact.cjs'`。更新器正则已打进 `app.asar/electron/`。
