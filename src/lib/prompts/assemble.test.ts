@@ -46,6 +46,10 @@ describe("assemble isolation", () => {
       "rewrite",
       "learn_style",
       "extract_canon",
+      "continue",
+      "scene_plan",
+      "scene_chapter",
+      "volume_summary",
     ] as const;
     for (const task of tasks) {
       const { system, user } = assemble(task, "general", {
@@ -59,8 +63,12 @@ describe("assemble isolation", () => {
         selectedText: "一段正文",
         seed: "灵感",
         sampleText: "范文".repeat(40),
-        titleHint: "醉词",
+        titleHint: "旧稿",
         character: general.characters[0],
+        existingText: "前文。",
+        scene: { order: 1, title: "码头", summary: "靠岸" },
+        volume: { id: "v1", order: 1, title: "上卷", summary: "离乡" },
+        chapterSummaries: [{ order: 1, title: "一", summary: "上路" }],
       });
       const hits = bannedHits(system + "\n" + user);
       expect(hits, `${task} leaked ${hits.join(",")}`).toEqual([]);
@@ -287,6 +295,33 @@ describe("assemble isolation", () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("src/app/api/generate/route.ts", "utf8");
     expect(src).not.toMatch(/user\.replace\(\s*\/## 正文要求/);
+    expect(src).toMatch(/chapterTemperature\(body\.settings\)/);
+    expect(src).toMatch(/resolveChapterTemperature/);
+    expect(src).toContain('mode: "volume_summary"');
+  });
+
+  it("continue injects priorBlock once, same as chapter", () => {
+    const marker = "只出现一次的续写记忆包XYZ";
+    const { user } = assemble("continue", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      existingText: "前文。",
+      chapter,
+      priorBlock: `## 角色状态卡\n${marker}`,
+    });
+    expect(user.split(marker).length - 1).toBe(1);
+    expect(user).toContain("只输出续写部分");
+  });
+
+  it("dead prompt exports stay gone", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/lib/prompts.ts", "utf8");
+    expect(src).not.toMatch(/ADULT_SYSTEM/);
+    expect(src).not.toMatch(/buildContinueUserPrompt/);
+    expect(src).not.toMatch(/欲望走向|暧昧、禁忌、甜虐/);
+    const general = readFileSync("src/lib/prompts/general.ts", "utf8");
+    expect(general).toMatch(/export function generalContinueUser/);
   });
 
   it("continue user reads previousSummaries as 前情摘要", () => {

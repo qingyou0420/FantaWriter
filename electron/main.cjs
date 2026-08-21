@@ -5,14 +5,17 @@ const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
-const { spawn } = require("child_process");
+const net = require("net");
+const crypto = require("crypto");
+const { spawn, execFile } = require("child_process");
 
 /** 公开常规版独立数据目录。 */
 app.setName("fantasy-writer");
 app.setPath("userData", path.join(app.getPath("appData"), "fantasy-writer"));
 
-const PORT = Number(process.env.ENS_PORT || 17831);
+const DEFAULT_PORT = Number(process.env.ENS_PORT || 17831);
 const HOST = "127.0.0.1";
+const LOG_MAX_BYTES = 512 * 1024;
 const { versionFromSetupName } = require("./setup-artifact.cjs");
 const {
   DEFAULT_GITHUB_REPO,
@@ -84,43 +87,117 @@ function applyConfigFile(filePath) {
   }
 }
 
-function waitForServer(url, timeoutMs = 90000) {
+function canBindPort(port) {
+  return new Promise((resolve) => {
+    const tester = net.createServer();
+    tester.once("error", () => resolve(false));
+    tester.once("listening", () => {
+      tester.close(() => resolve(true));
+    });
+    tester.listen(port, HOST);
+  });
+}
+
+async function pickListenPort(start) {
+  let port = start;
+  for (let i = 0; i < 40; i++) {
+    if (await canBindPort(port)) return port;
+    appendLog(`端口 ${port} 已被占用，尝试 ${port + 1}`);
+    port += 1;
+  }
+  throw new Error(`端口 ${start}–${port} 均被占用，无法启动`);
+}
+
+function isOwnHealth(body) {
+  try {
+    const data = JSON.parse(body);
+    return data && data.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+function waitForServer(baseUrl, timeoutMs = 90000) {
   const start = Date.now();
+  const healthUrl = `${baseUrl.replace(/\/$/, "")}/api/generate`;
   return new Promise((resolve, reject) => {
     const tryOnce = () => {
       if (serverProcess && serverProcess.exitCode !== null) {
         reject(
           new Error(
-            `内嵌服务提前退出（代码 ${serverProcess.exitCode}）。\n日志：${getLogPath()}`
+            diagnoseServerExit(serverProcess.exitCode)
           )
         );
         return;
       }
-      const req = http.get(url, (res) => {
-        res.resume();
-        resolve(true);
+      const req = http.get(healthUrl, (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          if (isOwnHealth(body)) {
+            resolve(true);
+            return;
+          }
+          retry(`健康检查未通过（HTTP ${res.statusCode}）`);
+        });
       });
-      req.on("error", () => {
-        if (Date.now() - start > timeoutMs) {
-          reject(
-            new Error(
-              `等待本地服务超时：${url}\n日志：${getLogPath()}\n最近输出：\n${serverLog.slice(-20).join("\n")}`
-            )
-          );
-          return;
-        }
-        setTimeout(tryOnce, 400);
+      req.on("error", () => retry("连接未就绪"));
+      req.setTimeout(1500, () => {
+        req.destroy();
+        retry("健康检查超时");
       });
+    };
+    const retry = (why) => {
+      if (Date.now() - start > timeoutMs) {
+        reject(
+          new Error(
+            `等待本地服务超时：${healthUrl}\n${why}\n日志：${getLogPath()}\n最近输出：\n${serverLog.slice(-20).join("\n")}`
+          )
+        );
+        return;
+      }
+      setTimeout(tryOnce, 400);
     };
     tryOnce();
   });
+}
+
+function rotateLogIfNeeded() {
+  try {
+    const p = getLogPath();
+    if (!fs.existsSync(p)) return;
+    const st = fs.statSync(p);
+    if (st.size <= LOG_MAX_BYTES) return;
+    const raw = fs.readFileSync(p, "utf8");
+    const keep = raw.slice(-Math.floor(LOG_MAX_BYTES / 2));
+    fs.writeFileSync(p, `--- 日志已截断，保留上次启动尾部 ---\n${keep}`, "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
+function diagnoseServerExit(code) {
+  const tail = serverLog.slice(-40).join("\n");
+  const standaloneDir = getStandaloneDir();
+  const serverJs = path.join(standaloneDir, "server.js");
+  if (!fs.existsSync(serverJs)) {
+    return `找不到内嵌服务入口 server.js。\n安装包可能不完整，请重新安装。\n日志：${getLogPath()}`;
+  }
+  if (/EADDRINUSE|address already in use|端口/.test(tail)) {
+    return `端口被占用，无法启动内嵌服务。\n请关闭占用程序后重试。\n日志：${getLogPath()}`;
+  }
+  if (/config\.env|ENOENT.*config|解析配置|读取配置失败/.test(tail)) {
+    return `配置文件无法解析。\n请检查用户目录下的 config.env 是否写坏。\n日志：${getLogPath()}`;
+  }
+  return `内嵌服务已退出（代码 ${code ?? "未知"}）。\n请查看日志：${getLogPath()}\n\n最近日志：\n${tail}`;
 }
 
 function getStandaloneDir() {
   return path.join(process.resourcesPath, "standalone");
 }
 
-function startProductionServer() {
+function startProductionServer(listenPort) {
   const standaloneDir = getStandaloneDir();
   const serverJs = path.join(standaloneDir, "server.js");
   const nextModule = path.join(standaloneDir, "node_modules", "next");
@@ -138,11 +215,7 @@ function startProductionServer() {
     );
   }
 
-  try {
-    fs.writeFileSync(getLogPath(), "", "utf8");
-  } catch {
-    /* ignore */
-  }
+  rotateLogIfNeeded();
 
   applyConfigFile(getConfigPath());
   applyConfigFile(path.join(path.dirname(app.getPath("exe")), "config.env"));
@@ -151,7 +224,7 @@ function startProductionServer() {
     ...process.env,
     ELECTRON_RUN_AS_NODE: "1",
     NODE_ENV: "production",
-    PORT: String(PORT),
+    PORT: String(listenPort),
     HOSTNAME: HOST,
     APP_CONFIG_PATH: getConfigPath(),
   };
@@ -173,15 +246,11 @@ function startProductionServer() {
     appendLog(`Next server exited code=${code} signal=${signal}`);
     serverProcess = null;
     if (!quitting && code && code !== 0) {
-      const tail = serverLog.slice(-30).join("\n");
-      dialog.showErrorBox(
-        "内嵌服务已退出",
-        `退出代码：${code}\n\n常见原因：安装包缺少 node_modules（请用新版安装包重装）。\n\n日志文件：\n${getLogPath()}\n\n最近日志：\n${tail}`
-      );
+      dialog.showErrorBox("内嵌服务已退出", diagnoseServerExit(code));
     }
   });
 
-  return `http://${HOST}:${PORT}`;
+  return `http://${HOST}:${listenPort}`;
 }
 
 async function resolveAppUrl() {
@@ -192,7 +261,8 @@ async function resolveAppUrl() {
     await waitForServer(devUrl, 120000);
     return devUrl;
   }
-  const url = startProductionServer();
+  const listenPort = await pickListenPort(DEFAULT_PORT);
+  const url = startProductionServer(listenPort);
   await waitForServer(url, 90000);
   return url;
 }
@@ -369,6 +439,24 @@ function findLatestInstaller(currentVersion) {
   return { candidates: pool, searchedDirs: searched, allCount: all.length };
 }
 
+function sha256File(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function isAllowedOpenPath(target) {
+  const resolved = path.resolve(String(target || ""));
+  const roots = [
+    app.getPath("userData"),
+    getPrimaryUpdateDir(),
+    path.join(app.getPath("temp"), "Fantasy-Writer-Updates"),
+    path.join(app.getPath("userData"), "updates"),
+  ];
+  return roots.some((root) => {
+    const r = path.resolve(root);
+    return resolved === r || resolved.startsWith(r + path.sep);
+  });
+}
+
 function ensureDir(dir) {
   try {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -405,6 +493,17 @@ function writeConfigMap(filePath, map) {
     "",
   ];
   fs.writeFileSync(filePath, lines.join("\n"), "utf8");
+  if (process.platform === "win32") {
+    const user = process.env.USERNAME || process.env.USER || "";
+    if (user) {
+      execFile(
+        "icacls",
+        [filePath, "/inheritance:r", "/grant:r", `${user}:F`],
+        { windowsHide: true },
+        () => {}
+      );
+    }
+  }
 }
 
 function getGithubUpdateToken() {
@@ -587,6 +686,27 @@ function registerIpc() {
       if (!fs.existsSync(dest)) {
         return { ok: false, message: "下载完成但文件不存在" };
       }
+      let expected = String(opts.sha256 || "").trim().toLowerCase();
+      const checksumUrl = String(opts.sha256DownloadUrl || opts.sha256AssetApiUrl || "").trim();
+      if (!expected && checksumUrl && isAllowedFeedDownloadUrl(checksumUrl)) {
+        try {
+          const sidecar = await fetchText(checksumUrl, githubAssetHeaders(token));
+          expected = parseSha256Sidecar(sidecar);
+        } catch (e) {
+          appendLog("读取校验文件失败: " + e);
+        }
+      }
+      if (expected) {
+        const actual = sha256File(dest);
+        if (actual !== expected) {
+          try {
+            fs.unlinkSync(dest);
+          } catch {
+            /* ignore */
+          }
+          return { ok: false, message: "安装包校验失败（哈希不匹配），已删除文件" };
+        }
+      }
       return {
         ok: true,
         path: dest,
@@ -654,6 +774,9 @@ function registerIpc() {
   ipcMain.handle("app:openPath", async (_e, target) => {
     const t = String(target || "");
     if (!t) return { ok: false, message: "路径为空" };
+    if (!isAllowedOpenPath(t)) {
+      return { ok: false, message: "拒绝打开非用户数据/更新目录的路径" };
+    }
     const err = await shell.openPath(t);
     if (err) return { ok: false, message: err };
     return { ok: true };
@@ -793,6 +916,23 @@ function httpGet(url, options = {}) {
   });
 }
 
+function fetchText(url, headers) {
+  return httpGet(url, { headers: headers || {}, timeout: 15000 }).then(
+    (res) =>
+      new Promise((resolve, reject) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+        res.on("error", reject);
+      })
+  );
+}
+
+function parseSha256Sidecar(text) {
+  const first = String(text || "").trim().split(/\s+/)[0] || "";
+  return /^[a-f0-9]{64}$/i.test(first) ? first.toLowerCase() : "";
+}
+
 function fetchJson(url, headers) {
   return httpGet(url, { headers: headers || {}, timeout: 15000 }).then(
     (res) =>
@@ -857,6 +997,8 @@ async function checkGithubLatest(current) {
     hasUpdate,
     downloadUrl: parsed.downloadUrl || undefined,
     assetApiUrl: parsed.assetApiUrl || undefined,
+    sha256DownloadUrl: parsed.sha256DownloadUrl || undefined,
+    sha256AssetApiUrl: parsed.sha256AssetApiUrl || undefined,
     source: `github:${repo}`,
     message: hasUpdate
       ? `GitHub 发现新版本 ${parsed.version}（当前 ${current}）`

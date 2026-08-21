@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
 import {
   addVolume,
   chaptersInVolume,
@@ -14,12 +15,14 @@ export function VolumesPanel({
   onChange,
   onGenerateVolume,
   onGenerateVolumeOutline,
+  onGenerateVolumeSummary,
   busy,
 }: {
   project: NovelProject;
   onChange: (volumes: Volume[], chapters?: NovelProject["outline"]) => void;
   onGenerateVolume: (volumeId: string) => void;
   onGenerateVolumeOutline?: (volumeId: string, chapterCount: number) => void;
+  onGenerateVolumeSummary?: (volumeId: string) => void;
   busy?: string | null;
 }) {
   const volumes = sortedVolumes(project);
@@ -44,6 +47,21 @@ export function VolumesPanel({
         <p className="text-xs text-[var(--text-muted)] mt-0 mb-3">
           大纲章节会归入某一卷。可按卷生成正文；导出时按卷分节。
         </p>
+        {!volumes.length ? (
+          <EmptyState
+            title="还没有分卷"
+            description="长篇可以先加一卷，再按卷排大纲、生成正文。"
+            action={
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => onChange(addVolume(project))}
+              >
+                添加卷
+              </button>
+            }
+          />
+        ) : (
         <ul className="list-none p-0 m-0 space-y-3">
           {volumes.map((v, i) => {
             const count = chaptersInVolume(project, v.id).length;
@@ -96,6 +114,20 @@ export function VolumesPanel({
                   </button>
                   <button
                     type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!!busy || !onGenerateVolumeSummary}
+                    onClick={() => onGenerateVolumeSummary?.(v.id)}
+                  >
+                    {busy === `volume_summary:${v.id}` ? (
+                      <>
+                        <span className="spinner" /> 摘要…
+                      </>
+                    ) : (
+                      "AI 生成本卷摘要"
+                    )}
+                  </button>
+                  <button
+                    type="button"
                     className="btn btn-primary btn-sm"
                     disabled={!count || !!busy}
                     onClick={() => onGenerateVolume(v.id)}
@@ -132,6 +164,7 @@ export function VolumesPanel({
             );
           })}
         </ul>
+        )}
       </div>
     </div>
   );

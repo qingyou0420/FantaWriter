@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+按 `docs/综合迭代方案.md` 做完 P0–P2（不重做已落地的旧 P0 五项）。
+
+- **P0 工程护栏**：CI 强制 `tsc --noEmit` + lint + vitest；破坏性操作（重生成大纲 / 覆盖正文 / 强制全量）对齐确认；一致性检查 JSON 模板补上 `character`；单章失败可重试，全书队列遇瞬时 5xx 自动再试一次；错误文案人话在前、诊断可展开；桌面壳端口被占则递增，就绪检查认自家 `/api/generate`，退出弹窗按原因分诊，`server.log` 追加保留。
+- **P1 写作体验**：continue/scene 并入 `prompts/general.ts`，删掉 `prompts.ts` 死导出（含成人版遗迹文案）；公开版不再新建 `erotic-novel-studio`；正文温度可调，API 设置页可见 `DEEPSEEK_THINKING`；卷摘要可一键生成；章摘要盘点触及伏笔，伏笔板可一键标已回收；进度/标签 tab 并入工具与生成参数，原作 tab 按需出现；新建书显示开写四步卡，各空态带行动按钮。
+- **P2 收尾**：新建项目 JSON 不再写 erotic 字段；流式渲染节流；一致性检查优先用章摘要；`app:openPath` 白名单、安装包 sha256 校验、`config.env` 尽力收紧 ACL；「写进仓库」改为「导出到文件夹」；删除空壳 `UpdatePanel` 与无引用脚本。
+
 ## 1.1.0
 
 已安装的 1.0.0 桌面端可从本仓 GitHub Release 检查到此版本。安装包 `Fantasy-Writer-Setup-1.1.0.exe`。

@@ -20,12 +20,15 @@ import {
   expandTargetChars,
   lengthRangeFor,
 } from "@/lib/length";
-import { sliceAroundSelection } from "@/lib/prompts";
+import { parseTouchedThreads, sliceAroundSelection } from "@/lib/prompts";
+import { createThrottledTextSink } from "@/lib/stream-throttle";
+import { EmptyState } from "@/components/EmptyState";
 import { loadReaderPrefs, saveReaderPrefs } from "@/lib/storage";
 import type { RewriteMode } from "@/lib/prompts";
 import {
   DEFAULT_READER_PREFS,
   LENGTH_LABELS,
+  STYLE_LABELS,
   pushChapterVersion,
   type ChapterContent,
   type ChapterScene,
@@ -66,6 +69,7 @@ export function ChaptersReader({
   onUpdateChapterMeta,
   onBusy,
   onError,
+  onOpenSettings,
 }: {
   project: NovelProject;
   library: string[];
@@ -85,14 +89,14 @@ export function ChaptersReader({
   ) => void;
   onBusy: (v: string | null) => void;
   onError: (msg: string) => void;
+  onOpenSettings?: () => void;
 }) {
   const [metaOpen, setMetaOpen] = useState(false);
-  const [prefs, setPrefs] = useState<ReaderPrefs>(DEFAULT_READER_PREFS);
+  const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadReaderPrefs());
   const [immersive, setImmersive] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [replaceQuery, setReplaceQuery] = useState("");
-  const [findIndex, setFindIndex] = useState(0);
   const [showVersions, setShowVersions] = useState(false);
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [rewriteMode, setRewriteMode] = useState<RewriteMode>("polish");
@@ -103,16 +107,14 @@ export function ChaptersReader({
   const [localStreaming, setLocalStreaming] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const streamSinkRef = useRef(
+    createThrottledTextSink((full) => setLocalStreaming(full))
+  );
   const toast = useToast();
 
   const chapters = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
     : [];
-
-  useEffect(() => {
-    setPrefs(loadReaderPrefs());
-  }, []);
-
 
   const persistPrefs = useCallback((next: ReaderPrefs) => {
     setPrefs(next);
@@ -205,9 +207,13 @@ export function ChaptersReader({
     return indices;
   }, [content, findQuery]);
 
-  useEffect(() => {
-    setFindIndex(0);
-  }, [findQuery, selectedChapterId]);
+  const findResetKey = `${findQuery}::${selectedChapterId || ""}`;
+  const [findCursor, setFindCursor] = useState({ key: findResetKey, index: 0 });
+  if (findCursor.key !== findResetKey) {
+    setFindCursor({ key: findResetKey, index: 0 });
+  }
+  const findIndexEffective =
+    findCursor.key === findResetKey ? findCursor.index : 0;
 
   function captureSelection() {
     const el = taRef.current;
@@ -228,8 +234,8 @@ export function ChaptersReader({
   function jumpFind(dir: 1 | -1) {
     if (!findMatches.length || !selectedOutline) return;
     const next =
-      (findIndex + dir + findMatches.length) % findMatches.length;
-    setFindIndex(next);
+      (findIndexEffective + dir + findMatches.length) % findMatches.length;
+    setFindCursor({ key: findResetKey, index: next });
     const pos = findMatches[next];
     const el = taRef.current;
     if (el) {
@@ -240,7 +246,7 @@ export function ChaptersReader({
 
   function replaceOne() {
     if (!selectedOutline || !findQuery || !findMatches.length) return;
-    const pos = findMatches[findIndex] ?? findMatches[0];
+    const pos = findMatches[findIndexEffective] ?? findMatches[0];
     const next =
       content.slice(0, pos) +
       replaceQuery +
@@ -360,7 +366,7 @@ export function ChaptersReader({
         }),
         {
           signal: ac.signal,
-          onDelta: (_d, full) => setLocalStreaming(base + full),
+          onDelta: (_d, full) => streamSinkRef.current.push(base + full),
         }
       );
       onContentChange(selectedOutline.id, base + cont, {
@@ -472,7 +478,7 @@ export function ChaptersReader({
           {
             signal: ac.signal,
             onDelta: (_d, full) =>
-              setLocalStreaming(
+              streamSinkRef.current.push(
                 assembled + (assembled ? "\n\n" : "") + full
               ),
           }
@@ -534,7 +540,7 @@ export function ChaptersReader({
         }),
         {
           signal: ac.signal,
-          onDelta: (_d, full) => setLocalStreaming(base + full),
+          onDelta: (_d, full) => streamSinkRef.current.push(base + full),
         }
       );
       onContentChange(selectedOutline.id, base + extra, {
@@ -564,9 +570,16 @@ export function ChaptersReader({
         writingBoard: project.writingBoard,
         content,
         title: selectedOutline.title,
+        openThreads: (project.plotThreads || [])
+          .filter((t) => t.status !== "resolved" && t.title.trim())
+          .map((t) => t.title.trim()),
       });
+      const raw = String(data.summary || "").trim();
       onUpdateChapterMeta(selectedOutline.id, {
-        summary: String(data.summary || "").trim(),
+        summary: raw,
+        touchedThreads: Array.isArray(data.touchedThreads)
+          ? data.touchedThreads
+          : parseTouchedThreads(raw),
       });
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -651,6 +664,19 @@ export function ChaptersReader({
             全部生成
           </button>
         </div>
+        {onOpenSettings ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm w-full mb-1 text-left !justify-start"
+            onClick={onOpenSettings}
+            title="打开生成参数"
+          >
+            篇幅 {LENGTH_LABELS[project.settings.length]} · 文风{" "}
+            {STYLE_LABELS[project.settings.writingStyle] ||
+              project.settings.writingStyle}{" "}
+            · 温度 {project.settings.temperature ?? 0.9}
+          </button>
+        ) : null}
         <ul className="list-none p-0 m-0 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
           {chapters.map((ch) => {
             const c = project.chapters.find((x) => x.chapterId === ch.id);
@@ -672,6 +698,11 @@ export function ChaptersReader({
                     </span>
                     <StatusDot status={status} />
                   </div>
+                  {c?.touchedThreads?.length ? (
+                    <div className="text-[10px] text-[var(--accent)] mt-0.5 truncate">
+                      本章触及：{c.touchedThreads.join("、")}
+                    </div>
+                  ) : null}
                 </button>
               </li>
             );
@@ -689,7 +720,7 @@ export function ChaptersReader({
                 <span className="spinner" /> 写入中
               </>
             ) : (
-              "把本章写进仓库"
+              "把本章导出到文件夹"
             )}
           </button>
           <button
@@ -764,6 +795,8 @@ export function ChaptersReader({
                     <>
                       <span className="spinner" /> 生成中
                     </>
+                  ) : selectedContent?.status === "error" ? (
+                    "重试生成"
                   ) : selectedContent?.status === "done" ? (
                     "重新生成"
                   ) : (
@@ -1005,7 +1038,7 @@ export function ChaptersReader({
                   />
                   <span className="text-xs text-[var(--text-muted)]">
                     {findMatches.length
-                      ? `${findIndex + 1}/${findMatches.length}`
+                      ? `${findIndexEffective + 1}/${findMatches.length}`
                       : "0"}
                   </span>
                   <button
@@ -1250,15 +1283,35 @@ export function ChaptersReader({
               </div>
             )}
             {selectedContent?.status === "error" ? (
-              <p className="text-xs text-[var(--danger-text)] m-0 px-5 py-2 border-t border-[var(--border-soft)] shrink-0">
-                {selectedContent.error}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--danger-text)] m-0 px-5 py-2 border-t border-[var(--border-soft)] shrink-0">
+                <span className="flex-1 min-w-0">{selectedContent.error}</span>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={!!busy}
+                  onClick={() => onGenerateChapter(selectedOutline)}
+                >
+                  重试生成
+                </button>
+              </div>
             ) : null}
           </>
         ) : (
-          <div className="empty flex-1 flex items-center justify-center">
-            选择左侧章节
-          </div>
+          <EmptyState
+            title="还没选章节"
+            description="从左侧点一章，或先生成大纲。"
+            action={
+              chapters[0] ? (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => onSelect(chapters[0].id)}
+                >
+                  打开第一章
+                </button>
+              ) : undefined
+            }
+          />
         )}
       </div>
 
@@ -1282,10 +1335,16 @@ function StatusDot({ status }: { status: ChapterContent["status"] }) {
     done: "bg-[var(--success)]",
     error: "bg-[var(--danger)]",
   };
+  const titles: Record<ChapterContent["status"], string> = {
+    idle: "未生成",
+    generating: "生成中",
+    done: "已完成",
+    error: "失败",
+  };
   return (
     <span
       className={`inline-block w-2 h-2 rounded-full shrink-0 ${map[status]}`}
-      title={status}
+      title={titles[status]}
     />
   );
 }

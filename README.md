@@ -27,7 +27,7 @@ AI 默认使用 **DeepSeek**（OpenAI 兼容接口，可改 Base URL / 模型）
 | **跨章记忆** | 角色状态卡 + 前情摘要 + 上章结尾 + 未回收伏笔 + 命中设定 |
 | 阅读 / 主题 | 字号/字体/行宽；浅色/深色 |
 | 工具 | 人物一致性、大纲对照、目录预览、用量统计、导出 MD/TXT/EPUB/DOC |
-| **写进仓库** | 把本章 / 全部 `done` 章写成 `novels/<书名>/<章>.md`；桌面端写入所选目录，浏览器下载 md/zip |
+| **导出到文件夹** | 把本章 / 全部已完成章写成 `novels/<书名>/<章>.md`；桌面端写入所选目录，浏览器下载 md/zip |
 | API | 可配置 Base URL + 模型（OpenAI 兼容） |
 
 ## 环境要求
@@ -72,7 +72,7 @@ npm run dev
 7. **生成本章**，或 **一键生成全部正文** / **仅生成本卷**  
 8. 长书中途可 **暂停**，之后 **续跑**；失败章可 **重试**  
 9. 在正文页润色，**导出全书**（Markdown / TXT / EPUB / Word）  
-10. 需要 Cursor 在磁盘上改稿时：**写进仓库**（正文页「把本章写进仓库」，或工具页导出全部已完成章）
+10. 需要在磁盘上改稿时：**导出到文件夹**（正文页「把本章导出到文件夹」，或工具页导出全部已完成章）
 
 ## 数据存储
 
@@ -81,6 +81,19 @@ npm run dev
 - API Key 仅在服务端 `.env.local` 或桌面端用户目录 `config.env`，不会进前端包  
 
 详见 `docs/迁移说明.md`。
+
+## 脚本
+
+`scripts/` 里每个文件都有调用方：
+
+| 文件 | 谁调用 |
+|------|--------|
+| `prepare-standalone.mjs` | `npm run prepare:standalone` / 发版 workflow |
+| `publish-update.mjs` | `npm run publish:update`（本地扫安装包打底） |
+| `electron-dev.mjs` | `npm run electron:dev` |
+| `after-pack.cjs` | electron-builder `afterPack` |
+| `setup-artifact.cjs` | 转发到 `electron/setup-artifact.cjs`，供测试与 `publish-update` |
+| `patch-electron-rename.mjs` | **手工**。Windows 杀软锁住 `electron.exe`、electron-builder 解压改名失败（EPERM）时，在本机跑一次：`node scripts/patch-electron-rename.mjs` |
 
 ## 技术栈
 

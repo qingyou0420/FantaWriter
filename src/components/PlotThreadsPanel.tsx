@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import {
   createEmptyPlotThread,
@@ -41,6 +42,18 @@ export function PlotThreadsPanel({
     onChange(threads.filter((t) => t.id !== id));
   }
 
+  function addThread() {
+    onChange([createEmptyPlotThread("新线索"), ...threads]);
+  }
+
+  function chaptersTouching(title: string) {
+    const name = title.trim();
+    if (!name) return [];
+    return (project.chapters || []).filter((c) =>
+      (c.touchedThreads || []).some((t) => t.trim() === name)
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="card">
@@ -54,9 +67,7 @@ export function PlotThreadsPanel({
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() =>
-              onChange([createEmptyPlotThread("新线索"), ...threads])
-            }
+            onClick={addThread}
           >
             添加线索
           </button>
@@ -64,93 +75,140 @@ export function PlotThreadsPanel({
       </div>
 
       {!threads.length ? (
-        <div className="card empty">暂无线索。写长篇时建议先记下关键伏笔。</div>
+        <EmptyState
+          title="暂无线索"
+          description="写长篇时建议先记下关键伏笔。生成章摘要后，触及的线索会出现在这里，点一下即可标为已回收。"
+          action={
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={addThread}
+            >
+              添加线索
+            </button>
+          }
+        />
       ) : (
         <div className="space-y-3">
-          {threads.map((t) => (
-            <div key={t.id} className="card !p-4 space-y-3">
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="线索标题">
-                  <input
-                    value={t.title}
-                    onChange={(e) =>
-                      updateThread(t.id, { title: e.target.value })
-                    }
+          {threads.map((t) => {
+            const hits = chaptersTouching(t.title);
+            return (
+              <div key={t.id} className="card !p-4 space-y-3">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Field label="线索标题">
+                    <input
+                      value={t.title}
+                      onChange={(e) =>
+                        updateThread(t.id, { title: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="状态">
+                    <select
+                      value={t.status}
+                      onChange={(e) =>
+                        updateThread(t.id, {
+                          status: e.target.value as PlotThreadStatus,
+                        })
+                      }
+                    >
+                      {(
+                        Object.keys(STATUS_LABEL) as PlotThreadStatus[]
+                      ).map((k) => (
+                        <option key={k} value={k}>
+                          {STATUS_LABEL[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                {hits.length ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="badge">
+                      本章触及：
+                      {hits
+                        .map((c) => {
+                          const outline = chapters.find(
+                            (ch) => ch.id === c.chapterId
+                          );
+                          return outline
+                            ? `第${outline.order}章`
+                            : c.title || c.chapterId;
+                        })
+                        .join("、")}
+                    </span>
+                    {t.status !== "resolved" ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() =>
+                          updateThread(t.id, {
+                            status: "resolved",
+                            resolveChapterId:
+                              t.resolveChapterId || hits[hits.length - 1].chapterId,
+                          })
+                        }
+                      >
+                        标为已回收
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                <Field label="说明 / 如何回收">
+                  <textarea
+                    value={t.note}
+                    onChange={(e) => updateThread(t.id, { note: e.target.value })}
+                    rows={2}
                   />
                 </Field>
-                <Field label="状态">
-                  <select
-                    value={t.status}
-                    onChange={(e) =>
-                      updateThread(t.id, {
-                        status: e.target.value as PlotThreadStatus,
-                      })
-                    }
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Field label="埋下章节（可选）">
+                    <select
+                      value={t.plantChapterId || ""}
+                      onChange={(e) =>
+                        updateThread(t.id, {
+                          plantChapterId: e.target.value || undefined,
+                        })
+                      }
+                    >
+                      <option value="">未指定</option>
+                      {chapters.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          第{c.order}章 {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="回收章节（可选）">
+                    <select
+                      value={t.resolveChapterId || ""}
+                      onChange={(e) =>
+                        updateThread(t.id, {
+                          resolveChapterId: e.target.value || undefined,
+                        })
+                      }
+                    >
+                      <option value="">未指定</option>
+                      {chapters.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          第{c.order}章 {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => remove(t.id)}
                   >
-                    {(
-                      Object.keys(STATUS_LABEL) as PlotThreadStatus[]
-                    ).map((k) => (
-                      <option key={k} value={k}>
-                        {STATUS_LABEL[k]}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                    删除
+                  </button>
+                </div>
               </div>
-              <Field label="说明 / 如何回收">
-                <textarea
-                  value={t.note}
-                  onChange={(e) => updateThread(t.id, { note: e.target.value })}
-                  rows={2}
-                />
-              </Field>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="埋下章节（可选）">
-                  <select
-                    value={t.plantChapterId || ""}
-                    onChange={(e) =>
-                      updateThread(t.id, {
-                        plantChapterId: e.target.value || undefined,
-                      })
-                    }
-                  >
-                    <option value="">未指定</option>
-                    {chapters.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        第{c.order}章 {c.title}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="回收章节（可选）">
-                  <select
-                    value={t.resolveChapterId || ""}
-                    onChange={(e) =>
-                      updateThread(t.id, {
-                        resolveChapterId: e.target.value || undefined,
-                      })
-                    }
-                  >
-                    <option value="">未指定</option>
-                    {chapters.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        第{c.order}章 {c.title}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm"
-                  onClick={() => remove(t.id)}
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

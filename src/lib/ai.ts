@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
+import { execFile } from "child_process";
 import OpenAI from "openai";
+import { UserFacingError } from "./user-error";
 
 function parseEnvText(text: string, forceDeepseek = false) {
   for (const line of text.split(/\r?\n/)) {
@@ -100,6 +102,7 @@ export function getEnvDiagnostics() {
         fs.existsSync(process.env.APP_CONFIG_PATH)
     ),
     isDesktop: Boolean(process.env.APP_CONFIG_PATH),
+    thinkingEnabled: process.env.DEEPSEEK_THINKING === "1",
   };
 }
 
@@ -149,6 +152,7 @@ export function saveApiConfig(opts: {
     "",
   ];
   fs.writeFileSync(filePath, lines.join("\n"), "utf8");
+  tightenConfigAcl(filePath);
 
   // 立即进当前进程
   if (opts.apiKey !== undefined) {
@@ -160,6 +164,20 @@ export function saveApiConfig(opts: {
   return { path: filePath };
 }
 
+function tightenConfigAcl(filePath: string) {
+  if (process.platform !== "win32") return;
+  const user = process.env.USERNAME || process.env.USER || "";
+  if (!user) return;
+  execFile(
+    "icacls",
+    [filePath, "/inheritance:r", `/grant:r`, `${user}:F`],
+    { windowsHide: true },
+    () => {
+      /* 尽力收紧，失败不阻断 */
+    }
+  );
+}
+
 function resolveApiKey(): string {
   loadEnvFile();
   const apiKey = (
@@ -167,18 +185,23 @@ function resolveApiKey(): string {
     process.env.XAI_API_KEY ||
     ""
   ).trim();
+  const desktop = Boolean(process.env.APP_CONFIG_PATH);
 
   if (!apiKey) {
-    throw new Error(
-      "未配置 DEEPSEEK_API_KEY。请在首页「API 设置」中填写 DeepSeek 密钥，或编辑 .env.local"
+    throw new UserFacingError(
+      desktop
+        ? "未配置密钥。请在设置 → API 设置里填写密钥。"
+        : "未配置密钥。请在首页「API 设置」中填写。"
     );
   }
   if (
     /your[-_]?key|changeme|xxx+|placeholder|example/i.test(apiKey) ||
     apiKey === "xai-your-key-here"
   ) {
-    throw new Error(
-      "检测到仍是示例密钥。请在首页「API 设置」填入真实的 DeepSeek API Key。"
+    throw new UserFacingError(
+      desktop
+        ? "检测到仍是示例密钥。请在设置 → API 设置里填入真实密钥。"
+        : "检测到仍是示例密钥。请在首页「API 设置」填入真实密钥。"
     );
   }
   return apiKey;
@@ -192,6 +215,7 @@ export function getClient() {
 }
 
 function formatAiError(e: unknown): Error {
+  if (e instanceof UserFacingError) return e;
   const err = e as {
     status?: number;
     message?: string;
@@ -201,11 +225,33 @@ function formatAiError(e: unknown): Error {
     err?.error?.message ||
     err?.message ||
     (e instanceof Error ? e.message : String(e));
-  const status = err?.status ? `HTTP ${err.status}` : "请求失败";
+  const status = err?.status;
+  const desktop = Boolean(process.env.APP_CONFIG_PATH);
+  let message = "生成失败，请稍后重试。";
+  if (status === 401 || status === 403 || /api key|invalid_api_key|authentication/i.test(detail)) {
+    message = desktop
+      ? "鉴权失败。请在设置 → API 设置里核对密钥。"
+      : "鉴权失败。请在首页「API 设置」里核对密钥。";
+  } else if (status && status >= 500) {
+    message = "中转服务暂时不可用，请稍后重试。";
+  } else if (/timeout|etimedout|timed out/i.test(detail)) {
+    message = "请求超时，请稍后重试。";
+  } else if (/network|econnreset|enotfound|fetch failed/i.test(detail)) {
+    message = "网络中断，请检查连接后重试。";
+  } else if (detail && !/provider=|base=|key=|\.env\.local/i.test(detail)) {
+    const first = detail.split(/[|\n]/)[0].trim();
+    if (first && first.length < 80 && !/[A-Za-z]{8,}/.test(first)) {
+      message = first;
+    }
+  }
   const diag = getEnvDiagnostics();
-  return new Error(
-    `${status}: ${detail} | provider=${diag.baseURL.includes("deepseek") ? "DeepSeek" : "OpenAI-compatible"} model=${diag.model} base=${diag.baseURL} key=${diag.keyPrefix}…(len=${diag.keyLength})`
-  );
+  const diagnostic = [
+    status ? `HTTP ${status}` : "请求失败",
+    detail,
+    `model=${diag.model}`,
+    `hasKey=${diag.hasKey}`,
+  ].join(" · ");
+  return new UserFacingError(message, diagnostic);
 }
 
 export async function chatComplete(

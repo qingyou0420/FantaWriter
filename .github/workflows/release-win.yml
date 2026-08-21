@@ -55,6 +55,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npx tsc --noEmit
+
       - run: npm test
 
       - name: Build standalone (strip .env.local)
@@ -86,6 +88,16 @@ jobs:
           export CSC_IDENTITY_AUTO_DISCOVERY=false
           npx electron-builder --win nsis --publish never -c.win.signAndEditExecutable=false
 
+      - name: SHA256 of installer
+        shell: bash
+        run: |
+          asset="dist-installer/${{ steps.meta.outputs.asset }}"
+          if [ ! -f "$asset" ]; then
+            echo "找不到安装包 $asset"
+            exit 1
+          fi
+          sha256sum "$asset" | tee "${asset}.sha256"
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -95,5 +107,6 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist-installer/Fantasy-Writer-Setup-*.exe
+            dist-installer/Fantasy-Writer-Setup-*.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

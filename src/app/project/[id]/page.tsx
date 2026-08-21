@@ -9,7 +9,7 @@ import { ChaptersReader } from "@/components/ChaptersReader";
 import { CharactersPanel } from "@/components/CharactersPanel";
 import { OutlinePanel } from "@/components/OutlinePanel";
 import { PlotThreadsPanel } from "@/components/PlotThreadsPanel";
-import { ProgressDashboard } from "@/components/ProgressDashboard";
+import { OnboardingCard, dismissOnboarding, isOnboardingDismissed, shouldShowOnboarding } from "@/components/OnboardingCard";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { TagsPanel } from "@/components/TagsPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -54,66 +54,31 @@ import {
   type Outline,
   type OutlineChapter,
 } from "@/lib/types";
+import {
+  resolveProjectTab,
+  setupTabs,
+  stageOf,
+  type ProjectTab,
+  type StageId,
+} from "@/lib/project-tabs";
+import { createThrottledTextSink } from "@/lib/stream-throttle";
+import { isTransientAiError, sleep, splitErrorForDisplay } from "@/lib/user-error";
+import { parseTouchedThreads } from "@/lib/prompts";
 
-type Tab =
-  | "original"
-  | "characters"
-  | "background"
-  | "settings"
-  | "tags"
-  | "volumes"
-  | "lore"
-  | "outline"
-  | "chapters"
-  | "plot"
-  | "progress"
-  | "tools";
+type Tab = ProjectTab;
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "original", label: "原作焕新" },
-  { id: "characters", label: "人物设定" },
-  { id: "background", label: "故事背景" },
-  { id: "tags", label: "本书标签" },
-  { id: "lore", label: "世界观" },
-  { id: "volumes", label: "分卷" },
-  { id: "settings", label: "生成参数" },
-  { id: "outline", label: "大纲" },
-  { id: "chapters", label: "正文" },
-  { id: "plot", label: "伏笔" },
-  { id: "progress", label: "进度" },
-  { id: "tools", label: "工具" },
-];
-
-type StageId = "setup" | "write" | "review";
-
-const STAGES: {
-  id: StageId;
-  label: string;
-  tabs: Tab[];
-}[] = [
-  {
-    id: "setup",
-    label: "设定",
-    tabs: [
-      "original",
-      "characters",
-      "background",
-      "lore",
-      "tags",
-      "volumes",
-      "settings",
-    ],
-  },
-  { id: "write", label: "创作", tabs: ["outline", "chapters"] },
-  { id: "review", label: "检视", tabs: ["plot", "progress", "tools"] },
-];
-
-function stageOf(tab: Tab): StageId {
-  for (const s of STAGES) {
-    if (s.tabs.includes(tab)) return s.id;
-  }
-  return "setup";
-}
+const TAB_LABEL: Record<Tab, string> = {
+  original: "原作焕新",
+  characters: "人物设定",
+  background: "故事背景",
+  settings: "生成参数",
+  volumes: "分卷",
+  lore: "世界观",
+  outline: "大纲",
+  chapters: "正文",
+  plot: "伏笔",
+  tools: "工具",
+};
 
 
 
@@ -131,16 +96,24 @@ export default function ProjectPage() {
     getLive,
   } = useProjectStore(id);
 
-  const [tab, setTab] = useState<Tab>("characters");
-  const [stage, setStage] = useState<StageId>("setup");
+  const [tab, setTab] = useState<Tab>(() =>
+    resolveProjectTab(readProjectTab(id))
+  );
+  const [stage, setStage] = useState<StageId>(() =>
+    stageOf(resolveProjectTab(readProjectTab(id)))
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [errorDiagnostic, setErrorDiagnostic] = useState("");
+  const [errorRetry, setErrorRetry] = useState<null | (() => void)>(null);
   const [info, setInfo] = useState("");
+  const [guideOpen, setGuideOpen] = useState(
+    () => !isOnboardingDismissed(id)
+  );
   const [moreOpen, setMoreOpen] = useState(false);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
     null
   );
-  const tabRestoredRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const [streamPreview, setStreamPreview] = useState("");
   /** 全书队列：暂停/跳过标志 */
@@ -150,25 +123,16 @@ export default function ProjectPage() {
     running: boolean;
   }>({ pause: false, skip: false, running: false });
   const streamPreviewRef = useRef("");
+  const streamSinkRef = useRef(
+    createThrottledTextSink((full) => {
+      streamPreviewRef.current = full;
+      setStreamPreview(full);
+    })
+  );
 
   useEffect(() => {
     streamPreviewRef.current = streamPreview;
   }, [streamPreview]);
-
-  // 恢复上次 Tab
-  useEffect(() => {
-    if (!ready || tabRestoredRef.current) return;
-    tabRestoredRef.current = true;
-    try {
-      const saved = readProjectTab(id) as Tab | null;
-      if (saved && TABS.some((t) => t.id === saved)) {
-        setTab(saved);
-        setStage(stageOf(saved));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [ready, id]);
 
   function goTab(next: Tab) {
     setTab(next);
@@ -277,9 +241,24 @@ export default function ProjectPage() {
     }));
   }
 
+  function reportError(err: unknown, retry?: () => void) {
+    const split = splitErrorForDisplay(err);
+    setError(split.message);
+    setErrorDiagnostic(split.diagnostic || "");
+    setErrorRetry(retry ? () => retry : null);
+  }
+
   async function generateOutline() {
     if (!project) return;
+    if (project.outline?.chapters.length) {
+      const hasBody = project.chapters.some((c) => c.content?.trim());
+      const msg = hasBody
+        ? "将替换全书大纲并清空生成队列，已写正文保留但可能与新大纲脱钩。确定继续？"
+        : "将替换现有大纲并清空生成队列。确定继续？";
+      if (!confirm(msg)) return;
+    }
     setError("");
+    setErrorDiagnostic("");
     setBusy("outline");
     try {
       const res = await fetch("/api/generate", {
@@ -304,21 +283,29 @@ export default function ProjectPage() {
         ...ch,
         tags: Array.isArray(ch.tags) ? ch.tags : [],
       }));
-      update({
-        outline,
-        chapters: outline.chapters.map((ch) => ({
-          chapterId: ch.id,
-          title: ch.title,
-          content: "",
-          status: "idle" as const,
-          updatedAt: new Date().toISOString(),
-        })),
-        bookJob: null,
+      update((p) => {
+        const kept = p.chapters.filter((c) => c.content?.trim());
+        const keptIds = new Set(kept.map((c) => c.chapterId));
+        const fresh = outline.chapters
+          .filter((ch) => !keptIds.has(ch.id))
+          .map((ch) => ({
+            chapterId: ch.id,
+            title: ch.title,
+            content: "",
+            status: "idle" as const,
+            updatedAt: new Date().toISOString(),
+          }));
+        return {
+          ...p,
+          outline,
+          chapters: [...kept, ...fresh],
+          bookJob: null,
+        };
       });
       if (outline.chapters[0]) setSelectedChapterId(outline.chapters[0].id);
       setTab("outline");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      reportError(e, () => void generateOutline());
     } finally {
       setBusy(null);
     }
@@ -499,7 +486,7 @@ export default function ProjectPage() {
 
       let text = await streamGenerate(buildBody("chapter"), {
         signal: ac.signal,
-        onDelta: (_d, full) => setStreamPreview(full),
+        onDelta: (_d, full) => streamSinkRef.current.push(full),
       });
 
       if (chapterBelowMin(text, fresh.settings.length) && !ac.signal.aborted) {
@@ -514,7 +501,7 @@ export default function ProjectPage() {
             }),
             {
               signal: ac.signal,
-              onDelta: (_d, full) => setStreamPreview(text + full),
+              onDelta: (_d, full) => streamSinkRef.current.push(text + full),
             }
           );
           text = text + extra;
@@ -525,13 +512,21 @@ export default function ProjectPage() {
 
       const canonWarnings = detectCanonViolations(text, fresh.canon);
 
+      const openThreads = (fresh.plotThreads || [])
+        .filter((t) => t.status !== "resolved" && t.title.trim())
+        .map((t) => t.title.trim());
       void postGenerate({
         mode: "chapter_summary",
         writingBoard: fresh.writingBoard,
         content: text,
         title: liveChapter.title,
+        openThreads,
       })
         .then((sumRes) => {
+          const raw = String(sumRes.summary || "");
+          const touched = Array.isArray(sumRes.touchedThreads)
+            ? (sumRes.touchedThreads as string[])
+            : parseTouchedThreads(raw);
           update((p) => {
             const chapters = [...p.chapters];
             const idx = chapters.findIndex(
@@ -540,7 +535,8 @@ export default function ProjectPage() {
             if (idx < 0) return p;
             chapters[idx] = {
               ...chapters[idx],
-              summary: String(sumRes.summary || ""),
+              summary: raw,
+              touchedThreads: touched,
             };
             return { ...p, chapters };
           });
@@ -576,6 +572,7 @@ export default function ProjectPage() {
         else chapters.push(row);
         return { ...p, chapters };
       });
+      streamSinkRef.current.flush();
       setStreamPreview("");
       if (!fromJob) {
         setBusy(null);
@@ -613,7 +610,7 @@ export default function ProjectPage() {
         return wasSkip ? "skipped" : "cancelled";
       }
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
+      reportError(e, () => void generateChapter(chapter));
       update((p) => {
         const chapters = [...p.chapters];
         const idx = chapters.findIndex((c) => c.chapterId === chapter.id);
@@ -712,12 +709,23 @@ export default function ProjectPage() {
             title: item.title,
             summary: "",
             keyPoints: "",
-            eroticNote: "",
+            intensityNote: "",
             tags: [],
           } as OutlineChapter);
 
         jobControlRef.current.skip = false;
-        const result = await generateChapter(outlineCh, true, { fromJob: true });
+        let result = await generateChapter(outlineCh, true, { fromJob: true });
+        if (result === "error") {
+          const failMsg =
+            getLive()?.chapters.find((c) => c.chapterId === item.chapterId)
+              ?.error || "";
+          if (isTransientAiError(failMsg)) {
+            await sleep(4000);
+            if (!jobControlRef.current.pause && !jobControlRef.current.skip) {
+              result = await generateChapter(outlineCh, true, { fromJob: true });
+            }
+          }
+        }
 
         // re-read job from control flags
         if (jobControlRef.current.skip) {
@@ -932,16 +940,68 @@ export default function ProjectPage() {
     );
   }
 
+  const hasOriginal = Boolean(project.original || project.canon?.length);
+  const visibleTab = tab === "original" ? "original" : resolveProjectTab(tab);
   const shellMax =
-    tab === "chapters" ||
-    tab === "tools" ||
-    tab === "plot" ||
-    tab === "progress" ||
-    tab === "outline"
+    visibleTab === "chapters" ||
+    visibleTab === "tools" ||
+    visibleTab === "plot" ||
+    visibleTab === "outline"
       ? "max-w-[1680px]"
       : "max-w-6xl";
 
   const bookJob = project.bookJob as BookJob | null | undefined;
+  const STAGES: { id: StageId; label: string; tabs: Tab[] }[] = [
+    { id: "setup", label: "设定", tabs: setupTabs(hasOriginal) },
+    { id: "write", label: "创作", tabs: ["outline", "chapters"] },
+    { id: "review", label: "检视", tabs: ["plot", "tools"] },
+  ];
+  const showGuide =
+    guideOpen && shouldShowOnboarding(project) && !isOnboardingDismissed(id);
+
+  async function generateVolumeSummary(volumeId: string) {
+    const volume = (project.volumes || []).find((v) => v.id === volumeId);
+    if (!volume) return;
+    const chs = (project.outline?.chapters || []).filter(
+      (c) => (c.volumeId || project.volumes?.[0]?.id) === volumeId
+    );
+    const summaries = chs.map((ch) => ({
+      order: ch.order,
+      title: ch.title,
+      summary:
+        project.chapters.find((c) => c.chapterId === ch.id)?.summary ||
+        ch.summary ||
+        "",
+    }));
+    if (!summaries.some((s) => s.summary.trim())) {
+      setError("本卷各章还没有摘要，写完几章后再生成卷摘要。");
+      return;
+    }
+    setError("");
+    setBusy(`volume_summary:${volumeId}`);
+    try {
+      const res = await postGenerate({
+        mode: "volume_summary",
+        writingBoard: project.writingBoard,
+        volume,
+        chapterSummaries: summaries,
+      });
+      const draft = String(res.summary || "").trim();
+      if (!draft) throw new Error("未得到卷摘要");
+      const edited = window.prompt("确认或编辑本卷摘要后保存：", draft);
+      if (edited == null) return;
+      update((p) => ({
+        ...p,
+        volumes: (p.volumes || []).map((v) =>
+          v.id === volumeId ? { ...v, summary: edited.trim() } : v
+        ),
+      }));
+    } catch (e) {
+      reportError(e, () => void generateVolumeSummary(volumeId));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <main className="flex-1 flex flex-col min-h-0 h-full">
@@ -1037,13 +1097,7 @@ export default function ProjectPage() {
                     disabled={!!busy || !project.outline?.chapters.length}
                     onClick={() => {
                       setMoreOpen(false);
-                      if (
-                        confirm(
-                          "将覆盖全部已有正文并重新生成，确定继续？"
-                        )
-                      ) {
-                        startBookJob("all");
-                      }
+                      startBookJob("all");
                     }}
                   >
                     强制全量重写
@@ -1064,7 +1118,7 @@ export default function ProjectPage() {
                     className="menu-item"
                     onClick={() => {
                       setMoreOpen(false);
-                      goTab("progress");
+                      goTab("tools");
                     }}
                   >
                     查看进度
@@ -1097,19 +1151,16 @@ export default function ProjectPage() {
             ))}
           </div>
           <div className="tabs">
-            {(STAGES.find((s) => s.id === stage)?.tabs || []).map((tid) => {
-              const t = TABS.find((x) => x.id === tid)!;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`tab ${tab === t.id ? "active" : ""}`}
-                  onClick={() => goTab(t.id)}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
+            {(STAGES.find((s) => s.id === stage)?.tabs || []).map((tid) => (
+              <button
+                key={tid}
+                type="button"
+                className={`tab ${visibleTab === tid ? "active" : ""}`}
+                onClick={() => goTab(tid)}
+              >
+                {TAB_LABEL[tid]}
+              </button>
+            ))}
           </div>
         </div>
       </header>
@@ -1117,14 +1168,43 @@ export default function ProjectPage() {
       {error ? (
         <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
           <div className="card !py-2.5 !px-3 text-sm border-[color-mix(in_srgb,var(--danger)_40%,transparent)] text-[var(--danger-text)] flex justify-between gap-3">
-            <span>{error}</span>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => setError("")}
-            >
-              关闭
-            </button>
+            <div className="min-w-0">
+              <div>{error}</div>
+              {errorDiagnostic ? (
+                <details className="mt-1 text-xs text-[var(--text-muted)]">
+                  <summary className="cursor-pointer">诊断详情</summary>
+                  <pre className="whitespace-pre-wrap m-0 mt-1">{errorDiagnostic}</pre>
+                </details>
+              ) : null}
+            </div>
+            <div className="flex gap-1 shrink-0">
+              {errorRetry ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    const fn = errorRetry;
+                    setError("");
+                    setErrorDiagnostic("");
+                    setErrorRetry(null);
+                    fn();
+                  }}
+                >
+                  重试
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setError("");
+                  setErrorDiagnostic("");
+                  setErrorRetry(null);
+                }}
+              >
+                关闭
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -1146,10 +1226,22 @@ export default function ProjectPage() {
 
       <div
         className={`flex-1 ${shellMax} mx-auto w-full min-h-0 flex flex-col ${
-          tab === "chapters" ? "px-3 py-3" : "px-4 py-5"
+          visibleTab === "chapters" ? "px-3 py-3" : "px-4 py-5"
         }`}
       >
-        {(tab === "chapters" || bookJob) && (
+        {showGuide ? (
+          <div className="mb-4">
+            <OnboardingCard
+              project={project}
+              onGo={(step) => goTab(step)}
+              onDismiss={() => {
+                dismissOnboarding(id);
+                setGuideOpen(false);
+              }}
+            />
+          </div>
+        ) : null}
+        {(visibleTab === "chapters" || bookJob) && (
           <BookJobBar
             job={bookJob}
             busy={!!busy?.startsWith("chapter") && !!bookJob}
@@ -1165,7 +1257,7 @@ export default function ProjectPage() {
           />
         )}
 
-        {tab === "original" && (
+        {visibleTab === "original" && (
           <OriginalPanel
             original={project.original}
             canon={project.canon || []}
@@ -1177,7 +1269,7 @@ export default function ProjectPage() {
             onError={setError}
           />
         )}
-        {tab === "characters" && (
+        {visibleTab === "characters" && (
           <CharactersPanel
             characters={project.characters}
             background={project.background}
@@ -1199,7 +1291,7 @@ export default function ProjectPage() {
             onError={setError}
           />
         )}
-        {tab === "background" && (
+        {visibleTab === "background" && (
           <BackgroundPanel
             background={project.background}
             characters={project.characters}
@@ -1218,13 +1310,13 @@ export default function ProjectPage() {
             onError={setError}
           />
         )}
-        {tab === "lore" && (
+        {visibleTab === "lore" && (
           <LorePanel
             project={project}
             onChange={(lore) => update((p) => ({ ...p, lore }))}
           />
         )}
-        {tab === "volumes" && (
+        {visibleTab === "volumes" && (
           <VolumesPanel
             project={project}
             onChange={(volumes, outline) =>
@@ -1240,33 +1332,50 @@ export default function ProjectPage() {
             onGenerateVolumeOutline={(volumeId, n) =>
               void generateVolumeOutline(volumeId, n)
             }
+            onGenerateVolumeSummary={(volumeId) =>
+              void generateVolumeSummary(volumeId)
+            }
             busy={busy}
           />
         )}
-        {tab === "tags" && (
-          <TagsPanel
-            projectTags={project.tags || []}
-            library={tagLibrary}
-            writingBoard={project.writingBoard}
-            onProjectTagsChange={(tags) => update((p) => ({ ...p, tags }))}
-          />
+        {visibleTab === "settings" && (
+          <div className="space-y-4">
+            {!hasOriginal ? (
+              <div className="card max-w-4xl !py-3">
+                <p className="text-sm m-0 mb-2">
+                  从旧稿开写？可挂载原作底稿并锁定事实。
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => goTab("original")}
+                >
+                  挂载原作底稿…
+                </button>
+              </div>
+            ) : null}
+            <SettingsPanel
+              settings={project.settings}
+              styleLibrary={styleLibrary}
+              characters={project.characters}
+              background={project.background}
+              writingBoard={project.writingBoard}
+              original={project.original}
+              canon={project.canon}
+              onChange={(settings) => update((p) => ({ ...p, settings }))}
+              onApplyStyle={applyLearnedStyle}
+              onClearStyle={clearLearnedStyle}
+              onError={setError}
+            />
+            <TagsPanel
+              projectTags={project.tags || []}
+              library={tagLibrary}
+              writingBoard={project.writingBoard}
+              onProjectTagsChange={(tags) => update((p) => ({ ...p, tags }))}
+            />
+          </div>
         )}
-        {tab === "settings" && (
-          <SettingsPanel
-            settings={project.settings}
-            styleLibrary={styleLibrary}
-            characters={project.characters}
-            background={project.background}
-            writingBoard={project.writingBoard}
-            original={project.original}
-            canon={project.canon}
-            onChange={(settings) => update((p) => ({ ...p, settings }))}
-            onApplyStyle={applyLearnedStyle}
-            onClearStyle={clearLearnedStyle}
-            onError={setError}
-          />
-        )}
-        {tab === "outline" && (
+        {visibleTab === "outline" && (
           <OutlinePanel
             outline={project.outline}
             projectTags={project.tags || []}
@@ -1329,7 +1438,7 @@ export default function ProjectPage() {
                   title: string;
                   summary: string;
                   keyPoints: string;
-                  eroticNote: string;
+                  intensityNote?: string;
                 };
                 update((p) => {
                   if (!p.outline) return p;
@@ -1344,8 +1453,8 @@ export default function ProjectPage() {
                               title: polished.title || c.title,
                               summary: polished.summary || c.summary,
                               keyPoints: polished.keyPoints || c.keyPoints,
-                              eroticNote:
-                                polished.eroticNote || c.eroticNote,
+                              intensityNote:
+                                polished.intensityNote || c.intensityNote,
                             }
                           : c
                       ),
@@ -1360,7 +1469,7 @@ export default function ProjectPage() {
             }}
           />
         )}
-        {tab === "plot" && (
+        {visibleTab === "plot" && (
           <PlotThreadsPanel
             project={project}
             onChange={(plotThreads) =>
@@ -1368,12 +1477,7 @@ export default function ProjectPage() {
             }
           />
         )}
-        {tab === "progress" && (
-          <div className="space-y-4 max-w-3xl">
-            <ProgressDashboard project={project} />
-          </div>
-        )}
-        {tab === "tools" && (
+        {visibleTab === "tools" && (
           <ToolsPanel
             project={project}
             busy={busy}
@@ -1382,7 +1486,7 @@ export default function ProjectPage() {
             onProjectUpdate={update}
           />
         )}
-        {tab === "chapters" && (
+        {visibleTab === "chapters" && (
           <ChaptersReader
             project={project}
             library={tagLibrary}
@@ -1390,7 +1494,8 @@ export default function ProjectPage() {
             selectedContent={selectedContent}
             busy={busy}
             onSelect={setSelectedChapterId}
-            onGenerateChapter={(ch) => void generateChapter(ch, true)}
+            onGenerateChapter={(ch) => void generateChapter(ch)}
+            onOpenSettings={() => goTab("settings")}
             onCancel={cancelGeneration}
             onBusy={setBusy}
             onError={setError}

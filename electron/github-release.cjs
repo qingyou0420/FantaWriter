@@ -98,6 +98,29 @@ function pickSetupAsset(assets) {
 }
 
 /**
+ * @param {unknown} assets
+ * @param {string} setupName
+ * @returns {{ downloadUrl: string, assetApiUrl: string } | null}
+ */
+function pickSha256Asset(assets, setupName) {
+  if (!Array.isArray(assets) || !setupName) return null;
+  const want = `${setupName}.sha256`.toLowerCase();
+  for (const raw of assets) {
+    if (!raw || typeof raw !== "object") continue;
+    const name = String(/** @type {{ name?: string }} */ (raw).name || "");
+    if (name.toLowerCase() !== want) continue;
+    return {
+      downloadUrl: String(
+        /** @type {{ browser_download_url?: string }} */ (raw).browser_download_url ||
+          ""
+      ),
+      assetApiUrl: String(/** @type {{ url?: string }} */ (raw).url || ""),
+    };
+  }
+  return null;
+}
+
+/**
  * @param {unknown} json
  * @returns {{
  *   version: string,
@@ -105,6 +128,8 @@ function pickSetupAsset(assets) {
  *   assetApiUrl: string,
  *   assetName: string,
  *   tagName: string,
+ *   sha256DownloadUrl?: string,
+ *   sha256AssetApiUrl?: string,
  * } | null}
  */
 function parseGithubLatestRelease(json) {
@@ -114,12 +139,15 @@ function parseGithubLatestRelease(json) {
   );
   const asset = pickSetupAsset(body.assets);
   if (!asset) return null;
+  const checksum = pickSha256Asset(body.assets, asset.name);
   return {
     version: asset.version,
     downloadUrl: asset.downloadUrl,
     assetApiUrl: asset.assetApiUrl,
     assetName: asset.name,
     tagName: String(body.tag_name || body.name || ""),
+    sha256DownloadUrl: checksum?.downloadUrl || undefined,
+    sha256AssetApiUrl: checksum?.assetApiUrl || undefined,
   };
 }
 
@@ -155,6 +183,7 @@ module.exports = {
   isAllowedDownloadUrl,
   pickSetupAsset,
   parseGithubLatestRelease,
+  pickSha256Asset,
   setupFileNameFromUrl,
   githubCheckErrorMessage,
 };

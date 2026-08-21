@@ -129,7 +129,10 @@ export interface LearnedStyle {
 }
 
 export interface GenerationSettings {
-  eroticLevel: EroticLevel;
+  /** 旧 JSON 兼容；新建不再写入 */
+  eroticLevel?: EroticLevel;
+  /** 正文/续写温度，默认 0.9 */
+  temperature?: number;
   writingStyle: WritingStyle;
   customStyle: string;
   /** 启用的学习文风 ID（writingStyle === 'learned' 时使用） */
@@ -204,6 +207,8 @@ export interface ChapterContent {
   scenes?: ChapterScene[];
   /** AI 生成的本章摘要（供后续章衔接） */
   summary?: string;
+  /** 摘要解析出的「本章触及」伏笔标题，不改 plotThreads 状态 */
+  touchedThreads?: string[];
   /** 正文与锁定设定的可能冲突（只提示，不阻断） */
   canonWarnings?: string[];
 }
@@ -550,16 +555,17 @@ export function normalizeProject(p: NovelProject): NovelProject {
               (typeof c.intensityNote === "string" ? c.intensityNote : "") ||
               c.eroticNote ||
               "";
-            return {
+            const next = {
               ...c,
               volumeId: c.volumeId || defaultVolId,
               tags: Array.isArray(c.tags) ? c.tags : [],
               intensityNote,
-              eroticNote: intensityNote,
               castIds: Array.isArray(c.castIds)
                 ? c.castIds.map((id) => String(id).trim()).filter(Boolean)
                 : [],
             };
+            delete next.eroticNote;
+            return next;
           }),
         }
       : null,
@@ -568,6 +574,9 @@ export function normalizeProject(p: NovelProject): NovelProject {
       versions: Array.isArray(c.versions) ? c.versions : [],
       scenes: Array.isArray(c.scenes) ? c.scenes : undefined,
       summary: c.summary || "",
+      touchedThreads: Array.isArray(c.touchedThreads)
+        ? c.touchedThreads.map((s) => String(s).trim()).filter(Boolean)
+        : undefined,
       canonWarnings: Array.isArray(c.canonWarnings) ? c.canonWarnings : undefined,
     })),
   };
@@ -614,14 +623,6 @@ export function sampleTextForStyleLearning(
     "\n\n【结尾采样】\n" + tail,
   ].join("");
 }
-
-export const EROTIC_LEVEL_LABELS: Record<EroticLevel, string> = {
-  1: "含蓄",
-  2: "克制",
-  3: "适中",
-  4: "浓烈",
-  5: "强烈",
-};
 
 export const STYLE_LABELS: Record<WritingStyle, string> = {
   literary: "文学细腻",
@@ -686,7 +687,6 @@ export function createDefaultBackground(): StoryBackground {
 
 export function createDefaultSettings(): GenerationSettings {
   return {
-    eroticLevel: 3,
     writingStyle: "literary",
     customStyle: "",
     learnedStyleId: "",
@@ -699,7 +699,16 @@ export function createDefaultSettings(): GenerationSettings {
     chapterCount: 5,
     extraInstructions: "",
     extraRules: "",
+    temperature: 0.9,
   };
+}
+
+/** 正文/续写温度；未设置时与历史默认 0.9 一致 */
+export function resolveChapterTemperature(
+  settings?: Pick<GenerationSettings, "temperature"> | null
+): number {
+  const t = settings?.temperature;
+  return typeof t === "number" && Number.isFinite(t) ? t : 0.9;
 }
 
 export function createEmptyProject(

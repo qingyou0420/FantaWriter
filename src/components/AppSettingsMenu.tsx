@@ -42,7 +42,8 @@ export function AppSettingsMenu({
   const rootRef = useRef<HTMLDivElement>(null);
 
   const [panel, setPanel] = useState<Panel>("none");
-  const [theme, setTheme] = useState<AppTheme>("dark");
+  const [theme, setTheme] = useState<AppTheme>(() => getStoredTheme());
+  const [thinkingEnabled, setThinkingEnabled] = useState<boolean | null>(null);
 
   const [apiKey, setApiKey] = useState("");
   const [apiModel, setApiModel] = useState("deepseek-v4-pro");
@@ -56,10 +57,6 @@ export function AppSettingsMenu({
   const [ghTokenSaved, setGhTokenSaved] = useState(false);
   const [ghTokenPrefix, setGhTokenPrefix] = useState("");
   const [ghTokenSaving, setGhTokenSaving] = useState(false);
-
-  useEffect(() => {
-    setTheme(getStoredTheme());
-  }, []);
 
   const silentCheck = useCallback(async () => {
     const bridge = getDesktop();
@@ -75,6 +72,8 @@ export function AppSettingsMenu({
   }, []);
 
   useEffect(() => {
+    // 桌面端启动后拉一次更新状态，来自 Electron IPC，不是派生 state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC 一次性拉取
     void silentCheck();
   }, [silentCheck]);
 
@@ -112,6 +111,9 @@ export function AppSettingsMenu({
         const data = await res.json();
         if (data.env?.model) setApiModel(data.env.model);
         if (data.env?.baseURL) setApiBaseURL(data.env.baseURL);
+        if (typeof data.env?.thinkingEnabled === "boolean") {
+          setThinkingEnabled(data.env.thinkingEnabled);
+        }
       } catch {
         /* ignore */
       }
@@ -186,6 +188,9 @@ export function AppSettingsMenu({
         downloadUrl: update.downloadUrl,
         assetApiUrl: update.assetApiUrl,
         version: update.latest || undefined,
+        sha256: update.sha256,
+        sha256DownloadUrl: update.sha256DownloadUrl,
+        sha256AssetApiUrl: update.sha256AssetApiUrl,
       });
       if (!d.ok || !d.path) {
         toast.error(d.message || "下载失败");
@@ -495,6 +500,12 @@ export function AppSettingsMenu({
                 <option value="gpt-4o-mini" />
               </datalist>
             </div>
+            {thinkingEnabled != null ? (
+              <p className="text-xs text-[var(--text-muted)] m-0 mb-2">
+                推理开关 DEEPSEEK_THINKING：{thinkingEnabled ? "已开启" : "未开启"}
+                （由环境变量控制）
+              </p>
+            ) : null}
             <button
               type="button"
               className="btn btn-primary btn-sm w-full"

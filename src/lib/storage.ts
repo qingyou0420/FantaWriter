@@ -11,7 +11,6 @@ import {
   type UsageStats,
   type WritingBoard,
 } from "./types";
-import { resolveFlag } from "./flags";
 import { loadAppPrefs, saveAppPrefs } from "./theme";
 import { idbGet, idbOpen, idbSet } from "./idb";
 
@@ -86,17 +85,16 @@ function lsReadNewThenOld(newKey: string, oldKey: string): string | null {
   return lsGet(newKey) ?? lsGet(oldKey);
 }
 
-function shouldDualWriteOld(): boolean {
+async function oldIdbExists(): Promise<boolean> {
   try {
-    return !resolveFlag("brandRenameComplete", loadAppPrefs());
+    if (typeof indexedDB !== "undefined" && typeof indexedDB.databases === "function") {
+      const dbs = await indexedDB.databases();
+      return dbs.some((d) => d.name === OLD_IDB_NAME);
+    }
   } catch {
-    return false;
+    /* ignore */
   }
-}
-
-function lsWriteDual(newKey: string, oldKey: string, value: string) {
-  lsSet(newKey, value);
-  if (shouldDualWriteOld()) lsSet(oldKey, value);
+  return Boolean(lsGet(OLD_PROJECTS_LS));
 }
 
 function parseProjectsJson(raw: string | null): NovelProject[] {
@@ -153,7 +151,7 @@ export function flushStorage(): Promise<void> {
   return persistChain;
 }
 
-/** 启动时：新 IDB → 旧 IDB → 旧 LS；随后双写旧 IDB */
+/** 启动时：新 IDB →（仅当新库为空）旧 IDB/LS 只读迁入。不再创建旧库。 */
 export async function initStorage(): Promise<void> {
   if (typeof window === "undefined") return;
   if (storageReady) return storageReady;
@@ -162,17 +160,14 @@ export async function initStorage(): Promise<void> {
       const fromNew = await readIdbProjects(NEW_IDB_NAME);
       if (fromNew && fromNew.length) {
         if (!projectsCache) projectsCache = fromNew;
-        try {
-          await writeIdbProjects(OLD_IDB_NAME, projectsCache);
-        } catch {
-          /* 旧镜像失败不阻断启动 */
-        }
         migrateLibrariesIfNeeded();
         await copyAutoBackupIfNeeded();
         return;
       }
 
-      const fromOldIdb = await readIdbProjects(OLD_IDB_NAME);
+      const fromOldIdb = (await oldIdbExists())
+        ? await readIdbProjects(OLD_IDB_NAME)
+        : null;
       const fromOldLs = parseProjectsJson(lsGet(OLD_PROJECTS_LS));
       const fromNewLs = parseProjectsJson(lsGet(NEW_PROJECTS_LS));
       const migrated =
@@ -205,15 +200,7 @@ export async function initStorage(): Promise<void> {
 
       const json = JSON.stringify(projectsCache);
       lsSet(NEW_PROJECTS_LS, json);
-      if (shouldDualWriteOld()) lsSet(OLD_PROJECTS_LS, json);
       await writeIdbProjects(NEW_IDB_NAME, projectsCache);
-      if (shouldDualWriteOld()) {
-        try {
-          await writeIdbProjects(OLD_IDB_NAME, projectsCache);
-        } catch {
-          /* ignore on boot */
-        }
-      }
       migrateLibrariesIfNeeded();
       await copyAutoBackupIfNeeded();
     } catch {
@@ -244,16 +231,7 @@ async function persistProjects(normalized: NovelProject[]): Promise<void> {
   lastStorageError = null;
   const json = JSON.stringify(normalized);
   lsSet(NEW_PROJECTS_LS, json);
-  if (shouldDualWriteOld()) lsSet(OLD_PROJECTS_LS, json);
   await writeIdbProjects(NEW_IDB_NAME, normalized);
-  if (shouldDualWriteOld()) {
-    try {
-      await writeIdbProjects(OLD_IDB_NAME, normalized);
-    } catch (e) {
-      lastStorageError = e;
-      throw e;
-    }
-  }
   maybeAutoBackup(normalized);
 }
 
@@ -381,9 +359,8 @@ export function importFullBackup(json: string): {
   }
   saveLibraries(libs);
   if (data.usageStats) {
-    lsWriteDual(
+    lsSet(
       NEW_USAGE_STATS_KEY,
-      OLD_USAGE_STATS_KEY,
       JSON.stringify({ ...createEmptyUsageStats(), ...data.usageStats })
     );
   }
@@ -430,7 +407,26 @@ export function saveLibraries(libs: StoredLibraries): void {
 function migrateLibrariesIfNeeded() {
   if (typeof window === "undefined") return;
   if (lsGet(NEW_LIBRARIES_KEY)) return;
-  saveLibraries(emptyLibraries());
+  const migrated = emptyLibraries();
+  try {
+    const oldTags = JSON.parse(lsGet(OLD_TAG_LIBRARY_KEY) || "null");
+    if (Array.isArray(oldTags) && oldTags.length) {
+      migrated.general.tags = cleanTagList(oldTags.map(String));
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const oldStyles = JSON.parse(lsGet(OLD_STYLE_LIBRARY_KEY) || "null");
+    if (Array.isArray(oldStyles) && oldStyles.length) {
+      migrated.general.styles = oldStyles.map((s: LearnedStyle) =>
+        normalizeLearnedStyle(s)
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  saveLibraries(migrated);
 }
 
 async function copyAutoBackupIfNeeded() {
@@ -438,6 +434,7 @@ async function copyAutoBackupIfNeeded() {
     const newDb = await getNewDb();
     const existing = await idbGet(newDb, IDB_STORE, "auto-backup");
     if (existing) return;
+    if (!(await oldIdbExists())) return;
     const oldDb = await getOldDb();
     const old = await idbGet(oldDb, IDB_STORE, "auto-backup");
     if (old) await idbSet(newDb, IDB_STORE, old, "auto-backup");
@@ -576,7 +573,7 @@ export function loadReaderPrefs(): ReaderPrefs {
 }
 
 export function saveReaderPrefs(prefs: ReaderPrefs): void {
-  lsWriteDual(NEW_READER_PREFS_KEY, OLD_READER_PREFS_KEY, JSON.stringify(prefs));
+  lsSet(NEW_READER_PREFS_KEY, JSON.stringify(prefs));
 }
 
 /** 用量统计 */
@@ -600,13 +597,13 @@ export function recordUsage(mode: string, charsIn: number, charsOut: number) {
   s.byMode[mode].requests += 1;
   s.byMode[mode].charsOut += Math.max(0, charsOut);
   s.lastUsedAt = new Date().toISOString();
-  lsWriteDual(NEW_USAGE_STATS_KEY, OLD_USAGE_STATS_KEY, JSON.stringify(s));
+  lsSet(NEW_USAGE_STATS_KEY, JSON.stringify(s));
   return s;
 }
 
 export function resetUsageStats(): UsageStats {
   const s = createEmptyUsageStats();
-  lsWriteDual(NEW_USAGE_STATS_KEY, OLD_USAGE_STATS_KEY, JSON.stringify(s));
+  lsSet(NEW_USAGE_STATS_KEY, JSON.stringify(s));
   return s;
 }
 
@@ -621,11 +618,7 @@ function maybeAutoBackup(projects: NovelProject[]) {
       : {};
     const now = Date.now();
     if (meta.lastAt && now - meta.lastAt < BACKUP_INTERVAL_MS) return;
-    lsWriteDual(
-      NEW_BACKUP_META_KEY,
-      OLD_BACKUP_META_KEY,
-      JSON.stringify({ lastAt: now })
-    );
+    lsSet(NEW_BACKUP_META_KEY, JSON.stringify({ lastAt: now }));
     void (async () => {
       const payload = {
         at: new Date().toISOString(),
@@ -636,14 +629,6 @@ function maybeAutoBackup(projects: NovelProject[]) {
         await idbSet(newDb, IDB_STORE, payload, "auto-backup");
       } catch {
         /* ignore */
-      }
-      if (shouldDualWriteOld()) {
-        try {
-          const oldDb = await getOldDb();
-          await idbSet(oldDb, IDB_STORE, payload, "auto-backup");
-        } catch {
-          /* ignore */
-        }
       }
     })();
   } catch {
@@ -663,6 +648,7 @@ export async function getAutoBackup(): Promise<{
       "auto-backup"
     );
     if (fromNew) return fromNew;
+    if (!(await oldIdbExists())) return null;
     const oldDb = await getOldDb();
     const fromOld = await idbGet<{ at: string; projects: NovelProject[] }>(
       oldDb,
@@ -698,17 +684,10 @@ export function projectTabKeyNew(projectId: string): string {
   return `fantasy-writer:project-tab:${projectId}`;
 }
 
-export function projectTabKeyOld(projectId: string): string {
-  return `h-novelist:project-tab:${projectId}`;
-}
-
 export function readProjectTab(projectId: string): string | null {
-  return lsReadNewThenOld(
-    projectTabKeyNew(projectId),
-    projectTabKeyOld(projectId)
-  );
+  return lsGet(projectTabKeyNew(projectId));
 }
 
 export function writeProjectTab(projectId: string, tab: string): void {
-  lsWriteDual(projectTabKeyNew(projectId), projectTabKeyOld(projectId), tab);
+  lsSet(projectTabKeyNew(projectId), tab);
 }

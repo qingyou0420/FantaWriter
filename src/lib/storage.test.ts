@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
-import { idbGet, idbOpen } from "./idb";
+import { idbGet, idbOpen, idbSet } from "./idb";
 import {
   exportProjectJson,
   flushStorage,
@@ -61,11 +61,35 @@ describe("storage dual-write", () => {
     await flushStorage();
 
     const newDb = await openKv("fantasy-writer");
-    const oldDb = await openKv("erotic-novel-studio");
     const fromNew = await idbGet<typeof a[]>(newDb, "kv", "projects");
-    const fromOld = await idbGet<typeof a[]>(oldDb, "kv", "projects");
     expect(fromNew?.map((p) => p.id).sort()).toEqual([a.id, b.id].sort());
-    expect(fromOld).toBeUndefined();
+    const names = (await indexedDB.databases()).map((d) => d.name);
+    expect(names).toContain("fantasy-writer");
+    expect(names).not.toContain("erotic-novel-studio");
+  });
+
+  it("fresh start never creates the old product database", async () => {
+    await initStorage();
+    const p = createEmptyProject("全新");
+    saveProjects([p]);
+    await flushStorage();
+    const names = (await indexedDB.databases()).map((d) => d.name);
+    expect(names).not.toContain("erotic-novel-studio");
+    expect(localStorage.getItem("erotic-novel-studio:projects")).toBeNull();
+    expect(localStorage.getItem("h-novelist:project-tab:" + p.id)).toBeNull();
+  });
+
+  it("migrates an existing old IDB into the new library", async () => {
+    const p = createEmptyProject("旧库书");
+    const oldDb = await openKv("erotic-novel-studio");
+    await idbSet(oldDb, "kv", [p], "projects");
+    await initStorage();
+    const loaded = loadProjects();
+    expect(loaded.map((x) => x.id)).toContain(p.id);
+    await flushStorage();
+    const newDb = await openKv("fantasy-writer");
+    const fromNew = await idbGet<typeof p[]>(newDb, "kv", "projects");
+    expect(fromNew?.map((x) => x.id)).toContain(p.id);
   });
 
   it("migrates old localStorage projects into the new IDB", async () => {

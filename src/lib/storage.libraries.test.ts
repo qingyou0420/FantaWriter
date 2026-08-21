@@ -3,6 +3,7 @@ import { IDBFactory } from "fake-indexeddb";
 import "fake-indexeddb/auto";
 import {
   initStorage,
+  loadStyleLibrary,
   loadTagLibraryFor,
   resetStorageState,
   resetTagLibraryToDefaultFor,
@@ -48,5 +49,41 @@ describe("library namespaces", () => {
     expect(loadTagLibraryFor("general")).toEqual([...DEFAULT_GENERAL_TAG_LIBRARY]);
     expect(tags).toContain("悬疑");
     expect(tags).toContain("奇幻");
+  });
+
+  it("reads old tag/style libraries once into the new key", async () => {
+    resetStorageState();
+    localStorage.removeItem("fantasy-writer:libraries");
+    localStorage.setItem(
+      "erotic-novel-studio:tag-library",
+      JSON.stringify(["悬疑", "旧标签"])
+    );
+    localStorage.setItem(
+      "erotic-novel-studio:style-library",
+      JSON.stringify([
+        {
+          id: "old-style",
+          name: "旧风",
+          createdAt: "",
+          updatedAt: "",
+          sourceLabel: "",
+          sourceChars: 10,
+          overall: "",
+          vocabulary: "",
+          rhythm: "",
+          narrative: "",
+          dialogue: "",
+          sensory: "",
+          structure: "",
+          avoid: "",
+          styleGuide: "短句",
+          fingerprints: [],
+        },
+      ])
+    );
+    const tags = loadTagLibraryFor("general");
+    expect(tags).toEqual(["悬疑", "旧标签"]);
+    expect(loadStyleLibrary()[0]?.name).toBe("旧风");
+    expect(localStorage.getItem("fantasy-writer:libraries")).toBeTruthy();
   });
 });
