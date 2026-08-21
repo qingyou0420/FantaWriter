@@ -91,7 +91,7 @@ export function ToolsPanel({
       project.outline?.chapters
         ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
         : [],
-    [project.outline?.chapters]
+    [project.outline]
   );
   const resolvedSingleId =
     singleChapterId && chapters.some((c) => c.id === singleChapterId)

@@ -960,16 +960,18 @@ export default function ProjectPage() {
     guideOpen && shouldShowOnboarding(project) && !isOnboardingDismissed(id);
 
   async function generateVolumeSummary(volumeId: string) {
-    const volume = (project.volumes || []).find((v) => v.id === volumeId);
+    const live = getLive() || project;
+    if (!live) return;
+    const volume = (live.volumes || []).find((v) => v.id === volumeId);
     if (!volume) return;
-    const chs = (project.outline?.chapters || []).filter(
-      (c) => (c.volumeId || project.volumes?.[0]?.id) === volumeId
+    const chs = (live.outline?.chapters || []).filter(
+      (c) => (c.volumeId || live.volumes?.[0]?.id) === volumeId
     );
     const summaries = chs.map((ch) => ({
       order: ch.order,
       title: ch.title,
       summary:
-        project.chapters.find((c) => c.chapterId === ch.id)?.summary ||
+        live.chapters.find((c) => c.chapterId === ch.id)?.summary ||
         ch.summary ||
         "",
     }));
@@ -982,7 +984,7 @@ export default function ProjectPage() {
     try {
       const res = await postGenerate({
         mode: "volume_summary",
-        writingBoard: project.writingBoard,
+        writingBoard: live.writingBoard,
         volume,
         chapterSummaries: summaries,
       });
