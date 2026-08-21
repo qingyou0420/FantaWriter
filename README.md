@@ -6,7 +6,7 @@
 
 AI 默认使用 **DeepSeek**（OpenAI 兼容接口，可改 Base URL / 模型）。
 
-当前版本：**1.2.0**
+当前版本：**1.3.0**
 
 ## 功能
 
@@ -48,7 +48,7 @@ npm run dev
 
 浏览器打开 [http://localhost:3000](http://localhost:3000)。
 
-桌面安装包：`Fantasy-Writer-Setup-1.2.0.exe`。
+桌面安装包：`Fantasy-Writer-Setup-1.3.0.exe`。
 
 ## 桌面端更新（GitHub Release）
 
