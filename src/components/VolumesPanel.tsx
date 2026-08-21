@@ -13,6 +13,7 @@ import type { NovelProject, Volume } from "@/lib/types";
 export function VolumesPanel({
   project,
   onChange,
+  hideWholeVolumeGenerate,
   onGenerateVolume,
   onGenerateVolumeOutline,
   onGenerateVolumeSummary,
@@ -24,6 +25,7 @@ export function VolumesPanel({
 }: {
   project: NovelProject;
   onChange: (volumes: Volume[], chapters?: NovelProject["outline"]) => void;
+  hideWholeVolumeGenerate?: boolean;
   onGenerateVolume: (volumeId: string) => void;
   onGenerateVolumeOutline?: (volumeId: string, chapterCount: number) => void;
   onGenerateVolumeSummary?: (volumeId: string) => void;
@@ -134,14 +136,20 @@ export function VolumesPanel({
                       "AI 生成本卷摘要"
                     )}
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    disabled={!count || !!busy}
-                    onClick={() => onGenerateVolume(v.id)}
-                  >
-                    生成本卷
-                  </button>
+                  {hideWholeVolumeGenerate ? (
+                    <span className="text-xs text-[var(--text-muted)]">
+                      已挂原作：请到正文页按拍扩写
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={!count || !!busy}
+                      onClick={() => onGenerateVolume(v.id)}
+                    >
+                      生成本卷
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm !text-[#d45c6a]"

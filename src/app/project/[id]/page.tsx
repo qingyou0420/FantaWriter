@@ -17,7 +17,10 @@ import { ToolsPanel } from "@/components/ToolsPanel";
 import { VolumesPanel } from "@/components/VolumesPanel";
 import { LorePanel } from "@/components/LorePanel";
 import { OriginalPanel } from "@/components/OriginalPanel";
-import { attachOriginalContext, detectCanonViolations } from "@/lib/original";
+import { attachOriginalContext, mergeCanonFacts } from "@/lib/original";
+import { allowsWholeBookGenerate, evaluateRenewalSave, wholeBookGenerateBlockedReason } from "@/lib/renewal";
+import { mapSkeletonToProject } from "@/lib/skeleton";
+import type { BeatCommitDeltas } from "@/lib/beat-contract";
 import {
   chapterBelowMin,
   continueLengthRequirement,
@@ -538,7 +541,34 @@ export default function ProjectPage() {
         }
       }
 
-      const canonWarnings = detectCanonViolations(text, fresh.canon);
+      const saveVerdict = evaluateRenewalSave(text, {
+        original: fresh.original,
+        canon: fresh.canon,
+      });
+      if (!saveVerdict.allowed) {
+        update((p) => {
+          const chapters = [...p.chapters];
+          const idx = chapters.findIndex((c) => c.chapterId === liveChapter.id);
+          if (idx < 0) return p;
+          chapters[idx] = {
+            ...chapters[idx],
+            status: "error",
+            error: `与锁定设定冲突，正文未保存：${saveVerdict.violations.join("；")}`,
+            canonWarnings: saveVerdict.violations,
+            updatedAt: new Date().toISOString(),
+          };
+          return { ...p, chapters };
+        });
+        setError(
+          `与锁定设定冲突，正文未保存。请改稿或到正文页强制保存并警告。${saveVerdict.violations.join("；")}`
+        );
+        if (!fromJob) {
+          setBusy(null);
+          abortRef.current = null;
+        }
+        return "error";
+      }
+      const canonWarnings = saveVerdict.violations;
 
       const openThreads = (fresh.plotThreads || [])
         .filter((t) => t.status !== "resolved" && t.title.trim())
@@ -828,7 +858,12 @@ export default function ProjectPage() {
     mode: BookJob["mode"] = "missing",
     volumeId?: string
   ) {
-    if (!project?.outline?.chapters.length) return;
+    if (!project) return;
+    if (!allowsWholeBookGenerate(project)) {
+      setError(wholeBookGenerateBlockedReason());
+      return;
+    }
+    if (!project.outline?.chapters.length) return;
     const pool = volumeId
       ? project.outline.chapters.filter(
           (c) => (c.volumeId || project.volumes?.[0]?.id) === volumeId
@@ -1094,21 +1129,30 @@ export default function ProjectPage() {
               "生成大纲"
             )}
           </button>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={!!busy || !project.outline?.chapters.length}
-            onClick={() => startBookJob("missing")}
-            title="跳过已有正文，只生成未完成章"
-          >
-            {busy?.startsWith("chapter") && bookJob?.status === "running" ? (
-              <>
-                <span className="spinner" /> 队列中
-              </>
-            ) : (
-              "一键生成正文"
-            )}
-          </button>
+          {allowsWholeBookGenerate(project) ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!!busy || !project.outline?.chapters.length}
+              onClick={() => startBookJob("missing")}
+              title="跳过已有正文，只生成未完成章"
+            >
+              {busy?.startsWith("chapter") && bookJob?.status === "running" ? (
+                <>
+                  <span className="spinner" /> 队列中
+                </>
+              ) : (
+                "一键生成正文"
+              )}
+            </button>
+          ) : (
+            <span
+              className="text-xs text-[var(--text-muted)]"
+              title={wholeBookGenerateBlockedReason()}
+            >
+              焕新请按拍扩写
+            </span>
+          )}
           <div className="menu-wrap">
             <button
               type="button"
@@ -1127,17 +1171,19 @@ export default function ProjectPage() {
                   onClick={() => setMoreOpen(false)}
                 />
                 <div className="menu-dropdown">
-                  <button
-                    type="button"
-                    className="menu-item menu-item-danger"
-                    disabled={!!busy || !project.outline?.chapters.length}
-                    onClick={() => {
-                      setMoreOpen(false);
-                      startBookJob("all");
-                    }}
-                  >
-                    强制全量重写
-                  </button>
+                  {allowsWholeBookGenerate(project) ? (
+                    <button
+                      type="button"
+                      className="menu-item menu-item-danger"
+                      disabled={!!busy || !project.outline?.chapters.length}
+                      onClick={() => {
+                        setMoreOpen(false);
+                        startBookJob("all");
+                      }}
+                    >
+                      强制全量重写
+                    </button>
+                  ) : null}
                   <div className="menu-sep" />
                   <button
                     type="button"
@@ -1340,6 +1386,9 @@ export default function ProjectPage() {
               update((p) => ({ ...p, original }))
             }
             onCanonChange={(canon) => update((p) => ({ ...p, canon }))}
+            onApplySkeleton={(skeleton) =>
+              update((p) => mapSkeletonToProject(p, skeleton))
+            }
             onError={setError}
           />
         )}
@@ -1400,6 +1449,7 @@ export default function ProjectPage() {
                 outline: outline ?? p.outline,
               }))
             }
+            hideWholeVolumeGenerate={!allowsWholeBookGenerate(project)}
             onGenerateVolume={(volumeId) =>
               startBookJob("missing", volumeId)
             }
@@ -1614,6 +1664,15 @@ export default function ProjectPage() {
               });
             }}
             onContentChange={(chapterId, content, opts) => {
+              const live = getLive() || project;
+              const verdict = evaluateRenewalSave(content, {
+                original: live.original,
+                canon: live.canon,
+                force: opts?.forceCanon,
+              });
+              if (!verdict.allowed) {
+                return { ok: false, violations: verdict.violations };
+              }
               update((p) => {
                 const chapters = [...p.chapters];
                 const idx = chapters.findIndex(
@@ -1637,10 +1696,49 @@ export default function ProjectPage() {
                   content,
                   status: content ? "done" : "idle",
                   updatedAt: new Date().toISOString(),
+                  canonWarnings: verdict.violations.length
+                    ? verdict.violations
+                    : undefined,
                 };
                 if (idx >= 0) chapters[idx] = row;
                 else chapters.push(row);
                 return { ...p, chapters };
+              });
+              return { ok: true, violations: verdict.violations };
+            }}
+            onCommitBeatDeltas={(chapterId, deltas: BeatCommitDeltas) => {
+              update((p) => {
+                const chapters = p.chapters.map((c) =>
+                  c.chapterId === chapterId
+                    ? {
+                        ...c,
+                        summary: deltas.summary?.trim() || c.summary,
+                        touchedThreads: (p.plotThreads || [])
+                          .filter((t) => deltas.touchedThreadIds.includes(t.id))
+                          .map((t) => t.title),
+                      }
+                    : c
+                );
+                let lore = p.lore || [];
+                if (deltas.timelineNote?.trim()) {
+                  const idx = lore.findIndex((e) => e.title === "时间线");
+                  if (idx >= 0) {
+                    lore = lore.map((e, i) =>
+                      i === idx
+                        ? {
+                            ...e,
+                            body: `${e.body}\n${deltas.timelineNote}`.trim(),
+                          }
+                        : e
+                    );
+                  }
+                }
+                return {
+                  ...p,
+                  chapters,
+                  lore,
+                  canon: mergeCanonFacts(p.canon || [], deltas.canonProposals),
+                };
               });
             }}
             onChapterTagsChange={(chapterId, tags) => {

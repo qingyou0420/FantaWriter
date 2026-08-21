@@ -36,6 +36,7 @@ import {
   CanonViolationError,
   parseCanonFacts,
 } from "@/lib/original";
+import { parseStorySkeleton } from "@/lib/skeleton";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -85,7 +86,16 @@ type Body =
   | (BodyBase & { mode: "consistency_check"; chapters?: ChapterSample[] })
   | (BodyBase & { mode: "outline_vs_content"; content?: string })
   | (BodyBase & { mode: "scene_plan" })
-  | (BodyBase & { mode: "scene_chapter"; scene?: { order: number; title: string; summary: string } })
+  | (BodyBase & {
+      mode: "scene_chapter";
+      scene?: {
+        order: number;
+        title: string;
+        summary: string;
+        verbatimAnchors?: string[];
+      };
+      beatContractBlock?: string;
+    })
   | (BodyBase & { mode: "expand_character"; seed?: string; character?: Character })
   | (BodyBase & { mode: "optimize_character"; character?: Character })
   | (BodyBase & { mode: "expand_background"; seed?: string })
@@ -95,6 +105,12 @@ type Body =
   | (BodyBase & { mode: "learn_style"; sampleText?: string; nameHint?: string })
   | (BodyBase & {
       mode: "extract_canon";
+      sampleText?: string;
+      originalText?: string;
+      titleHint?: string;
+    })
+  | (BodyBase & {
+      mode: "extract_skeleton";
       sampleText?: string;
       originalText?: string;
       titleHint?: string;
@@ -548,6 +564,42 @@ export async function POST(req: NextRequest) {
         );
       }
       return NextResponse.json({ ok: true, facts, raw: text });
+    }
+
+    if (body.mode === "extract_skeleton") {
+      const sample = String(body.sampleText || body.originalText || "").trim();
+      if (sample.length < 40) {
+        return NextResponse.json(
+          { error: "原文过短，请先粘贴或导入原作后再抽取骨架" },
+          { status: 400 }
+        );
+      }
+      const capped =
+        sample.length > 16000 ? sampleTextForStyleLearning(sample, 14000) : sample;
+      const originalTitle =
+        body.original &&
+        typeof body.original === "object" &&
+        "title" in body.original
+          ? String((body.original as { title?: string }).title || "")
+          : "";
+      const { system, user } = assemble("extract_skeleton", writingBoard, {
+        ...asAssemblePayload(body),
+        sampleText: capped,
+        titleHint: body.titleHint || originalTitle,
+      });
+      const text = await chatComplete(system, user, {
+        temperature: 0.3,
+        maxTokens: 8192,
+      });
+      try {
+        const skeleton = parseStorySkeleton(text);
+        return NextResponse.json({ ok: true, skeleton, raw: text });
+      } catch {
+        return NextResponse.json(
+          { error: "未能解析故事骨架，请重试或改为手工整理", raw: text },
+          { status: 500 }
+        );
+      }
     }
 
     if (body.mode === "polish_chapter_outline") {

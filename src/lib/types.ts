@@ -47,6 +47,7 @@ export type CanonKind =
   | "identity"
   | "relationship"
   | "place"
+  | "item"
   | "fact";
 
 /** 从原作抽出、作者可锁定的硬事实 */
@@ -187,11 +188,18 @@ export interface ChapterVersion {
   label: string;
 }
 
+export type ChapterSceneStatus = "pending" | "accepted" | "skipped";
+
 export interface ChapterScene {
   id: string;
   order: number;
   title: string;
   summary: string;
+  /** 原句锚点：必须原样出现，润色不得改写 */
+  verbatimAnchors?: string[];
+  /** 本拍可推进的线索 id */
+  threadIds?: string[];
+  status?: ChapterSceneStatus;
 }
 
 export interface ChapterContent {
@@ -231,6 +239,11 @@ export interface ConsistencyReport {
 
 export type PlotThreadStatus = "planted" | "active" | "resolved";
 
+/** 读者已知才进记忆包；仅作者的暗线不得泄漏 */
+export type PlotThreadVisibility = "author_only" | "reader_known";
+
+export type PlotThreadKind = "main" | "sub" | "foreshadow" | "dark" | "other";
+
 /** 伏笔 / 线索 */
 export interface PlotThread {
   id: string;
@@ -241,6 +254,9 @@ export interface PlotThread {
   resolveChapterId?: string;
   createdAt: string;
   updatedAt: string;
+  /** 缺省：主线/支线/伏笔为读者已知，暗线为仅作者 */
+  visibility?: PlotThreadVisibility;
+  kind?: PlotThreadKind;
 }
 
 /** 全书批量生成任务（可序列化，暂停/续跑） */
@@ -343,7 +359,25 @@ export function createEmptyPlotThread(title = ""): PlotThread {
     status: "planted",
     createdAt: now,
     updatedAt: now,
+    visibility: "reader_known",
+    kind: "other",
   };
+}
+
+export function plotThreadVisibility(
+  t: Pick<PlotThread, "visibility" | "kind">
+): PlotThreadVisibility {
+  if (t.visibility === "author_only" || t.visibility === "reader_known") {
+    return t.visibility;
+  }
+  return t.kind === "dark" ? "author_only" : "reader_known";
+}
+
+/** 记忆包只注入读者已知线索 */
+export function isReaderKnownThread(
+  t: Pick<PlotThread, "visibility" | "kind">
+): boolean {
+  return plotThreadVisibility(t) === "reader_known";
 }
 
 export const MAX_CHAPTER_VERSIONS = 12;
@@ -441,8 +475,69 @@ const CANON_KINDS: CanonKind[] = [
   "identity",
   "relationship",
   "place",
+  "item",
   "fact",
 ];
+
+const PLOT_VISIBILITIES: PlotThreadVisibility[] = [
+  "author_only",
+  "reader_known",
+];
+
+const PLOT_KINDS: PlotThreadKind[] = [
+  "main",
+  "sub",
+  "foreshadow",
+  "dark",
+  "other",
+];
+
+const SCENE_STATUSES: ChapterSceneStatus[] = [
+  "pending",
+  "accepted",
+  "skipped",
+];
+
+function normalizePlotThread(raw: PlotThread): PlotThread {
+  const kind = PLOT_KINDS.includes(raw.kind as PlotThreadKind)
+    ? (raw.kind as PlotThreadKind)
+    : "other";
+  const visibility = PLOT_VISIBILITIES.includes(
+    raw.visibility as PlotThreadVisibility
+  )
+    ? (raw.visibility as PlotThreadVisibility)
+    : kind === "dark"
+      ? "author_only"
+      : "reader_known";
+  return {
+    ...raw,
+    id: raw.id || crypto.randomUUID(),
+    title: String(raw.title || "").trim(),
+    note: String(raw.note || ""),
+    status: raw.status === "active" || raw.status === "resolved" ? raw.status : "planted",
+    kind,
+    visibility,
+  };
+}
+
+function normalizeChapterScene(raw: ChapterScene, index: number): ChapterScene {
+  const status = SCENE_STATUSES.includes(raw.status as ChapterSceneStatus)
+    ? (raw.status as ChapterSceneStatus)
+    : "pending";
+  return {
+    id: raw.id || crypto.randomUUID(),
+    order: typeof raw.order === "number" ? raw.order : index + 1,
+    title: String(raw.title || "").trim(),
+    summary: String(raw.summary || ""),
+    verbatimAnchors: Array.isArray(raw.verbatimAnchors)
+      ? raw.verbatimAnchors.map((s) => String(s).trim()).filter(Boolean)
+      : undefined,
+    threadIds: Array.isArray(raw.threadIds)
+      ? raw.threadIds.map((s) => String(s).trim()).filter(Boolean)
+      : undefined,
+    status,
+  };
+}
 
 function resolveCanonKind(value: unknown): CanonKind {
   return CANON_KINDS.includes(value as CanonKind)
@@ -553,7 +648,11 @@ export function normalizeProject(p: NovelProject): NovelProject {
     canon: normalizeLockedCanon(p.canon),
     tags: Array.isArray(p.tags) ? p.tags : [],
     archivedActTags: Array.isArray(p.archivedActTags) ? p.archivedActTags : [],
-    plotThreads: Array.isArray(p.plotThreads) ? p.plotThreads : [],
+    plotThreads: Array.isArray(p.plotThreads)
+      ? p.plotThreads
+          .filter((t): t is PlotThread => Boolean(t && typeof t === "object"))
+          .map(normalizePlotThread)
+      : [],
     bookJob: p.bookJob ?? null,
     lastConsistencyReport: p.lastConsistencyReport ?? null,
     settings: {
@@ -591,7 +690,11 @@ export function normalizeProject(p: NovelProject): NovelProject {
     chapters: (p.chapters || []).map((c) => ({
       ...c,
       versions: Array.isArray(c.versions) ? c.versions : [],
-      scenes: Array.isArray(c.scenes) ? c.scenes : undefined,
+      scenes: Array.isArray(c.scenes)
+        ? c.scenes
+            .filter((s): s is ChapterScene => Boolean(s && typeof s === "object"))
+            .map(normalizeChapterScene)
+        : undefined,
       summary: c.summary || "",
       touchedThreads: Array.isArray(c.touchedThreads)
         ? c.touchedThreads.map((s) => String(s).trim()).filter(Boolean)

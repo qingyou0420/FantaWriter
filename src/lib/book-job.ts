@@ -1,4 +1,7 @@
+import { allowsWholeBookGenerate, wholeBookGenerateBlockedReason } from "./renewal";
 import type { ChapterContent, OutlineChapter } from "./types";
+
+export { allowsWholeBookGenerate, wholeBookGenerateBlockedReason };
 
 /** 全书生成任务：单章状态 */
 export type BookJobItemStatus =

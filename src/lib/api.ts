@@ -2,7 +2,7 @@ import { buildMemoryPack } from "./memory-pack";
 import { originalContextFrom } from "./original";
 import { recordUsage } from "./storage";
 import type { GenerateTaskMode } from "./prompts/registry";
-import type { NovelProject, WritingBoard } from "./types";
+import { isReaderKnownThread, type NovelProject, type PlotThread, type WritingBoard } from "./types";
 import { UserFacingError } from "./user-error";
 
 export type GenerateRequest = {
@@ -177,15 +177,11 @@ export function buildPreviousContext(
 }
 
 export function formatPlotThreadsForPrompt(
-  threads?: {
-    title: string;
-    note: string;
-    status: string;
-  }[]
+  threads?: Pick<PlotThread, "title" | "note" | "status" | "visibility" | "kind">[]
 ): string {
   if (!threads?.length) return "";
   return threads
-    .filter((t) => t.status !== "resolved")
+    .filter((t) => t.status !== "resolved" && isReaderKnownThread(t))
     .map((t) => `- [${t.status}] ${t.title}${t.note ? `：${t.note}` : ""}`)
     .join("\n");
 }

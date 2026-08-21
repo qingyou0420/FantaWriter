@@ -134,6 +134,45 @@ describe("normalizeProject", () => {
     expect(p.original).toBeNull();
     expect(p.canon).toEqual([]);
   });
+
+  it("normalizes plot thread visibility and beat scenes", () => {
+    const p = createEmptyProject("线");
+    p.plotThreads = [
+      {
+        id: "d1",
+        title: "暗线",
+        note: "",
+        status: "planted",
+        createdAt: "",
+        updatedAt: "",
+        kind: "dark",
+      },
+    ];
+    p.chapters = [
+      {
+        chapterId: "c1",
+        title: "一",
+        content: "",
+        status: "idle",
+        updatedAt: "",
+        scenes: [
+          {
+            id: "s1",
+            order: 1,
+            title: "上桥",
+            summary: "黎明",
+            verbatimAnchors: ["霜桥第三块石缺了一角"],
+          },
+        ],
+      },
+    ];
+    const n = normalizeProject(p);
+    expect(n.plotThreads?.[0].visibility).toBe("author_only");
+    expect(n.chapters[0].scenes?.[0].status).toBe("pending");
+    expect(n.chapters[0].scenes?.[0].verbatimAnchors).toEqual([
+      "霜桥第三块石缺了一角",
+    ]);
+  });
 });
 
 describe("assertWritingBoardImmutable", () => {

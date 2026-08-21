@@ -571,15 +571,22 @@ export function parseScenePlan(text: string): {
   order: number;
   title: string;
   summary: string;
+  verbatimAnchors?: string[];
 }[] {
   const data = JSON.parse(extractJsonObject(text)) as {
     scenes?: Array<Record<string, unknown>>;
   };
-  return (data.scenes || []).map((s, i) => ({
-    order: Number(s.order) || i + 1,
-    title: String(s.title || `场景${i + 1}`),
-    summary: String(s.summary || ""),
-  }));
+  return (data.scenes || []).map((s, i) => {
+    const anchors = Array.isArray(s.verbatimAnchors)
+      ? s.verbatimAnchors.map((a) => String(a).trim()).filter(Boolean)
+      : [];
+    return {
+      order: Number(s.order) || i + 1,
+      title: String(s.title || `场景${i + 1}`),
+      summary: String(s.summary || ""),
+      verbatimAnchors: anchors.length ? anchors : undefined,
+    };
+  });
 }
 
 /** 选区前后各 windowChars 字的滑窗，供润色看见远处上下文 */

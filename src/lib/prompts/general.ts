@@ -377,6 +377,7 @@ export function generalRewriteUser(opts: {
   priorBlock?: string;
   expandScale?: number;
   expandTargetChars?: number;
+  verbatimAnchors?: string[];
 }): string {
   const expand =
     opts.mode === "expand" || String(opts.mode).includes("扩写");
@@ -411,7 +412,12 @@ ${opts.selectedText}
 ## 输出要求
 1. 只输出改写后的正文片段，不要解释。
 2. 保持人称、时态与前后可衔接。
-3. 可保留非性化未成年配角（仅当故事需要）；禁止任何涉及未成年人的性内容。`;
+3. 可保留非性化未成年配角（仅当故事需要）；禁止任何涉及未成年人的性内容。
+${
+  opts.verbatimAnchors?.length
+    ? `4. 下列原句必须原样保留，润色不得改写：\n${opts.verbatimAnchors.map((a) => `- ${a}`).join("\n")}`
+    : ""
+}`;
 }
 
 export function generalVolumeOutlineUser(opts: {
@@ -578,7 +584,12 @@ ${intensity}
 ## 输出 JSON
 {
   "scenes": [
-    { "order": 1, "title": "场景名", "summary": "本场景要写什么（2-4句）" }
+    {
+      "order": 1,
+      "title": "场景名",
+      "summary": "本场景要写什么（2-4句）",
+      "verbatimAnchors": ["可选：必须原样保留的原句"]
+    }
   ]
 }`;
 }
@@ -588,15 +599,17 @@ export function generalSceneChapterUser(opts: {
   background: StoryBackground;
   settings: GenerationSettings;
   chapter: OutlineChapter;
-  scene: { order: number; title: string; summary: string };
+  scene: { order: number; title: string; summary: string; verbatimAnchors?: string[] };
   previousScenesText?: string;
   previousChapterSnippet?: string;
   projectTags?: string[];
   plotThreads?: string;
   lore?: string;
   priorBlock?: string;
+  beatContractBlock?: string;
 }): string {
   const memory = (opts.priorBlock || "").trim();
+  const anchors = opts.scene.verbatimAnchors?.filter(Boolean) || [];
   return `撰写本章中的**一个场景**正文（不是整章）。
 
 ## 人物
@@ -621,10 +634,17 @@ ${opts.previousScenesText ? `## 本章已写场景（衔接）\n${opts.previousS
 ${memory ? `${memory}\n` : opts.previousChapterSnippet ? `## 上章结尾\n${opts.previousChapterSnippet}\n` : ""}
 ${!memory && opts.plotThreads ? `## 伏笔\n${opts.plotThreads}\n` : ""}
 ${!memory && opts.lore ? `## 世界观设定（关键词命中）\n${opts.lore}\n` : ""}
+${opts.beatContractBlock ? `${opts.beatContractBlock}\n` : ""}
+${
+  anchors.length
+    ? `## 原句锚点（必须原样出现，润色不得改写）\n${anchors.map((a) => `- ${a}`).join("\n")}\n`
+    : ""
+}
 ## 要求
-1. 只写本场景，约 400–1500 字。
+1. 只写本场景，约 400–1500 字。先输出到预览，不要当成已定稿。
 2. 不要写「场景X」元标题；可自然过渡。
-3. 直接输出正文。`;
+3. 直接输出正文。不得泄漏仅作者可见的暗线。
+4. 有原句锚点时必须原样写入，不得改写。`;
 }
 
 export function generalVolumeSummaryUser(opts: {

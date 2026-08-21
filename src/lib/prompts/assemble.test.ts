@@ -46,6 +46,7 @@ describe("assemble isolation", () => {
       "rewrite",
       "learn_style",
       "extract_canon",
+      "extract_skeleton",
       "continue",
       "scene_plan",
       "scene_chapter",
@@ -335,6 +336,52 @@ describe("assemble isolation", () => {
     });
     expect(cont.user).toContain("前情摘要");
     expect(cont.user).toContain("渡口定约已破");
+  });
+
+  it("extract_skeleton prompt stays fact-only and labels places/objects", () => {
+    const { user } = assemble("extract_skeleton", "general", {
+      sampleText: "北城门破。行人甲带着铜铃走上霜桥。",
+      titleHint: "旧稿",
+    });
+    expect(user).toContain("只写原文已经写明");
+    expect(user).toContain("待补充");
+    expect(user).toContain("statement 必须写明原文身份");
+    expect(user).not.toMatch(/清溪|白马/);
+  });
+
+  it("scene_chapter injects beat contract and verbatim anchors", () => {
+    const { user } = assemble("scene_chapter", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      chapter,
+      scene: {
+        order: 1,
+        title: "上桥",
+        summary: "黎明",
+        verbatimAnchors: ["霜桥第三块石缺了一角"],
+      },
+      beatContractBlock:
+        "## 本拍契约（硬性）\n禁止写成：\n- 「霜桥」不是人\n暗线（仅作者可见，正文不得提前泄漏）：\n- 铜铃里藏着旧城令",
+    });
+    expect(user).toContain("本拍契约");
+    expect(user).toContain("不是人");
+    expect(user).toContain("不得泄漏仅作者可见的暗线");
+    expect(user).toContain("霜桥第三块石缺了一角");
+    expect(user).toContain("润色不得改写");
+  });
+
+  it("rewrite refuses to polish verbatim anchors", () => {
+    const { user } = assemble("rewrite", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      rewriteMode: "polish",
+      selectedText: "霜桥第三块石缺了一角。行人甲停下。",
+      verbatimAnchors: ["霜桥第三块石缺了一角"],
+    });
+    expect(user).toContain("必须原样保留，润色不得改写");
+    expect(user).toContain("霜桥第三块石缺了一角");
   });
 
   it("continue and scene_chapter user include lore when provided", () => {

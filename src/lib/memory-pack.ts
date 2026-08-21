@@ -1,4 +1,5 @@
 import { formatLoreBlock, selectLoreForPrompt } from "./lore";
+import { isReaderKnownThread } from "./types";
 import type {
   Character,
   NovelProject,
@@ -10,7 +11,7 @@ import type {
 function formatPlotThreads(threads?: PlotThread[]): string {
   if (!threads?.length) return "";
   return threads
-    .filter((t) => t.status !== "resolved")
+    .filter((t) => t.status !== "resolved" && isReaderKnownThread(t))
     .map((t) => `- [${t.status}] ${t.title}${t.note ? `：${t.note}` : ""}`)
     .join("\n");
 }
