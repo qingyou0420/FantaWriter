@@ -410,7 +410,7 @@ export function OutlinePanel({
           </div>
           <ul className="list-none p-0 m-0 space-y-0.5 max-h-[min(70vh,40rem)] overflow-y-auto">
             {(volumes || []).length > 1
-              ? [...volumes]
+              ? [...(volumes || [])]
                   .sort((a, b) => a.order - b.order)
                   .map((vol) => {
                     const fallbackId = [...(volumes || [])].sort(

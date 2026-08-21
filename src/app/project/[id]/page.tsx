@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { BackgroundPanel } from "@/components/BackgroundPanel";
 import { BookJobBar } from "@/components/BookJobBar";
 import { ChaptersReader } from "@/components/ChaptersReader";
@@ -93,7 +93,6 @@ const TAB_LABEL: Record<Tab, string> = {
 
 
 export default function ProjectPage() {
-  const router = useRouter();
   const params = useParams();
   const id = String(params.id);
   const {
