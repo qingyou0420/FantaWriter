@@ -12,7 +12,9 @@ import {
   type WritingBoard,
 } from "./types";
 import { loadAppPrefs, saveAppPrefs } from "./theme";
-import { idbGet, idbOpen, idbSet } from "./idb";
+import { getDesktop } from "./desktop";
+import { desktopBackupFileName } from "./desktop-backup";
+import { idbDelete, idbGet, idbKeys, idbOpen, idbSet } from "./idb";
 
 /** 旧键：M0–M3 双读双写 */
 const OLD_PROJECTS_LS = "erotic-novel-studio:projects";
@@ -32,6 +34,25 @@ const NEW_IDB_NAME = "fantasy-writer";
 
 const IDB_VERSION = 1;
 const IDB_STORE = "kv";
+const IDB_PROJECT_INDEX = "project-ids";
+const IDB_PROJECT_PREFIX = "project:";
+const IDB_MIGRATION_V3 = "migration-backup-v3";
+const IDB_PRE_RESTORE = "pre-restore-backup";
+
+export type ProjectMeta = {
+  id: string;
+  name: string;
+  updatedAt: string;
+};
+
+export type ProjectsLsMirror = {
+  at: string;
+  projects: ProjectMeta[];
+};
+
+export function projectIdbKey(id: string): string {
+  return `${IDB_PROJECT_PREFIX}${id}`;
+}
 
 export type BoardLibraries = {
   tags: string[];
@@ -46,6 +67,9 @@ let projectsCache: NovelProject[] | null = null;
 let storageReady: Promise<void> | null = null;
 let persistChain: Promise<void> = Promise.resolve();
 let lastStorageError: unknown = null;
+let lastStorageWarning: string | null = null;
+/** 上次成功写入 IDB 的项目 JSON，用于只写脏项目 */
+const lastWrittenJson = new Map<string, string>();
 
 async function openKv(name: string) {
   return idbOpen(name, IDB_VERSION, (db) => {
@@ -76,8 +100,13 @@ function lsSet(key: string, value: string) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(key, value);
-  } catch {
-    /* quota */
+  } catch (e) {
+    lastStorageError =
+      e instanceof Error
+        ? e
+        : new Error("localStorage 写入失败（可能超过 5MB 配额）");
+    lastStorageWarning =
+      "本地镜像已停更（超过约 5MB 配额）。主库若写入成功，请立刻下载完整备份。";
   }
 }
 
@@ -100,32 +129,163 @@ async function oldIdbExists(): Promise<boolean> {
 function parseProjectsJson(raw: string | null): NovelProject[] {
   if (!raw) return [];
   try {
-    const data = JSON.parse(raw) as NovelProject[];
-    return Array.isArray(data) ? data.map(normalizeProject) : [];
+    const data = JSON.parse(raw) as unknown;
+    if (Array.isArray(data)) return data.map((p) => normalizeProject(p as NovelProject));
+    if (
+      data &&
+      typeof data === "object" &&
+      Array.isArray((data as { projects?: unknown }).projects)
+    ) {
+      const rows = (data as { projects: unknown[] }).projects;
+      if (rows.some((p) => p && typeof p === "object" && "chapters" in (p as object))) {
+        return rows.map((p) => normalizeProject(p as NovelProject));
+      }
+    }
+    return [];
   } catch {
     return [];
   }
 }
 
-async function readIdbProjects(name: string): Promise<NovelProject[] | null> {
+function parseLsMirror(raw: string | null): ProjectsLsMirror | null {
+  if (!raw) return null;
   try {
-    const db = await openKv(name);
-    const fromIdb = await idbGet<NovelProject[]>(db, IDB_STORE, "projects");
-    if (Array.isArray(fromIdb) && fromIdb.length) {
-      return fromIdb.map(normalizeProject);
+    const data = JSON.parse(raw) as unknown;
+    if (Array.isArray(data)) {
+      return {
+        at: "",
+        projects: data
+          .filter((p): p is NovelProject => Boolean(p && typeof p === "object"))
+          .map((p) => ({
+            id: String((p as NovelProject).id || ""),
+            name: String((p as NovelProject).name || ""),
+            updatedAt: String((p as NovelProject).updatedAt || ""),
+          }))
+          .filter((p) => p.id),
+      };
     }
-    return Array.isArray(fromIdb) ? fromIdb : null;
+    if (data && typeof data === "object" && Array.isArray((data as ProjectsLsMirror).projects)) {
+      const at = String((data as ProjectsLsMirror).at || "");
+      const projects = (data as ProjectsLsMirror).projects
+        .map((p) => ({
+          id: String(p.id || ""),
+          name: String(p.name || ""),
+          updatedAt: String(p.updatedAt || ""),
+        }))
+        .filter((p) => p.id);
+      return { at, projects };
+    }
   } catch {
-    return null;
+    /* ignore */
+  }
+  return null;
+}
+
+function daysSince(iso: string): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+}
+
+function rememberWritten(projects: NovelProject[]) {
+  lastWrittenJson.clear();
+  for (const p of projects) {
+    lastWrittenJson.set(p.id, JSON.stringify(p));
   }
 }
 
-async function writeIdbProjects(
-  name: string,
+function writeLsProjectMeta(projects: NovelProject[]) {
+  const mirror: ProjectsLsMirror = {
+    at: new Date().toISOString(),
+    projects: projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      updatedAt: p.updatedAt,
+    })),
+  };
+  lsSet(NEW_PROJECTS_LS, JSON.stringify(mirror));
+}
+
+async function readLegacyIdbArray(name: string): Promise<NovelProject[] | null> {
+  const db = await openKv(name);
+  const fromIdb = await idbGet<NovelProject[]>(db, IDB_STORE, "projects");
+  if (Array.isArray(fromIdb) && fromIdb.length) {
+    return fromIdb.map(normalizeProject);
+  }
+  return Array.isArray(fromIdb) ? fromIdb : null;
+}
+
+async function readIdbProjects(name: string): Promise<NovelProject[] | null> {
+  const db = await openKv(name);
+  const ids = await idbGet<string[]>(db, IDB_STORE, IDB_PROJECT_INDEX);
+  if (Array.isArray(ids)) {
+    const list: NovelProject[] = [];
+    for (const id of ids) {
+      const row = await idbGet<NovelProject>(db, IDB_STORE, projectIdbKey(id));
+      if (row && typeof row === "object") list.push(normalizeProject(row));
+    }
+    return list;
+  }
+  const keys = await idbKeys(db, IDB_STORE);
+  const projectKeys = keys
+    .map(String)
+    .filter((k) => k.startsWith(IDB_PROJECT_PREFIX));
+  if (projectKeys.length) {
+    const list: NovelProject[] = [];
+    for (const key of projectKeys) {
+      const row = await idbGet<NovelProject>(db, IDB_STORE, key);
+      if (row && typeof row === "object") list.push(normalizeProject(row));
+    }
+    return list;
+  }
+  return readLegacyIdbArray(name);
+}
+
+async function migrateLegacyArrayToPerProject(
   projects: NovelProject[]
 ): Promise<void> {
-  const db = await openKv(name);
-  await idbSet(db, IDB_STORE, projects, "projects");
+  const db = await getNewDb();
+  const existingSnap = await idbGet(db, IDB_STORE, IDB_MIGRATION_V3);
+  if (!existingSnap) {
+    await idbSet(
+      db,
+      IDB_STORE,
+      { at: new Date().toISOString(), projects },
+      IDB_MIGRATION_V3
+    );
+  }
+  for (const p of projects) {
+    await idbSet(db, IDB_STORE, p, projectIdbKey(p.id));
+  }
+  await idbSet(
+    db,
+    IDB_STORE,
+    projects.map((p) => p.id),
+    IDB_PROJECT_INDEX
+  );
+}
+
+async function writeChangedProjects(projects: NovelProject[]): Promise<void> {
+  const db = await getNewDb();
+  const nextIds = new Set(projects.map((p) => p.id));
+  for (const p of projects) {
+    const json = JSON.stringify(p);
+    if (lastWrittenJson.get(p.id) === json) continue;
+    await idbSet(db, IDB_STORE, p, projectIdbKey(p.id));
+    lastWrittenJson.set(p.id, json);
+  }
+  for (const id of [...lastWrittenJson.keys()]) {
+    if (nextIds.has(id)) continue;
+    await idbDelete(db, IDB_STORE, projectIdbKey(id));
+    lastWrittenJson.delete(id);
+  }
+  await idbSet(
+    db,
+    IDB_STORE,
+    projects.map((p) => p.id),
+    IDB_PROJECT_INDEX
+  );
 }
 
 function seedDefaultBoardIfMigrating(count: number) {
@@ -141,10 +301,38 @@ export function resetStorageState() {
   storageReady = null;
   persistChain = Promise.resolve();
   lastStorageError = null;
+  lastStorageWarning = null;
+  lastWrittenJson.clear();
 }
 
 export function getLastStorageError(): unknown {
   return lastStorageError;
+}
+
+export function getLastStorageWarning(): string | null {
+  return lastStorageWarning;
+}
+
+export function formatStorageError(err: unknown): string {
+  if (!err) return "";
+  const name = err instanceof Error ? err.name : "";
+  const msg = err instanceof Error ? err.message : String(err);
+  if (
+    name === "QuotaExceededError" ||
+    /quota|exceeded|5mb/i.test(msg)
+  ) {
+    return `本地镜像配额不足（约 5MB）：${msg}`;
+  }
+  return msg;
+}
+
+export function isFullBackupJson(json: string): boolean {
+  try {
+    const data = JSON.parse(json) as { projects?: unknown; id?: unknown };
+    return Array.isArray(data.projects) && !data.id;
+  } catch {
+    return false;
+  }
 }
 
 export function flushStorage(): Promise<void> {
@@ -156,17 +344,26 @@ export async function initStorage(): Promise<void> {
   if (typeof window === "undefined") return;
   if (storageReady) return storageReady;
   storageReady = (async () => {
+    lastStorageWarning = null;
     try {
       const fromNew = await readIdbProjects(NEW_IDB_NAME);
       if (fromNew && fromNew.length) {
+        const newDb = await getNewDb();
+        const hasIndex = await idbGet<string[]>(newDb, IDB_STORE, IDB_PROJECT_INDEX);
+        const hasLegacy = await idbGet<NovelProject[]>(newDb, IDB_STORE, "projects");
+        if (!Array.isArray(hasIndex) && Array.isArray(hasLegacy)) {
+          await migrateLegacyArrayToPerProject(fromNew);
+        }
         if (!projectsCache) projectsCache = fromNew;
+        rememberWritten(fromNew);
+        writeLsProjectMeta(fromNew);
         migrateLibrariesIfNeeded();
         await copyAutoBackupIfNeeded();
         return;
       }
 
       const fromOldIdb = (await oldIdbExists())
-        ? await readIdbProjects(OLD_IDB_NAME)
+        ? await readLegacyIdbArray(OLD_IDB_NAME)
         : null;
       const fromOldLs = parseProjectsJson(lsGet(OLD_PROJECTS_LS));
       const fromNewLs = parseProjectsJson(lsGet(NEW_PROJECTS_LS));
@@ -198,19 +395,31 @@ export async function initStorage(): Promise<void> {
         seedDefaultBoardIfMigrating(migrated.length);
       }
 
-      const json = JSON.stringify(projectsCache);
-      lsSet(NEW_PROJECTS_LS, json);
-      await writeIdbProjects(NEW_IDB_NAME, projectsCache);
+      writeLsProjectMeta(projectsCache);
+      if (projectsCache.length) {
+        await migrateLegacyArrayToPerProject(projectsCache);
+      } else {
+        const db = await getNewDb();
+        await idbSet(db, IDB_STORE, [], IDB_PROJECT_INDEX);
+      }
+      rememberWritten(projectsCache);
       migrateLibrariesIfNeeded();
       await copyAutoBackupIfNeeded();
-    } catch {
-      try {
-        if (!projectsCache) {
-          projectsCache = parseProjectsJson(
-            lsReadNewThenOld(NEW_PROJECTS_LS, OLD_PROJECTS_LS)
-          );
-        }
-      } catch {
+    } catch (e) {
+      lastStorageError = e;
+      const raw = lsReadNewThenOld(NEW_PROJECTS_LS, OLD_PROJECTS_LS);
+      const full = parseProjectsJson(raw);
+      const mirror = parseLsMirror(raw);
+      if (full.length) {
+        const days = daysSince(mirror?.at || "");
+        lastStorageWarning =
+          days != null
+            ? `这是 ${days} 天前的降级快照，不是当前主库。请立刻下载完整备份并核对正文。`
+            : "主库读取失败，已回退到本地镜像（时间未知）。请立刻下载完整备份。";
+        if (!projectsCache) projectsCache = full;
+      } else {
+        lastStorageWarning =
+          "主库读取失败，且本地没有可用的完整镜像。请导入备份。";
         if (!projectsCache) projectsCache = [];
       }
       migrateLibrariesIfNeeded();
@@ -229,9 +438,8 @@ export function loadProjects(): NovelProject[] {
 
 async function persistProjects(normalized: NovelProject[]): Promise<void> {
   lastStorageError = null;
-  const json = JSON.stringify(normalized);
-  lsSet(NEW_PROJECTS_LS, json);
-  await writeIdbProjects(NEW_IDB_NAME, normalized);
+  writeLsProjectMeta(normalized);
+  await writeChangedProjects(normalized);
   maybeAutoBackup(normalized);
 }
 
@@ -623,6 +831,9 @@ function maybeAutoBackup(projects: NovelProject[]) {
       const payload = {
         at: new Date().toISOString(),
         projects,
+        tagLibrary: loadTagLibrary(),
+        styleLibrary: loadStyleLibrary(),
+        usageStats: loadUsageStats(),
       };
       try {
         const newDb = await getNewDb();
@@ -630,10 +841,45 @@ function maybeAutoBackup(projects: NovelProject[]) {
       } catch {
         /* ignore */
       }
+      try {
+        const desktop = getDesktop();
+        if (desktop?.writeDesktopBackup) {
+          await desktop.writeDesktopBackup({
+            fileName: desktopBackupFileName(new Date(payload.at)),
+            content: JSON.stringify(payload, null, 2),
+          });
+        }
+      } catch {
+        /* ignore */
+      }
     })();
   } catch {
     /* ignore */
   }
+}
+
+export async function restoreFromAutoBackup(): Promise<{
+  restored: number;
+}> {
+  const backup = await getAutoBackup();
+  if (!backup?.projects?.length) {
+    throw new Error("没有可恢复的自动备份");
+  }
+  const current = loadProjects();
+  try {
+    const db = await getNewDb();
+    await idbSet(
+      db,
+      IDB_STORE,
+      { at: new Date().toISOString(), projects: current },
+      IDB_PRE_RESTORE
+    );
+  } catch {
+    /* 快照失败不阻断恢复，但仍应尽量留下 */
+  }
+  saveProjects(backup.projects.map(normalizeProject));
+  await flushStorage();
+  return { restored: backup.projects.length };
 }
 
 export async function getAutoBackup(): Promise<{

@@ -1113,3 +1113,16 @@ label.field-label {
 .status-pill-saving {
   color: var(--accent-text);
 }
+
+.status-pill-error {
+  color: var(--danger-text);
+}
+
+.status-pill-error-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}

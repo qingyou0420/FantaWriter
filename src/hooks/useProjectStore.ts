@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  flushStorage,
+  formatStorageError,
+  getLastStorageError,
+  getLastStorageWarning,
   getProject,
   initStorage,
   loadStyleLibraryFor,
@@ -22,6 +26,8 @@ import {
 export function useProjectStore(projectId: string) {
   const [project, setProject] = useState<NovelProject | null>(null);
   const [saveHint, setSaveHint] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [storageWarning, setStorageWarning] = useState("");
   const [tagLibrary, setTagLibrary] = useState<string[]>([]);
   const [styleLibrary, setStyleLibrary] = useState<LearnedStyle[]>([]);
   const [ready, setReady] = useState(false);
@@ -43,6 +49,12 @@ export function useProjectStore(projectId: string) {
       setProject(normalized);
       setTagLibrary(loadTagLibraryFor("general"));
       setStyleLibrary(loadStyleLibraryFor("general"));
+      setStorageWarning(getLastStorageWarning() || "");
+      const bootErr = getLastStorageError();
+      if (bootErr) {
+        setSaveError(formatStorageError(bootErr));
+        setSaveHint("保存失败");
+      }
       setReady(true);
       requestAnimationFrame(() => {
         if (!cancelled) skipPersistRef.current = false;
@@ -72,9 +84,20 @@ export function useProjectStore(projectId: string) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       upsertProject(project);
-      setSaveHint("已自动保存");
-      if (saveHintTimerRef.current) clearTimeout(saveHintTimerRef.current);
-      saveHintTimerRef.current = setTimeout(() => setSaveHint(""), 1500);
+      void flushStorage().then(() => {
+        const err = getLastStorageError();
+        const warn = getLastStorageWarning();
+        if (warn) setStorageWarning(warn);
+        if (err) {
+          setSaveError(formatStorageError(err));
+          setSaveHint("保存失败");
+          return;
+        }
+        setSaveError("");
+        setSaveHint("已自动保存");
+        if (saveHintTimerRef.current) clearTimeout(saveHintTimerRef.current);
+        saveHintTimerRef.current = setTimeout(() => setSaveHint(""), 1500);
+      });
     }, 280);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -139,6 +162,8 @@ export function useProjectStore(projectId: string) {
     setProject,
     update,
     saveHint,
+    saveError,
+    storageWarning,
     tagLibrary,
     styleLibrary,
     setStyleLibrary,

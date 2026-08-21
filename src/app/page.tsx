@@ -19,6 +19,7 @@ import {
   exportProjectJson,
   importProjectJson,
   initStorage,
+  isFullBackupJson,
   loadProjects,
   writeProjectTab,
   loadStyleLibraryFor,
@@ -158,11 +159,20 @@ export default function HomePage() {
   function handleImport(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
+      const text = String(reader.result);
       try {
-        const project = importProjectJson(String(reader.result));
+        if (isFullBackupJson(text)) {
+          alert("这是完整备份，请走「导入完整备份」");
+          return;
+        }
+        const project = importProjectJson(text);
         upsertProject(project);
         refresh();
       } catch (e) {
+        if (isFullBackupJson(text)) {
+          alert("这是完整备份，请走「导入完整备份」");
+          return;
+        }
         alert(e instanceof Error ? e.message : "导入失败");
       }
     };
@@ -220,6 +230,7 @@ export default function HomePage() {
               keyPrefix={keyPrefix}
               usageHint={usageHint}
               onImportClick={() => fileRef.current?.click()}
+              onImportFullBackup={() => refresh()}
               onHasKeyChange={() => void refreshApiStatus()}
             />
           </div>

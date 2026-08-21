@@ -57,6 +57,8 @@ jobs:
 
       - run: npx tsc --noEmit
 
+      - run: npm run lint
+
       - run: npm test
 
       - name: Build standalone (strip .env.local)

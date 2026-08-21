@@ -1,15 +1,20 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
+import * as idb from "./idb";
 import { idbGet, idbOpen, idbSet } from "./idb";
 import {
   exportProjectJson,
   flushStorage,
+  getLastStorageError,
   importFullBackup,
   importProjectJson,
   initStorage,
+  isFullBackupJson,
   loadProjects,
+  projectIdbKey,
   resetStorageState,
+  restoreFromAutoBackup,
   saveProjects,
   upsertProject,
 } from "./storage";
@@ -61,8 +66,12 @@ describe("storage dual-write", () => {
     await flushStorage();
 
     const newDb = await openKv("fantasy-writer");
-    const fromNew = await idbGet<typeof a[]>(newDb, "kv", "projects");
-    expect(fromNew?.map((p) => p.id).sort()).toEqual([a.id, b.id].sort());
+    const ids = await idbGet<string[]>(newDb, "kv", "project-ids");
+    expect(ids?.sort()).toEqual([a.id, b.id].sort());
+    const fromA = await idbGet<typeof a>(newDb, "kv", projectIdbKey(a.id));
+    const fromB = await idbGet<typeof b>(newDb, "kv", projectIdbKey(b.id));
+    expect(fromA?.id).toBe(a.id);
+    expect(fromB?.id).toBe(b.id);
     const names = (await indexedDB.databases()).map((d) => d.name);
     expect(names).toContain("fantasy-writer");
     expect(names).not.toContain("erotic-novel-studio");
@@ -88,8 +97,8 @@ describe("storage dual-write", () => {
     expect(loaded.map((x) => x.id)).toContain(p.id);
     await flushStorage();
     const newDb = await openKv("fantasy-writer");
-    const fromNew = await idbGet<typeof p[]>(newDb, "kv", "projects");
-    expect(fromNew?.map((x) => x.id)).toContain(p.id);
+    const fromNew = await idbGet<typeof p>(newDb, "kv", projectIdbKey(p.id));
+    expect(fromNew?.id).toBe(p.id);
   });
 
   it("migrates old localStorage projects into the new IDB", async () => {
@@ -105,8 +114,8 @@ describe("storage dual-write", () => {
     expect(loaded[0].writingBoard).toBe("general");
     await flushStorage();
     const newDb = await openKv("fantasy-writer");
-    const fromNew = await idbGet<typeof p[]>(newDb, "kv", "projects");
-    expect(fromNew?.map((x) => x.id)).toEqual([p.id]);
+    const fromNew = await idbGet<typeof p>(newDb, "kv", projectIdbKey(p.id));
+    expect(fromNew?.id).toBe(p.id);
   });
 
   it("normalize imported projects onto the conventional board", async () => {
@@ -159,5 +168,88 @@ describe("storage dual-write", () => {
     expect(result.imported).toBe(1);
     expect(result.skipped).toBe(1);
     expect(loadProjects().map((x) => x.id).sort()).toEqual([p.id, extra.id].sort());
+  });
+
+  it("persist failure can be queried via getLastStorageError", async () => {
+    await initStorage();
+    const p = createEmptyProject("失败");
+    const spy = vi.spyOn(idb, "idbSet").mockRejectedValue(new Error("idb down"));
+    saveProjects([p]);
+    await flushStorage();
+    expect(getLastStorageError()).toBeTruthy();
+    expect(String(getLastStorageError())).toMatch(/idb down/);
+    spy.mockRestore();
+  });
+
+  it("migrates legacy single-key projects to per-project keys", async () => {
+    const p = createEmptyProject("旧单键");
+    const db = await openKv("fantasy-writer");
+    await idbSet(db, "kv", [p], "projects");
+    await initStorage();
+    expect(loadProjects().map((x) => x.id)).toContain(p.id);
+    const snap = await idbGet<{ projects: typeof p[] }>(
+      db,
+      "kv",
+      "migration-backup-v3"
+    );
+    expect(snap?.projects?.map((x) => x.id)).toContain(p.id);
+    const row = await idbGet<typeof p>(db, "kv", projectIdbKey(p.id));
+    expect(row?.id).toBe(p.id);
+  });
+
+  it("editing a small project does not rewrite the large project key", async () => {
+    await initStorage();
+    const big = createEmptyProject("大项目");
+    const small = createEmptyProject("小项目");
+    saveProjects([big, small]);
+    await flushStorage();
+    const spy = vi.spyOn(idb, "idbSet");
+    upsertProject({ ...small, name: "小项目改名" });
+    await flushStorage();
+    const keys = spy.mock.calls.map((c) => c[3]);
+    expect(keys).toContain(projectIdbKey(small.id));
+    expect(keys).not.toContain(projectIdbKey(big.id));
+    spy.mockRestore();
+  });
+
+  it("LS mirror stores metadata only", async () => {
+    await initStorage();
+    const p = createEmptyProject("元数据");
+    saveProjects([p]);
+    await flushStorage();
+    const raw = localStorage.getItem("fantasy-writer:projects");
+    const parsed = JSON.parse(String(raw));
+    expect(parsed.at).toBeTruthy();
+    expect(parsed.projects[0]).toMatchObject({
+      id: p.id,
+      name: p.name,
+    });
+    expect(parsed.projects[0].chapters).toBeUndefined();
+  });
+
+  it("isFullBackupJson detects {projects:[]} backups", () => {
+    expect(isFullBackupJson(JSON.stringify({ projects: [] }))).toBe(true);
+    expect(
+      isFullBackupJson(JSON.stringify({ id: "x", name: "单书", chapters: [] }))
+    ).toBe(false);
+  });
+
+  it("restoreFromAutoBackup writes pre-restore snapshot", async () => {
+    await initStorage();
+    const old = createEmptyProject("旧库");
+    const next = createEmptyProject("备份里的书");
+    saveProjects([old]);
+    await flushStorage();
+    const db = await openKv("fantasy-writer");
+    await idbSet(db, "kv", { at: "2026-08-01T00:00:00.000Z", projects: [next] }, "auto-backup");
+    const r = await restoreFromAutoBackup();
+    expect(r.restored).toBe(1);
+    expect(loadProjects().map((p) => p.id)).toEqual([next.id]);
+    const snap = await idbGet<{ projects: { id: string }[] }>(
+      db,
+      "kv",
+      "pre-restore-backup"
+    );
+    expect(snap?.projects?.map((p) => p.id)).toContain(old.id);
   });
 });

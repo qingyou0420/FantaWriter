@@ -53,3 +53,15 @@ export function idbDelete(
     req.onerror = () => reject(req.error);
   });
 }
+
+export function idbKeys(
+  db: IDBDatabase,
+  store: string
+): Promise<IDBValidKey[]> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, "readonly");
+    const req = tx.objectStore(store).getAllKeys();
+    req.onsuccess = () => resolve((req.result || []) as IDBValidKey[]);
+    req.onerror = () => reject(req.error);
+  });
+}

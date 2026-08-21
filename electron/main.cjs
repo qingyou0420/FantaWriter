@@ -98,10 +98,52 @@ function canBindPort(port) {
   });
 }
 
+function readPinnedAppPort() {
+  applyConfigFile(getConfigPath());
+  const raw = (process.env.APP_DATA_PORT || "").trim();
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
+}
+
+function writePinnedAppPort(port) {
+  const filePath = getConfigPath();
+  const map = readConfigMap(filePath);
+  map.set("APP_DATA_PORT", String(port));
+  writeConfigMap(filePath, map);
+  process.env.APP_DATA_PORT = String(port);
+}
+
+async function waitUntilPortFree(port) {
+  while (!(await canBindPort(port))) {
+    const { response } = await dialog.showMessageBox({
+      type: "warning",
+      buttons: ["重试", "退出"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "端口被占用",
+      message: `端口 ${port} 被其它程序占用，你的本地数据绑定在该端口上。请关闭占用程序后点重试`,
+      noLink: true,
+    });
+    if (response !== 0) {
+      throw new Error(`端口 ${port} 被占用，用户选择退出`);
+    }
+  }
+  return port;
+}
+
 async function pickListenPort(start) {
+  const pinned = readPinnedAppPort();
+  if (pinned) {
+    appendLog(`使用已固定端口 APP_DATA_PORT=${pinned}`);
+    return waitUntilPortFree(pinned);
+  }
   let port = start;
   for (let i = 0; i < 40; i++) {
-    if (await canBindPort(port)) return port;
+    if (await canBindPort(port)) {
+      writePinnedAppPort(port);
+      appendLog(`首次选定端口 ${port}，已写入 config.env APP_DATA_PORT`);
+      return port;
+    }
     appendLog(`端口 ${port} 已被占用，尝试 ${port + 1}`);
     port += 1;
   }
@@ -443,10 +485,32 @@ function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
+function getBackupsDir() {
+  return path.join(app.getPath("userData"), "backups");
+}
+
+function rotateDesktopBackupFiles(dir, keep = 7) {
+  if (!dir || !fs.existsSync(dir)) return [];
+  const names = fs
+    .readdirSync(dir)
+    .filter((n) => /^fw-auto-.+\.json$/i.test(n))
+    .sort();
+  const remove = names.length > keep ? names.slice(0, names.length - keep) : [];
+  for (const name of remove) {
+    try {
+      fs.unlinkSync(path.join(dir, name));
+    } catch {
+      /* ignore */
+    }
+  }
+  return names.filter((n) => !remove.includes(n));
+}
+
 function isAllowedOpenPath(target) {
   const resolved = path.resolve(String(target || ""));
   const roots = [
     app.getPath("userData"),
+    getBackupsDir(),
     getPrimaryUpdateDir(),
     path.join(app.getPath("temp"), "Fantasy-Writer-Updates"),
     path.join(app.getPath("userData"), "updates"),
@@ -815,6 +879,32 @@ function registerIpc() {
       return { ok: false, canceled: true, message: "已取消" };
     }
     return { ok: true, path: res.filePaths[0], message: "已选择" };
+  });
+
+  ipcMain.handle("fs:writeDesktopBackup", async (_e, payload) => {
+    const dir = getBackupsDir();
+    ensureDir(dir);
+    const fileName = String((payload && payload.fileName) || "").trim();
+    if (!/^fw-auto-[A-Za-z0-9._-]+\.json$/.test(fileName)) {
+      return { ok: false, message: "备份文件名非法" };
+    }
+    const target = path.join(dir, fileName);
+    try {
+      fs.writeFileSync(target, String((payload && payload.content) || ""), "utf8");
+      const kept = rotateDesktopBackupFiles(dir, 7);
+      return { ok: true, path: target, kept, message: `已写入 ${target}` };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, message: msg };
+    }
+  });
+
+  ipcMain.handle("app:openBackupDir", async () => {
+    const dir = getBackupsDir();
+    ensureDir(dir);
+    const err = await shell.openPath(dir);
+    if (err) return { ok: false, path: dir, message: err };
+    return { ok: true, path: dir };
   });
 
   ipcMain.handle("fs:writeTextFiles", async (_e, payload) => {

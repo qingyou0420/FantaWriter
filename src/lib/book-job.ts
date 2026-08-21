@@ -155,6 +155,26 @@ export function finalizeBookJobStatus(job: BookJob): BookJob {
   return { ...job, status, updatedAt: new Date().toISOString() };
 }
 
+/**
+ * 崩溃/刷新后：无主 running 队列归 pending，job 置 paused。
+ * 仅当 UI 侧确认当前没有在跑（jobControl.running === false）时调用。
+ */
+export function normalizeStaleJob(job: BookJob): BookJob {
+  if (job.status !== "running") return job;
+  const now = new Date().toISOString();
+  return {
+    ...job,
+    status: "paused",
+    currentChapterId: null,
+    updatedAt: now,
+    items: job.items.map((it) =>
+      it.status === "running"
+        ? { ...it, status: "pending" as const, error: undefined }
+        : it
+    ),
+  };
+}
+
 /** 将 error / 中断 running 重置为 pending 以便续跑 */
 export function prepareJobForResume(job: BookJob): BookJob {
   const now = new Date().toISOString();

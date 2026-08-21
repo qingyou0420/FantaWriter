@@ -90,6 +90,7 @@ export async function streamGenerate(
   const decoder = new TextDecoder();
   let buffer = "";
   let full = "";
+  let sawDone = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -114,8 +115,9 @@ export async function streamGenerate(
           full += obj.delta;
           opts.onDelta?.(obj.delta, full);
         }
-        if (obj.done && obj.content) {
-          full = obj.content;
+        if (obj.done) {
+          sawDone = true;
+          if (obj.content) full = obj.content;
         }
       } catch (e) {
         if (e instanceof Error && e.message !== "Unexpected end of JSON input") {
@@ -125,8 +127,26 @@ export async function streamGenerate(
     }
   }
 
+  return finishStreamGenerate(sawDone, full, body);
+}
+
+/** EOF 未见 done:true 不算成功；供单测与 streamGenerate 共用 */
+export function finishStreamGenerate(
+  sawDone: boolean,
+  full: string,
+  body?: GenerateRequest
+): string {
+  if (!sawDone) {
+    throw new Error("流意外中断，正文可能不完整");
+  }
   if (!full.trim()) throw new Error("模型未返回内容");
-  recordUsage(String(body.mode || "stream"), JSON.stringify(body).length, full.length);
+  if (body) {
+    recordUsage(
+      String(body.mode || "stream"),
+      JSON.stringify(body).length,
+      full.length
+    );
+  }
   return full;
 }
 

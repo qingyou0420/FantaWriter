@@ -360,4 +360,67 @@ describe("assemble isolation", () => {
     });
     expect(scene.user).toContain("灰港");
   });
+
+  it("keeps ≤15 chapter outline listing byte-identical to the flat dump", () => {
+    const chapters = Array.from({ length: 10 }, (_, i) => ({
+      id: `c${i + 1}`,
+      order: i + 1,
+      title: `第${i + 1}章`,
+      summary: `摘要${i + 1}`,
+      keyPoints: "",
+      intensityNote: "",
+      tags: i === 0 ? ["悬疑"] : [],
+    }));
+    const outline = { premise: "前提", endingNote: "结局", chapters };
+    const payload = {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      outline,
+      chapter: chapters[0],
+      projectTags: [],
+    };
+    const flat = assemble("chapter", "general", payload);
+    const withVol = assemble("chapter", "general", {
+      ...payload,
+      volumes: [{ id: "v1", order: 1, title: "第一卷", summary: "一卷" }],
+    });
+    expect(withVol.user).toBe(flat.user);
+    for (const ch of chapters) {
+      expect(flat.user).toContain(`${ch.order}. 《${ch.title}》— ${ch.summary}`);
+    }
+  });
+
+  it("layers a 30-chapter 3-volume book: current volume full, others one line", () => {
+    const volumes = [
+      { id: "v1", order: 1, title: "上卷", summary: "少年离乡" },
+      { id: "v2", order: 2, title: "中卷", summary: "朝堂裂开" },
+      { id: "v3", order: 3, title: "下卷", summary: "归乡终局" },
+    ];
+    const chapters = Array.from({ length: 30 }, (_, i) => ({
+      id: `c${i + 1}`,
+      order: i + 1,
+      title: `第${i + 1}章`,
+      summary: `摘要${i + 1}`,
+      keyPoints: "",
+      intensityNote: "",
+      tags: [],
+      volumeId: i < 10 ? "v1" : i < 20 ? "v2" : "v3",
+    }));
+    const { user } = assemble("chapter", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      outline: { premise: "前提", endingNote: "结局", chapters },
+      chapter: chapters[24],
+      volumes,
+      projectTags: [],
+    });
+    expect(user).toContain("25. 《第25章》— 摘要25");
+    expect(user).toContain("30. 《第30章》— 摘要30");
+    expect(user).toContain("《上卷》：少年离乡");
+    expect(user).toContain("《中卷》：朝堂裂开");
+    expect(user).not.toContain("1. 《第1章》— 摘要1");
+    expect(user).not.toContain("11. 《第11章》— 摘要11");
+  });
 });

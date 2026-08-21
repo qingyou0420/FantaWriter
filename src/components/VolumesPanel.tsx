@@ -16,6 +16,10 @@ export function VolumesPanel({
   onGenerateVolume,
   onGenerateVolumeOutline,
   onGenerateVolumeSummary,
+  summaryDraft,
+  onSaveSummaryDraft,
+  onDiscardSummaryDraft,
+  onEditSummaryDraft,
   busy,
 }: {
   project: NovelProject;
@@ -23,6 +27,10 @@ export function VolumesPanel({
   onGenerateVolume: (volumeId: string) => void;
   onGenerateVolumeOutline?: (volumeId: string, chapterCount: number) => void;
   onGenerateVolumeSummary?: (volumeId: string) => void;
+  summaryDraft?: { volumeId: string; text: string } | null;
+  onSaveSummaryDraft?: () => void;
+  onDiscardSummaryDraft?: () => void;
+  onEditSummaryDraft?: (text: string) => void;
   busy?: string | null;
 }) {
   const volumes = sortedVolumes(project);
@@ -152,14 +160,41 @@ export function VolumesPanel({
                     删除
                   </button>
                 </div>
-                <textarea
-                  rows={2}
-                  placeholder="本卷摘要（可选）"
-                  value={v.summary}
-                  onChange={(e) =>
-                    patchVolume(v.id, { summary: e.target.value })
-                  }
-                />
+                {summaryDraft?.volumeId === v.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      rows={4}
+                      placeholder="本卷摘要（可多行）"
+                      value={summaryDraft.text}
+                      onChange={(e) => onEditSummaryDraft?.(e.target.value)}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={onSaveSummaryDraft}
+                      >
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={onDiscardSummaryDraft}
+                      >
+                        放弃
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <textarea
+                    rows={2}
+                    placeholder="本卷摘要（可选）"
+                    value={v.summary}
+                    onChange={(e) =>
+                      patchVolume(v.id, { summary: e.target.value })
+                    }
+                  />
+                )}
               </li>
             );
           })}
