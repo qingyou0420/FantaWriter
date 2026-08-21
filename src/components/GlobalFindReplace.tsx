@@ -1,6 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  collectReplaceReminders,
+  countOccurrences,
+  type GlobalReplaceOptions,
+} from "@/lib/find-replace";
 import type { NovelProject } from "@/lib/types";
 
 export type GlobalReplaceHit = {
@@ -10,41 +15,36 @@ export type GlobalReplaceHit = {
   count: number;
 };
 
-function countOccurrences(hay: string, needle: string): number {
-  if (!needle) return 0;
-  let n = 0;
-  let i = 0;
-  while (true) {
-    const j = hay.indexOf(needle, i);
-    if (j < 0) break;
-    n++;
-    i = j + needle.length;
-  }
-  return n;
-}
-
 export function GlobalFindReplace({
   project,
   onReplace,
 }: {
   project: NovelProject;
-  /** 对命中章节应用替换后的正文 */
   onReplace: (
-    updates: { chapterId: string; content: string }[]
+    find: string,
+    replace: string,
+    opts: GlobalReplaceOptions
   ) => void;
 }) {
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
   const [hint, setHint] = useState("");
+  const [replaceSummaries, setReplaceSummaries] = useState(false);
+  const [replaceOutline, setReplaceOutline] = useState(false);
 
   const chapters = useMemo(() => {
     const outline = project.outline?.chapters
       ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
       : [];
     return outline.map((ch) => {
-      const body =
-        project.chapters.find((c) => c.chapterId === ch.id)?.content || "";
-      return { id: ch.id, order: ch.order, title: ch.title, content: body };
+      const row = project.chapters.find((c) => c.chapterId === ch.id);
+      return {
+        id: ch.id,
+        order: ch.order,
+        title: ch.title,
+        content: row?.content || "",
+        summary: row?.summary || "",
+      };
     });
   }, [project]);
 
@@ -56,37 +56,39 @@ export function GlobalFindReplace({
         chapterId: ch.id,
         order: ch.order,
         title: ch.title,
-        count: countOccurrences(ch.content, q),
+        count:
+          countOccurrences(ch.content, q) +
+          (replaceSummaries ? countOccurrences(ch.summary, q) : 0),
       }))
       .filter((h) => h.count > 0);
-  }, [chapters, find]);
+  }, [chapters, find, replaceSummaries]);
 
   const totalHits = hits.reduce((n, h) => n + h.count, 0);
+  const reminders = useMemo(
+    () => collectReplaceReminders(project, find),
+    [project, find]
+  );
 
   function doReplaceAll() {
     if (!find) {
       setHint("请输入查找内容");
       return;
     }
-    if (!hits.length) {
+    if (!hits.length && !replaceOutline) {
       setHint("未找到匹配");
       return;
     }
     if (
       !confirm(
-        `将在 ${hits.length} 章中替换共 ${totalHits} 处「${find}」→「${replace}」，是否继续？`
+        `将替换「${find}」→「${replace}」${hits.length ? `（${hits.length} 章 / ${totalHits} 处正文${replaceSummaries ? "+摘要" : ""}）` : ""}${replaceOutline ? "，并改大纲标题/摘要/关键点" : ""}，是否继续？`
       )
     ) {
       return;
     }
-    const updates = chapters
-      .filter((ch) => ch.content.includes(find))
-      .map((ch) => ({
-        chapterId: ch.id,
-        content: ch.content.split(find).join(replace),
-      }));
-    onReplace(updates);
-    setHint(`已替换 ${totalHits} 处，涉及 ${updates.length} 章`);
+    onReplace(find, replace, { replaceSummaries, replaceOutline });
+    setHint(
+      `已替换${totalHits ? ` ${totalHits} 处` : ""}${replaceOutline ? "，并已改大纲" : ""}`
+    );
   }
 
   return (
@@ -116,6 +118,24 @@ export function GlobalFindReplace({
           />
         </div>
       </div>
+      <label className="flex items-start gap-2 text-sm text-[var(--text-muted)] mb-2 cursor-pointer">
+        <input
+          type="checkbox"
+          className="!w-auto mt-0.5"
+          checked={replaceSummaries}
+          onChange={(e) => setReplaceSummaries(e.target.checked)}
+        />
+        <span>同时替换章节摘要</span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-[var(--text-muted)] mb-2 cursor-pointer">
+        <input
+          type="checkbox"
+          className="!w-auto mt-0.5"
+          checked={replaceOutline}
+          onChange={(e) => setReplaceOutline(e.target.checked)}
+        />
+        <span>同时替换大纲（标题/摘要/关键点）</span>
+      </label>
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <button
           type="button"
@@ -133,6 +153,12 @@ export function GlobalFindReplace({
             : "输入后显示命中统计"}
         </span>
       </div>
+      {reminders.length ? (
+        <p className="text-xs text-[var(--warning)] m-0 mb-2">
+          人物卡/伏笔中也有旧名，请手动改：
+          {reminders.map((r) => `${r.kind === "character" ? "人物" : "伏笔"}「${r.label}」`).join("、")}
+        </p>
+      ) : null}
       {hint ? (
         <p className="text-xs text-[var(--accent)] m-0 mb-2">{hint}</p>
       ) : null}

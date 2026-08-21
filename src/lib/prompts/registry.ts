@@ -216,7 +216,8 @@ function assembleGeneral(
                 payload.chapter as never,
                 payload.previousChapterSnippet as string | undefined,
                 payload.projectTags as string[] | undefined,
-                payload.priorBlock as string | undefined
+                payload.priorBlock as string | undefined,
+                payload.volumes as never
               )
             : task === "continue"
               ? generalContinueUser(payload as never)

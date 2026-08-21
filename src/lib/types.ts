@@ -211,6 +211,22 @@ export interface ChapterContent {
   touchedThreads?: string[];
   /** 正文与锁定设定的可能冲突（只提示，不阻断） */
   canonWarnings?: string[];
+  /** 本章摘要最近一次生成失败；保留旧摘要并允许重试 */
+  summaryFailed?: boolean;
+}
+
+/** 人物一致性检查结果（自动/手动共用，写入项目以便切 tab 不丢） */
+export interface ConsistencyReport {
+  at: string;
+  score: number;
+  summary: string;
+  issues: {
+    severity: string;
+    detail: string;
+    suggestion: string;
+    character?: string;
+    chapter?: string;
+  }[];
 }
 
 export type PlotThreadStatus = "planted" | "active" | "resolved";
@@ -275,6 +291,8 @@ export interface NovelProject {
   plotThreads?: PlotThread[];
   /** 全书生成队列（中断后可续跑） */
   bookJob?: BookGenerationJob | null;
+  /** 最近一次一致性检查（自动/手动同源） */
+  lastConsistencyReport?: ConsistencyReport | null;
   promptPackId?: string;
 }
 
@@ -537,6 +555,7 @@ export function normalizeProject(p: NovelProject): NovelProject {
     archivedActTags: Array.isArray(p.archivedActTags) ? p.archivedActTags : [],
     plotThreads: Array.isArray(p.plotThreads) ? p.plotThreads : [],
     bookJob: p.bookJob ?? null,
+    lastConsistencyReport: p.lastConsistencyReport ?? null,
     settings: {
       ...createDefaultSettings(),
       ...settings,

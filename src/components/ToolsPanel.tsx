@@ -18,12 +18,16 @@ import {
   exportChaptersToRepo,
   pickChapterRepoRoot,
 } from "@/lib/export-chapters";
+import { applyGlobalReplace } from "@/lib/find-replace";
 import {
   downloadFullBackup,
   getAutoBackup,
+  getProject,
+  restoreFromAutoBackup,
   loadUsageStats,
   resetUsageStats,
 } from "@/lib/storage";
+import { buildConsistencyRows, toConsistencyReport } from "@/lib/consistency";
 import { loadAppPrefs, saveAppPrefs } from "@/lib/theme";
 import {
   pushChapterVersion,
@@ -50,17 +54,9 @@ export function ToolsPanel({
   const [autoConsistency, setAutoConsistency] = useState(
     () => loadAppPrefs().autoConsistencyAfterBookJob
   );
-  const [consistency, setConsistency] = useState<{
-    score: number;
-    summary: string;
-    issues: {
-      severity: string;
-      detail: string;
-      suggestion: string;
-      character?: string;
-      chapter?: string;
-    }[];
-  } | null>(null);
+  const [consistency, setConsistency] = useState(
+    () => project.lastConsistencyReport || null
+  );
   const [outlineCheck, setOutlineCheck] = useState<{
     covered: string[];
     missing: string[];
@@ -102,25 +98,7 @@ export function ToolsPanel({
     onError("");
     onBusy("consistency");
     try {
-      const rows = chapters
-        .map((ch) => {
-          const row = project.chapters.find((c) => c.chapterId === ch.id);
-          const summary = row?.summary || "";
-          const body = row?.content || "";
-          if (!summary.trim() && !body.trim()) return null;
-          return {
-            order: ch.order,
-            title: ch.title,
-            summary,
-            content: body,
-          };
-        })
-        .filter(Boolean) as {
-        order: number;
-        title: string;
-        summary: string;
-        content: string;
-      }[];
+      const rows = buildConsistencyRows(project);
       if (!rows.length) throw new Error("请先生成至少一章正文或摘要");
       const data = await postGenerate(
         attachOriginalContext(project, {
@@ -131,7 +109,9 @@ export function ToolsPanel({
           chapters: rows,
         })
       );
-      setConsistency(data.result);
+      const report = toConsistencyReport(data.result);
+      setConsistency(report);
+      onProjectUpdate((p) => ({ ...p, lastConsistencyReport: report }));
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -177,6 +157,37 @@ export function ToolsPanel({
       setBackupInfo(
         `最近自动备份：${new Date(b.at).toLocaleString("zh-CN")}，含 ${b.projects.length} 个项目`
       );
+  }
+
+  async function restoreAuto() {
+    const b = await getAutoBackup();
+    if (!b?.projects?.length) {
+      setBackupInfo("尚无自动备份可恢复");
+      return;
+    }
+    if (
+      !confirm(
+        `将用 ${new Date(b.at).toLocaleString("zh-CN")} 的自动备份覆盖当前全部项目（${b.projects.length} 部）。覆盖前会先把当前库做成恢复前快照。确定？`
+      )
+    ) {
+      return;
+    }
+    try {
+      const r = await restoreFromAutoBackup();
+      const next = getProject(project.id);
+      if (next) onProjectUpdate(() => next);
+      setBackupInfo(`已从自动备份恢复 ${r.restored} 个项目（恢复前快照已保存）`);
+      toast.success("已从自动备份恢复");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function openBackupFolder() {
+    const bridge = getDesktop();
+    if (!bridge?.openBackupDir) return;
+    const r = await bridge.openBackupDir();
+    if (!r.ok) onError(r.message || "无法打开备份文件夹");
   }
 
   function doExport(fmt: ExportFormat) {
@@ -264,35 +275,30 @@ export function ToolsPanel({
 
       <GlobalFindReplace
         project={project}
-        onReplace={(updates) => {
+        onReplace={(find, replace, opts) => {
           onProjectUpdate((p) => {
-            const chaptersNext = [...p.chapters];
-            for (const u of updates) {
-              const idx = chaptersNext.findIndex(
-                (c) => c.chapterId === u.chapterId
-              );
-              if (idx < 0) {
-                chaptersNext.push({
-                  chapterId: u.chapterId,
-                  title: "",
-                  content: u.content,
-                  status: "done",
+            const applied = applyGlobalReplace(p, find, replace, opts);
+            const chaptersNext = applied.chapters.map((row) => {
+              const old = p.chapters.find((c) => c.chapterId === row.chapterId);
+              if (old?.content?.trim() && old.content !== row.content) {
+                return {
+                  ...pushChapterVersion(old, "global-replace"),
+                  content: row.content,
+                  summary: row.summary,
+                  status: row.content ? ("done" as const) : ("idle" as const),
                   updatedAt: new Date().toISOString(),
-                });
-                continue;
+                };
               }
-              let row = chaptersNext[idx];
-              if (row.content?.trim()) {
-                row = pushChapterVersion(row, "global-replace");
-              }
-              chaptersNext[idx] = {
+              return {
                 ...row,
-                content: u.content,
-                status: u.content ? "done" : "idle",
                 updatedAt: new Date().toISOString(),
               };
-            }
-            return { ...p, chapters: chaptersNext };
+            });
+            return {
+              ...p,
+              chapters: chaptersNext,
+              outline: applied.outline ?? p.outline,
+            };
           });
         }}
       />
@@ -509,6 +515,15 @@ export function ToolsPanel({
         </label>
         {consistency ? (
           <div className="text-sm space-y-2">
+            <p className="m-0 text-xs text-[var(--text-muted)]">
+              上次检查：
+              {consistency.at
+                ? new Date(consistency.at).toLocaleString("zh-CN")
+                : "刚刚"}
+              {typeof consistency.score === "number"
+                ? ` · ${consistency.score}/10`
+                : ""}
+            </p>
             <p className="m-0">
               评分 <strong>{consistency.score}/10</strong> —{" "}
               {consistency.summary}
@@ -652,6 +667,22 @@ export function ToolsPanel({
           >
             查看自动备份
           </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => void restoreAuto()}
+          >
+            从自动备份恢复…
+          </button>
+          {desktop ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => void openBackupFolder()}
+            >
+              打开备份文件夹
+            </button>
+          ) : null}
         </div>
         {backupInfo ? (
           <p className="text-xs text-[var(--text-muted)] mt-2 mb-0">

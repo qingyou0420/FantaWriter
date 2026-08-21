@@ -11,6 +11,7 @@ describe("isTransientAiError", () => {
     expect(isTransientAiError(new Error("service unavailable"))).toBe(true);
     expect(isTransientAiError("request timeout")).toBe(true);
     expect(isTransientAiError("fetch failed")).toBe(true);
+    expect(isTransientAiError("中转长时间无响应（timeout）")).toBe(true);
   });
 
   it("does not retry auth or validation errors", () => {

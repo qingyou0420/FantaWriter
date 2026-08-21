@@ -74,6 +74,47 @@ ${tags ? `\n## 类型标签\n${tags}\n` : ""}
 }`;
 }
 
+function formatOutlineChapterLine(c: OutlineChapter): string {
+  return `${c.order}. 《${c.title}》— ${c.summary}${(c.tags || []).length ? ` [标签：${(c.tags || []).join("、")}]` : ""}`;
+}
+
+function volumeOneLiner(volume: Volume, chapters: OutlineChapter[]): string {
+  const summary = (volume.summary || "").trim();
+  if (summary) return `《${volume.title}》：${summary}`;
+  const sorted = [...chapters].sort((a, b) => a.order - b.order);
+  if (!sorted.length) return `《${volume.title}》：（无章节）`;
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (first.id === last.id) return `《${volume.title}》：${first.title}`;
+  return `《${volume.title}》：${first.title} … ${last.title}`;
+}
+
+/** 本卷详、他卷一行；无分卷或总章数 ≤ 15 时与逐章全量一致 */
+export function formatBookOutlineForChapter(
+  outline: Outline,
+  chapter: OutlineChapter,
+  volumes?: Volume[]
+): string {
+  const chapters = outline.chapters || [];
+  const vols = [...(volumes || [])].sort((a, b) => a.order - b.order);
+  if (vols.length <= 1 || chapters.length <= 15) {
+    return chapters.map(formatOutlineChapterLine).join("\n");
+  }
+  const currentVolId = chapter.volumeId || vols[0]?.id;
+  return vols
+    .map((vol) => {
+      const inVol = chapters.filter(
+        (c) => (c.volumeId || vols[0]?.id) === vol.id
+      );
+      if (vol.id === currentVolId) {
+        return inVol.map(formatOutlineChapterLine).join("\n");
+      }
+      return volumeOneLiner(vol, inVol);
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function generalChapterUser(
   characters: Character[],
   background: StoryBackground,
@@ -82,14 +123,10 @@ export function generalChapterUser(
   chapter: OutlineChapter,
   previousChapterSnippet?: string,
   projectTags?: string[],
-  priorBlock?: string
+  priorBlock?: string,
+  volumes?: Volume[]
 ): string {
-  const allChapters = outline.chapters
-    .map(
-      (c) =>
-        `${c.order}. 《${c.title}》— ${c.summary}${(c.tags || []).length ? ` [标签：${(c.tags || []).join("、")}]` : ""}`
-    )
-    .join("\n");
+  const allChapters = formatBookOutlineForChapter(outline, chapter, volumes);
   const tags = formatTagBlock(projectTags, chapter.tags, "chapter", "general");
   const intensity = chapter.intensityNote || chapter.eroticNote || "无";
   const lengthRule = chapterLengthRequirement(settings.length);

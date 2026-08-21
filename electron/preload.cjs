@@ -16,6 +16,9 @@ const desktopBridge = {
   openUpdateDir: () => ipcRenderer.invoke("app:openUpdateDir"),
   pickDirectory: (opts) => ipcRenderer.invoke("fs:pickDirectory", opts || {}),
   writeTextFiles: (payload) => ipcRenderer.invoke("fs:writeTextFiles", payload),
+  writeDesktopBackup: (payload) =>
+    ipcRenderer.invoke("fs:writeDesktopBackup", payload),
+  openBackupDir: () => ipcRenderer.invoke("app:openBackupDir"),
   getSuggestedExportRoot: () => ipcRenderer.invoke("fs:getSuggestedExportRoot"),
 };
 

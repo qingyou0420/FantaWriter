@@ -24,6 +24,7 @@ import { parseTouchedThreads, sliceAroundSelection } from "@/lib/prompts";
 import { createThrottledTextSink } from "@/lib/stream-throttle";
 import { EmptyState } from "@/components/EmptyState";
 import { loadReaderPrefs, saveReaderPrefs } from "@/lib/storage";
+import { chaptersGroupedByVolume } from "@/lib/volumes";
 import type { RewriteMode } from "@/lib/prompts";
 import {
   DEFAULT_READER_PREFS,
@@ -259,7 +260,8 @@ export function ChaptersReader({
     if (!content.includes(findQuery)) return;
     onContentChange(
       selectedOutline.id,
-      content.split(findQuery).join(replaceQuery)
+      content.split(findQuery).join(replaceQuery),
+      { pushVersion: "replace" }
     );
   }
 
@@ -577,6 +579,7 @@ export function ChaptersReader({
       const raw = String(data.summary || "").trim();
       onUpdateChapterMeta(selectedOutline.id, {
         summary: raw,
+        summaryFailed: false,
         touchedThreads: Array.isArray(data.touchedThreads)
           ? data.touchedThreads
           : parseTouchedThreads(raw),
@@ -678,35 +681,44 @@ export function ChaptersReader({
           </button>
         ) : null}
         <ul className="list-none p-0 m-0 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
-          {chapters.map((ch) => {
-            const c = project.chapters.find((x) => x.chapterId === ch.id);
-            const status = c?.status || "idle";
-            return (
-              <li key={ch.id}>
-                <button
-                  type="button"
-                  className={`w-full text-left px-2.5 py-2.5 rounded-lg border-0 cursor-pointer text-sm ${
-                    ch.id === selectedChapterId
-                      ? "bg-[var(--bg-hover)] text-[var(--text)]"
-                      : "bg-transparent text-[var(--text-muted)] hover:bg-[var(--bg)]"
-                  }`}
-                  onClick={() => onSelect(ch.id)}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium truncate">
-                      {ch.order}. {ch.title}
-                    </span>
-                    <StatusDot status={status} />
+          {(project.volumes || []).length > 1
+            ? chaptersGroupedByVolume(project).map(({ volume, chapters: volChs }) => (
+                <li key={volume.id}>
+                  <div className="text-xs font-medium text-[var(--text-muted)] px-2 py-1">
+                    {volume.title}
                   </div>
-                  {c?.touchedThreads?.length ? (
-                    <div className="text-[10px] text-[var(--accent)] mt-0.5 truncate">
-                      本章触及：{c.touchedThreads.join("、")}
-                    </div>
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
+                  <ul className="list-none p-0 m-0 space-y-0.5">
+                    {volChs.map((ch) => {
+                      const c = project.chapters.find((x) => x.chapterId === ch.id);
+                      return (
+                        <ChapterNavItem
+                          key={ch.id}
+                          ch={ch}
+                          status={c?.status || "idle"}
+                          words={countChapterChars(c?.content || "")}
+                          selected={ch.id === selectedChapterId}
+                          touched={c?.touchedThreads}
+                          onSelect={onSelect}
+                        />
+                      );
+                    })}
+                  </ul>
+                </li>
+              ))
+            : chapters.map((ch) => {
+                const c = project.chapters.find((x) => x.chapterId === ch.id);
+                return (
+                  <ChapterNavItem
+                    key={ch.id}
+                    ch={ch}
+                    status={c?.status || "idle"}
+                    words={countChapterChars(c?.content || "")}
+                    selected={ch.id === selectedChapterId}
+                    touched={c?.touchedThreads}
+                    onSelect={onSelect}
+                  />
+                );
+              })}
         </ul>
         <div className="shrink-0 mt-2 space-y-1">
           <button
@@ -828,7 +840,11 @@ export function ChaptersReader({
               ) : null}
 
               <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-[var(--text-muted)]">
-                {(selectedContent?.summary || "").trim() ? (
+                {selectedContent?.summaryFailed ? (
+                  <span className="text-[var(--danger-text)]">
+                    摘要生成失败，点击重试
+                  </span>
+                ) : (selectedContent?.summary || "").trim() ? (
                   <span className="line-clamp-2">
                     摘要：{selectedContent?.summary}
                   </span>
@@ -1204,6 +1220,7 @@ export function ChaptersReader({
                       className="!w-auto min-w-[8rem] flex-1"
                       value={rewriteInstruction}
                       onChange={(e) => setRewriteInstruction(e.target.value)}
+                      placeholder="自定义改写要求，如：改成雨夜"
                     />
                   ) : null}
                   <button
@@ -1228,6 +1245,7 @@ export function ChaptersReader({
                     onChange={(e) => setContinueHint(e.target.value)}
                     disabled={!!busy}
                     aria-label="续写方向"
+                    placeholder="续写方向（可空）"
                   />
                   <button
                     type="button"
@@ -1325,6 +1343,51 @@ export function ChaptersReader({
         </button>
       ) : null}
     </div>
+  );
+}
+
+function ChapterNavItem({
+  ch,
+  status,
+  words,
+  selected,
+  touched,
+  onSelect,
+}: {
+  ch: OutlineChapter;
+  status: ChapterContent["status"];
+  words: number;
+  selected: boolean;
+  touched?: string[];
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        className={`w-full text-left px-2.5 py-2.5 rounded-lg border-0 cursor-pointer text-sm ${
+          selected
+            ? "bg-[var(--bg-hover)] text-[var(--text)]"
+            : "bg-transparent text-[var(--text-muted)] hover:bg-[var(--bg)]"
+        }`}
+        onClick={() => onSelect(ch.id)}
+      >
+        <div className="flex items-center justify-between gap-1">
+          <span className="font-medium truncate">
+            {ch.order}. {ch.title}
+          </span>
+          <StatusDot status={status} />
+        </div>
+        <div className="text-[10px] text-[var(--text-muted)] mt-0.5 tabular-nums">
+          {words ? `${words.toLocaleString()} 字` : "未写"}
+        </div>
+        {touched?.length ? (
+          <div className="text-[10px] text-[var(--accent)] mt-0.5 truncate">
+            本章触及：{touched.join("、")}
+          </div>
+        ) : null}
+      </button>
+    </li>
   );
 }
 

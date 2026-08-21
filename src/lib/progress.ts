@@ -1,17 +1,15 @@
-import type { GenerationSettings, NovelProject } from "./types";
+import { LENGTH_RANGES, type GenerationSettings, type NovelProject } from "./types";
 
-/** 按篇幅设定的每章目标字数（中文字符，去空白） */
+/** 按篇幅设定的每章目标字数（中文字符，去空白）；区间单源 LENGTH_RANGES */
 export function chapterTargetChars(
   length: GenerationSettings["length"]
 ): { min: number; max: number; target: number } {
-  switch (length) {
-    case "short":
-      return { min: 800, max: 1500, target: 1200 };
-    case "long":
-      return { min: 3000, max: 5000, target: 4000 };
-    default:
-      return { min: 1500, max: 3000, target: 2200 };
-  }
+  const range = LENGTH_RANGES[length] || LENGTH_RANGES.medium;
+  return {
+    min: range.min,
+    max: range.max,
+    target: Math.round((range.min + range.max) / 2),
+  };
 }
 
 export function countChars(text: string): number {

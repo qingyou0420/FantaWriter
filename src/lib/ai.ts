@@ -207,10 +207,14 @@ function resolveApiKey(): string {
   return apiKey;
 }
 
+export const OPENAI_CLIENT_TIMEOUT_MS = 120_000;
+export const STREAM_IDLE_WATCHDOG_MS = 90_000;
+
 export function getClient() {
   return new OpenAI({
     apiKey: resolveApiKey(),
     baseURL: baseURL(),
+    timeout: OPENAI_CLIENT_TIMEOUT_MS,
   });
 }
 
@@ -284,6 +288,13 @@ export async function chatComplete(
   }
 }
 
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof Error && e.name === "AbortError") ||
+    (typeof DOMException !== "undefined" && e instanceof DOMException)
+  );
+}
+
 /** 流式补全：按增量文本回调；返回完整字符串 */
 export async function chatCompleteStream(
   system: string,
@@ -298,9 +309,26 @@ export async function chatCompleteStream(
   const client = getClient();
   const thinkingEnabled = process.env.DEEPSEEK_THINKING === "1";
   const model = getDefaultModel();
+  const controller = new AbortController();
+  const onOuterAbort = () => controller.abort();
+  let lastDeltaAt = Date.now();
+  let idleTimedOut = false;
+  const watchdog = setInterval(() => {
+    if (Date.now() - lastDeltaAt >= STREAM_IDLE_WATCHDOG_MS) {
+      idleTimedOut = true;
+      controller.abort();
+    }
+  }, 1000);
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      clearInterval(watchdog);
+      throw new DOMException("Aborted", "AbortError");
+    }
+    options.signal.addEventListener("abort", onOuterAbort);
+  }
 
   try {
-    // DeepSeek 扩展字段 thinking；stream 时用 any 规避 OpenAI SDK 重载
     const stream = (await client.chat.completions.create(
       {
         model,
@@ -315,7 +343,7 @@ export async function chatCompleteStream(
         ],
         thinking: { type: thinkingEnabled ? "enabled" : "disabled" },
       } as Parameters<typeof client.chat.completions.create>[0],
-      { signal: options?.signal }
+      { signal: controller.signal }
     )) as AsyncIterable<{
       choices?: { delta?: { content?: string | null } }[];
     }>;
@@ -325,21 +353,29 @@ export async function chatCompleteStream(
       if (options?.signal?.aborted) {
         throw new DOMException("Aborted", "AbortError");
       }
+      if (idleTimedOut) {
+        throw new Error("中转长时间无响应（timeout）");
+      }
       const delta = part.choices?.[0]?.delta?.content || "";
       if (delta) {
+        lastDeltaAt = Date.now();
         full += delta;
         options?.onDelta?.(delta, full);
       }
     }
+    if (idleTimedOut) {
+      throw new Error("中转长时间无响应（timeout）");
+    }
     if (!full) throw new Error("模型未返回内容");
     return full;
   } catch (e: unknown) {
-    if (
-      (e instanceof Error && e.name === "AbortError") ||
-      (typeof DOMException !== "undefined" && e instanceof DOMException)
-    ) {
-      throw e;
+    if (idleTimedOut) {
+      throw formatAiError(new Error("中转长时间无响应（timeout）"));
     }
+    if (isAbortError(e)) throw e;
     throw formatAiError(e);
+  } finally {
+    clearInterval(watchdog);
+    options?.signal?.removeEventListener("abort", onOuterAbort);
   }
 }

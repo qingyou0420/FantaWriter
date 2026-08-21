@@ -16,7 +16,7 @@ import {
   saveAppPrefs,
   type AppTheme,
 } from "@/lib/theme";
-import { downloadFullBackup } from "@/lib/storage";
+import { downloadFullBackup, importFullBackup } from "@/lib/storage";
 
 type Panel = "none" | "api" | "menu";
 
@@ -29,17 +29,20 @@ export function AppSettingsMenu({
   keyPrefix,
   usageHint,
   onImportClick,
+  onImportFullBackup,
   onHasKeyChange,
 }: {
   hasKey: boolean | null;
   keyPrefix: string;
   usageHint?: string;
   onImportClick: () => void;
+  onImportFullBackup?: () => void;
   onHasKeyChange?: () => void;
 }) {
   const toast = useToast();
   const desktop = isDesktopApp();
   const rootRef = useRef<HTMLDivElement>(null);
+  const backupFileRef = useRef<HTMLInputElement>(null);
 
   const [panel, setPanel] = useState<Panel>("none");
   const [theme, setTheme] = useState<AppTheme>(() => getStoredTheme());
@@ -450,6 +453,43 @@ export function AppSettingsMenu({
             >
               下载完整备份
             </button>
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => {
+                backupFileRef.current?.click();
+              }}
+            >
+              导入完整备份…
+            </button>
+            <input
+              ref={backupFileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  try {
+                    const result = importFullBackup(String(reader.result));
+                    toast.success(
+                      `已导入 ${result.imported} 个项目` +
+                        (result.skipped ? `，跳过 ${result.skipped} 个已有` : "")
+                    );
+                    setPanel("none");
+                    onImportFullBackup?.();
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error ? err.message : "导入备份失败"
+                    );
+                  }
+                };
+                reader.readAsText(f);
+              }}
+            />
             {usageHint ? (
               <div className="menu-footer-hint">{usageHint}</div>
             ) : null}

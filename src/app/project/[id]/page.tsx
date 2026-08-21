@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { BackgroundPanel } from "@/components/BackgroundPanel";
 import { BookJobBar } from "@/components/BookJobBar";
 import { ChaptersReader } from "@/components/ChaptersReader";
@@ -30,7 +30,16 @@ import {
 } from "@/lib/volumes";
 import { useProjectStore } from "@/hooks/useProjectStore";
 import { loadAppPrefs } from "@/lib/theme";
-import { readProjectTab, writeProjectTab } from "@/lib/storage";
+import {
+  downloadFullBackup,
+  readProjectTab,
+  writeProjectTab,
+} from "@/lib/storage";
+import { awaitChapterSummary } from "@/lib/chapter-summary";
+import {
+  buildConsistencyRows,
+  toConsistencyReport,
+} from "@/lib/consistency";
 import {
   buildPreviousContext,
   formatPlotThreadsForPrompt,
@@ -42,6 +51,7 @@ import {
   createBookJob,
   finalizeBookJobStatus,
   nextPendingItem,
+  normalizeStaleJob,
   patchBookJobItem,
   prepareJobForResume,
   prepareRetryErrors,
@@ -83,13 +93,14 @@ const TAB_LABEL: Record<Tab, string> = {
 
 
 export default function ProjectPage() {
-  const router = useRouter();
   const params = useParams();
   const id = String(params.id);
   const {
     project,
     update,
     saveHint,
+    saveError,
+    storageWarning,
     tagLibrary,
     styleLibrary,
     ready,
@@ -111,6 +122,11 @@ export default function ProjectPage() {
     () => !isOnboardingDismissed(id)
   );
   const [moreOpen, setMoreOpen] = useState(false);
+  const [saveDiagOpen, setSaveDiagOpen] = useState(false);
+  const [volumeSummaryDraft, setVolumeSummaryDraft] = useState<{
+    volumeId: string;
+    text: string;
+  } | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
     null
   );
@@ -129,6 +145,7 @@ export default function ProjectPage() {
       setStreamPreview(full);
     })
   );
+  const pendingSummaryRef = useRef<Promise<unknown> | null>(null);
 
   useEffect(() => {
     streamPreviewRef.current = streamPreview;
@@ -185,6 +202,16 @@ export default function ProjectPage() {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, id]);
+
+  useEffect(() => {
+    if (!ready || !project?.bookJob) return;
+    const job = project.bookJob as BookJob;
+    if (job.status === "running" && !jobControlRef.current.running) {
+      setBookJob(normalizeStaleJob(job));
+    }
+    // 只在加载完成时归位一次，避免把正在跑的队列打断
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, project?.id]);
 
   // 大纲首章：选中章无效或不存在时回落到第一项（渲染期派生，避免 effect setState）
   const outlineFirstId = project?.outline?.chapters[0]?.id ?? null;
@@ -480,6 +507,7 @@ export default function ProjectPage() {
           lore: prior.lore,
           loreEntries: fresh.lore,
           projectTags: fresh.tags || [],
+          volumes: fresh.volumes,
           existingText: extra?.existingText,
           instruction: extra?.instruction,
         });
@@ -515,7 +543,7 @@ export default function ProjectPage() {
       const openThreads = (fresh.plotThreads || [])
         .filter((t) => t.status !== "resolved" && t.title.trim())
         .map((t) => t.title.trim());
-      void postGenerate({
+      const summaryPromise = postGenerate({
         mode: "chapter_summary",
         writingBoard: fresh.writingBoard,
         content: text,
@@ -537,6 +565,7 @@ export default function ProjectPage() {
               ...chapters[idx],
               summary: raw,
               touchedThreads: touched,
+              summaryFailed: false,
             };
             return { ...p, chapters };
           });
@@ -548,10 +577,14 @@ export default function ProjectPage() {
               (c) => c.chapterId === liveChapter.id
             );
             if (idx < 0) return p;
-            chapters[idx] = { ...chapters[idx], summary: "" };
+            chapters[idx] = {
+              ...chapters[idx],
+              summaryFailed: true,
+            };
             return { ...p, chapters };
           });
         });
+      pendingSummaryRef.current = summaryPromise;
 
       update((p) => {
         const chapters = [...p.chapters];
@@ -752,6 +785,8 @@ export default function ProjectPage() {
         }
 
         if (result === "done") {
+          await awaitChapterSummary(pendingSummaryRef.current);
+          pendingSummaryRef.current = null;
           job = patchBookJobItem(job, item.chapterId, {
             status: "done",
             error: undefined,
@@ -874,16 +909,7 @@ export default function ProjectPage() {
     if (!prefs.autoConsistencyAfterBookJob) return;
     const live = getLive();
     if (!live?.outline?.chapters.length) return;
-    const rows = [...live.outline.chapters]
-      .sort((a, b) => a.order - b.order)
-      .map((ch) => {
-        const body =
-          live.chapters.find((c) => c.chapterId === ch.id)?.content || "";
-        return body
-          ? { order: ch.order, title: ch.title, content: body }
-          : null;
-      })
-      .filter(Boolean) as { order: number; title: string; content: string }[];
+    const rows = buildConsistencyRows(live);
     if (rows.length < 2) return;
     try {
       setBusy("consistency");
@@ -893,15 +919,16 @@ export default function ProjectPage() {
           writingBoard: live.writingBoard,
           characters: live.characters,
           background: live.background,
-          chapters: rows.slice(0, 12),
+          chapters: rows,
         })
       );
-      const score = data.result?.score;
-      const summary = data.result?.summary || "";
+      const report = toConsistencyReport(data.result);
+      update((p) => ({ ...p, lastConsistencyReport: report }));
+      const score = report.score;
       setInfo(
-        `全书生成完成 · 自动一致性 ${score != null ? `${score}/10` : ""}：${summary || "完成"}（可在「工具」页查看详情）`
+        `全书生成完成 · 自动一致性 ${score != null ? `${score}/10` : ""}：${report.summary || "完成"}（可在「工具」页查看详情）`
       );
-      setTab("tools");
+      goTab("tools");
     } catch {
       /* 自动检查失败不打断主流程 */
     } finally {
@@ -990,14 +1017,7 @@ export default function ProjectPage() {
       });
       const draft = String(res.summary || "").trim();
       if (!draft) throw new Error("未得到卷摘要");
-      const edited = window.prompt("确认或编辑本卷摘要后保存：", draft);
-      if (edited == null) return;
-      update((p) => ({
-        ...p,
-        volumes: (p.volumes || []).map((v) =>
-          v.id === volumeId ? { ...v, summary: edited.trim() } : v
-        ),
-      }));
+      setVolumeSummaryDraft({ volumeId, text: draft });
     } catch (e) {
       reportError(e, () => void generateVolumeSummary(volumeId));
     } finally {
@@ -1023,13 +1043,27 @@ export default function ProjectPage() {
             />
           </div>
           <span
-            className={`status-pill ${saveHint ? "status-pill-saving" : ""}`}
-            title={busy || saveHint || ""}
+            className={`status-pill ${
+              saveError
+                ? "status-pill-error"
+                : saveHint
+                  ? "status-pill-saving"
+                  : ""
+            }`}
+            title={saveError || busy || saveHint || ""}
           >
             {busy ? (
               <>
                 <span className="spinner" /> 生成中
               </>
+            ) : saveError ? (
+              <button
+                type="button"
+                className="status-pill-error-btn"
+                onClick={() => setSaveDiagOpen((v) => !v)}
+              >
+                保存失败
+              </button>
             ) : saveHint ? (
               saveHint
             ) : (
@@ -1166,6 +1200,44 @@ export default function ProjectPage() {
           </div>
         </div>
       </header>
+
+      {saveDiagOpen && saveError ? (
+        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
+          <div className="card !py-2.5 !px-3 text-sm border-[color-mix(in_srgb,var(--danger)_40%,transparent)] text-[var(--danger-text)]">
+            <p className="m-0 mb-2">{saveError}</p>
+            {storageWarning ? (
+              <p className="m-0 mb-2 text-xs text-[var(--text-muted)]">
+                {storageWarning}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  downloadFullBackup();
+                  setSaveDiagOpen(false);
+                }}
+              >
+                立即下载完整备份
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setSaveDiagOpen(false)}
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : storageWarning && !saveError ? (
+        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
+          <div className="card !py-2.5 !px-3 text-sm text-[var(--warning)]">
+            {storageWarning}
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
@@ -1336,6 +1408,24 @@ export default function ProjectPage() {
             }
             onGenerateVolumeSummary={(volumeId) =>
               void generateVolumeSummary(volumeId)
+            }
+            summaryDraft={volumeSummaryDraft}
+            onSaveSummaryDraft={() => {
+              if (!volumeSummaryDraft) return;
+              const { volumeId, text } = volumeSummaryDraft;
+              update((p) => ({
+                ...p,
+                volumes: (p.volumes || []).map((v) =>
+                  v.id === volumeId ? { ...v, summary: text.trim() } : v
+                ),
+              }));
+              setVolumeSummaryDraft(null);
+            }}
+            onDiscardSummaryDraft={() => setVolumeSummaryDraft(null)}
+            onEditSummaryDraft={(text) =>
+              setVolumeSummaryDraft((prev) =>
+                prev ? { ...prev, text } : prev
+              )
             }
             busy={busy}
           />

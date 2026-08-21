@@ -80,6 +80,11 @@ export type DesktopBridge = {
     root: string;
     files: { relativePath: string; content: string }[];
   }) => Promise<WriteTextFilesResult>;
+  writeDesktopBackup?: (payload: {
+    fileName: string;
+    content: string;
+  }) => Promise<{ ok: boolean; path?: string; kept?: string[]; message: string }>;
+  openBackupDir?: () => Promise<{ ok: boolean; path?: string; message?: string }>;
   getSuggestedExportRoot?: () => Promise<{
     ok: boolean;
     path: string;

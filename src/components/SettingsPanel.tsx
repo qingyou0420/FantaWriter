@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AiBox } from "@/components/AiBox";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
@@ -47,6 +47,24 @@ export function SettingsPanel({
 }) {
   const [seed, setSeed] = useState("");
   const [busy, setBusy] = useState(false);
+  const [thinkingEnabled, setThinkingEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) {
+          setThinkingEnabled(Boolean(data.env?.thinkingEnabled));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setThinkingEnabled(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function patch(partial: Partial<GenerationSettings>) {
     onChange({ ...settings, ...partial });
@@ -171,7 +189,11 @@ export function SettingsPanel({
         </Field>
         <Field
           label="正文温度"
-          hint="中转模型高温易水词。默认 0.9，不动则与现在一致。"
+          hint={
+            thinkingEnabled
+              ? "推理模式下模型忽略温度（ai.ts 不传 temperature）"
+              : "中转模型高温易水词。默认 0.9，不动则与现在一致。"
+          }
         >
           <div className="flex items-center gap-3">
             <input
@@ -180,6 +202,7 @@ export function SettingsPanel({
               max={1}
               step={0.05}
               value={settings.temperature ?? 0.9}
+              disabled={thinkingEnabled === true}
               onChange={(e) =>
                 patch({ temperature: Number(e.target.value) })
               }

@@ -208,6 +208,77 @@ export function OutlinePanel({
       ? sorted.find((c) => selected.has(c.id))?.tags || []
       : [];
 
+  function renderTocItem(ch: OutlineChapter) {
+    const isOver = dragOverId === ch.id && dragId !== ch.id;
+    const isDragging = dragId === ch.id;
+    const isActive = resolvedActiveId === ch.id;
+    return (
+      <li
+        key={ch.id}
+        className={`outline-toc-item ${isActive ? "active" : ""} ${
+          isOver ? "outline-drag-over" : ""
+        } ${isDragging ? "outline-dragging" : ""} ${
+          selected.has(ch.id) ? "selected" : ""
+        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (dragOverId !== ch.id) setDragOverId(ch.id);
+        }}
+        onDragLeave={() => {
+          if (dragOverId === ch.id) setDragOverId(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const from =
+            e.dataTransfer.getData("text/chapter-id") || dragId || "";
+          setDragOverId(null);
+          setDragId(null);
+          if (from) reorderByDrag(from, ch.id);
+        }}
+      >
+        <span
+          className="outline-drag-handle"
+          draggable
+          title="拖拽排序"
+          onDragStart={(e) => {
+            setDragId(ch.id);
+            e.dataTransfer.setData("text/chapter-id", ch.id);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragEnd={() => {
+            setDragId(null);
+            setDragOverId(null);
+          }}
+        >
+          ⠿
+        </span>
+        <label
+          className="inline-flex items-center shrink-0 cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selected.has(ch.id)}
+            onChange={() => toggleSelect(ch.id)}
+            className="!w-auto"
+          />
+        </label>
+        <button
+          type="button"
+          className="outline-toc-btn"
+          onClick={() => setActiveId(ch.id)}
+        >
+          <span className="outline-toc-order">第 {ch.order} 章</span>
+          <span className="outline-toc-title">{ch.title || "未命名"}</span>
+          {ch.summary ? (
+            <span className="outline-toc-preview">{ch.summary}</span>
+          ) : null}
+        </button>
+      </li>
+    );
+  }
+
   return (
     <div className="space-y-4 outline-workspace">
       {/* 总览 */}
@@ -338,78 +409,28 @@ export function OutlinePanel({
             章节目录 · {sorted.length}
           </div>
           <ul className="list-none p-0 m-0 space-y-0.5 max-h-[min(70vh,40rem)] overflow-y-auto">
-            {sorted.map((ch) => {
-              const isOver = dragOverId === ch.id && dragId !== ch.id;
-              const isDragging = dragId === ch.id;
-              const isActive = resolvedActiveId === ch.id;
-              return (
-                <li
-                  key={ch.id}
-                  className={`outline-toc-item ${isActive ? "active" : ""} ${
-                    isOver ? "outline-drag-over" : ""
-                  } ${isDragging ? "outline-dragging" : ""} ${
-                    selected.has(ch.id) ? "selected" : ""
-                  }`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    if (dragOverId !== ch.id) setDragOverId(ch.id);
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverId === ch.id) setDragOverId(null);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const from =
-                      e.dataTransfer.getData("text/chapter-id") || dragId || "";
-                    setDragOverId(null);
-                    setDragId(null);
-                    if (from) reorderByDrag(from, ch.id);
-                  }}
-                >
-                  <span
-                    className="outline-drag-handle"
-                    draggable
-                    title="拖拽排序"
-                    onDragStart={(e) => {
-                      setDragId(ch.id);
-                      e.dataTransfer.setData("text/chapter-id", ch.id);
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragEnd={() => {
-                      setDragId(null);
-                      setDragOverId(null);
-                    }}
-                  >
-                    ⠿
-                  </span>
-                  <label
-                    className="inline-flex items-center shrink-0 cursor-pointer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(ch.id)}
-                      onChange={() => toggleSelect(ch.id)}
-                      className="!w-auto"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="outline-toc-btn"
-                    onClick={() => setActiveId(ch.id)}
-                  >
-                    <span className="outline-toc-order">第 {ch.order} 章</span>
-                    <span className="outline-toc-title">
-                      {ch.title || "未命名"}
-                    </span>
-                    {ch.summary ? (
-                      <span className="outline-toc-preview">{ch.summary}</span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
+            {(volumes || []).length > 1
+              ? [...(volumes || [])]
+                  .sort((a, b) => a.order - b.order)
+                  .map((vol) => {
+                    const fallbackId = [...(volumes || [])].sort(
+                      (a, b) => a.order - b.order
+                    )[0]?.id;
+                    const items = sorted.filter(
+                      (c) => (c.volumeId || fallbackId) === vol.id
+                    );
+                    return (
+                      <li key={vol.id}>
+                        <div className="text-xs font-medium text-[var(--text-muted)] px-2 py-1">
+                          {vol.title}
+                        </div>
+                        <ul className="list-none p-0 m-0 space-y-0.5">
+                          {items.map((ch) => renderTocItem(ch))}
+                        </ul>
+                      </li>
+                    );
+                  })
+              : sorted.map((ch) => renderTocItem(ch))}
           </ul>
         </aside>
 
