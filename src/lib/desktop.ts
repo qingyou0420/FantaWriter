@@ -16,9 +16,23 @@ export type UpdateCheckResult = {
   hasUpdate: boolean;
   installerPath?: string;
   downloadUrl?: string;
+  assetApiUrl?: string;
   source?: string;
   message: string;
   searchedDirs?: string[];
+};
+
+export type UpdateSettings = {
+  hasGithubToken: boolean;
+  tokenPrefix: string;
+  repo: string;
+};
+
+export type DownloadUpdateResult = {
+  ok: boolean;
+  path?: string;
+  version?: string;
+  message: string;
 };
 
 export type PickDirectoryResult = {
@@ -38,7 +52,12 @@ export type DesktopBridge = {
   isDesktop: true;
   platform: string;
   getAppInfo: () => Promise<DesktopAppInfo>;
+  getUpdateSettings?: () => Promise<UpdateSettings>;
+  setGithubUpdateToken?: (token: string) => Promise<{ ok: boolean; hasGithubToken: boolean }>;
   checkUpdate: () => Promise<UpdateCheckResult>;
+  downloadUpdate?: (
+    opts: { downloadUrl?: string; assetApiUrl?: string; version?: string } | string
+  ) => Promise<DownloadUpdateResult>;
   installUpdate: (installerPath: string) => Promise<{ ok: boolean; message: string }>;
   pickInstaller: () => Promise<{ ok: boolean; path?: string; version?: string; message: string }>;
   openPath: (target: string) => Promise<{ ok: boolean; message?: string }>;

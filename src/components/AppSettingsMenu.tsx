@@ -52,6 +52,10 @@ export function AppSettingsMenu({
   const [appInfo, setAppInfo] = useState<DesktopAppInfo | null>(null);
   const [update, setUpdate] = useState<UpdateCheckResult | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [ghToken, setGhToken] = useState("");
+  const [ghTokenSaved, setGhTokenSaved] = useState(false);
+  const [ghTokenPrefix, setGhTokenPrefix] = useState("");
+  const [ghTokenSaving, setGhTokenSaving] = useState(false);
 
   useEffect(() => {
     setTheme(getStoredTheme());
@@ -89,6 +93,16 @@ export function AppSettingsMenu({
       document.removeEventListener("keydown", onKey);
     };
   }, [panel]);
+
+  useEffect(() => {
+    if (panel !== "menu" || !desktop) return;
+    const bridge = getDesktop();
+    if (!bridge?.getUpdateSettings) return;
+    void bridge.getUpdateSettings().then((s) => {
+      setGhTokenSaved(s.hasGithubToken);
+      setGhTokenPrefix(s.tokenPrefix || "");
+    });
+  }, [panel, desktop]);
 
   useEffect(() => {
     if (panel !== "api") return;
@@ -157,16 +171,51 @@ export function AppSettingsMenu({
     }
   }
 
+  async function resolveInstallerPath(path?: string): Promise<string | null> {
+    const bridge = getDesktop();
+    if (!bridge) return null;
+    if (path) return path;
+    if (update?.installerPath) return update.installerPath;
+    if (update?.downloadUrl || update?.assetApiUrl) {
+      if (!bridge.downloadUpdate) {
+        toast.warning("当前桌面版不支持云端下载，请升级后重试");
+        return null;
+      }
+      toast.info("正在从 GitHub 下载安装包…");
+      const d = await bridge.downloadUpdate({
+        downloadUrl: update.downloadUrl,
+        assetApiUrl: update.assetApiUrl,
+        version: update.latest || undefined,
+      });
+      if (!d.ok || !d.path) {
+        toast.error(d.message || "下载失败");
+        return null;
+      }
+      setUpdate((prev) => (prev ? { ...prev, installerPath: d.path } : prev));
+      return d.path;
+    }
+    return null;
+  }
+
   async function installUpdate(path?: string) {
     const bridge = getDesktop();
-    const installer = path || update?.installerPath;
-    if (!bridge || !installer) {
+    if (!bridge) {
       toast.warning("无可用安装包");
       return;
     }
-    if (!confirm(`退出应用并安装？\n${installer}`)) return;
+    const remote = !path && !update?.installerPath && Boolean(update?.downloadUrl || update?.assetApiUrl);
+    const confirmMsg = remote
+      ? `从 GitHub 下载并安装 v${update?.latest}？应用将退出。`
+      : `退出应用并安装？\n${path || update?.installerPath || ""}`;
+    if (!confirm(confirmMsg)) return;
     setUpdateBusy(true);
     try {
+      const installer = await resolveInstallerPath(path);
+      if (!installer) {
+        setUpdateBusy(false);
+        if (!remote) toast.warning("无可用安装包");
+        return;
+      }
       const r = await bridge.installUpdate(installer);
       if (!r.ok) {
         toast.error(r.message);
@@ -175,6 +224,28 @@ export function AppSettingsMenu({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
       setUpdateBusy(false);
+    }
+  }
+
+  async function saveGithubToken() {
+    const bridge = getDesktop();
+    if (!bridge?.setGithubUpdateToken) {
+      toast.info("仅桌面版可保存更新令牌");
+      return;
+    }
+    setGhTokenSaving(true);
+    try {
+      const r = await bridge.setGithubUpdateToken(ghToken.trim());
+      if (!r.ok) throw new Error("保存失败");
+      setGhTokenSaved(r.hasGithubToken);
+      setGhTokenPrefix(ghToken.trim() ? ghToken.trim().slice(0, 4) : "");
+      setGhToken("");
+      toast.success(r.hasGithubToken ? "更新令牌已保存到本机" : "已清除更新令牌");
+      await checkUpdate(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGhTokenSaving(false);
     }
   }
 
@@ -194,7 +265,9 @@ export function AppSettingsMenu({
   }
 
   const showUpdateBtn = Boolean(
-    desktop && update?.hasUpdate && update.installerPath
+    desktop &&
+      update?.hasUpdate &&
+      (update.installerPath || update.downloadUrl || update.assetApiUrl)
   );
 
   return (
@@ -205,7 +278,7 @@ export function AppSettingsMenu({
           className="btn btn-primary btn-sm"
           disabled={updateBusy}
           onClick={() => void installUpdate()}
-          title={update?.installerPath}
+          title={update?.installerPath || update?.message}
         >
           {updateBusy ? (
             <>
@@ -305,6 +378,35 @@ export function AppSettingsMenu({
                 >
                   打开更新目录
                 </button>
+                <div className="field !mb-1 !mt-1 px-2">
+                  <label className="field-label">
+                    更新用 GitHub 令牌
+                    {ghTokenSaved ? (
+                      <span className="menu-item-meta">
+                        已保存 {ghTokenPrefix ? `${ghTokenPrefix}…` : ""}
+                      </span>
+                    ) : null}
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={ghTokenSaved ? "留空再保存即清除" : "私有仓 PAT"}
+                    value={ghToken}
+                    onChange={(e) => setGhToken(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="menu-item"
+                  disabled={ghTokenSaving || updateBusy}
+                  onClick={() => void saveGithubToken()}
+                >
+                  {ghTokenSaving ? "保存令牌…" : "保存更新令牌"}
+                </button>
+                <div className="menu-footer-hint">
+                  默认读 GitHub Releases（qingyou0420/fantasy-writer）。私有仓需
+                  Contents: Read 的 PAT，只存本机，不进 git。
+                </div>
                 {update?.hasUpdate ? (
                   <button
                     type="button"

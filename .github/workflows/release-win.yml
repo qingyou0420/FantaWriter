@@ -1,0 +1,122 @@
+# 打 tag vX.Y.Z 或手动 workflow_dispatch → Windows NSIS 安装包 → 该 tag 的 GitHub Release
+name: release-win
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release 标签，如 v2.0.2；留空则用 package.json 的 version"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Resolve release tag
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="v$(node -p "require('./package.json').version")"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
+            echo "非法 tag: $TAG（需要 vX.Y.Z）"
+            exit 1
+          fi
+          PKG="$(node -p "require('./package.json').version")"
+          TAG_VER="${TAG#v}"
+          if [ "$TAG_VER" != "$PKG" ]; then
+            echo "tag $TAG 与 package.json version $PKG 不一致，请先改版本再发版"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$PKG" >> "$GITHUB_OUTPUT"
+          echo "asset=Fantasy-Writer-Setup-${PKG}.exe" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Build standalone (strip .env.local)
+        run: |
+          npm run build
+          npm run prepare:standalone
+
+      - name: Refuse secrets in standalone
+        shell: bash
+        run: |
+          if [ -f .next/standalone/.env.local ] || [ -f .next/standalone/.env ]; then
+            echo "standalone 里出现 .env / .env.local，中止发版"
+            exit 1
+          fi
+
+      - name: Build NSIS installer
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          set +e
+          npx electron-builder --win nsis --publish never
+          code=$?
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          echo "首次打包失败，跳过签名重试（不阻断发版）"
+          unset CSC_LINK WIN_CSC_LINK CSC_KEY_PASSWORD WIN_CSC_KEY_PASSWORD
+          export CSC_IDENTITY_AUTO_DISCOVERY=false
+          npx electron-builder --win nsis --publish never -c.win.signAndEditExecutable=false
+
+      - name: Dual-publish sibling filename
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const { siblingSetupName } = require('./electron/setup-artifact.cjs');
+            const dir = 'dist-installer';
+            const names = fs.readdirSync(dir);
+            const primary = names.find((n) => /^Fantasy-Writer-Setup-\\d/.test(n) && n.endsWith('.exe'));
+            if (!primary) {
+              console.error('未找到 Fantasy-Writer-Setup-x.y.z.exe');
+              process.exit(1);
+            }
+            const sib = siblingSetupName(primary);
+            if (sib) {
+              fs.copyFileSync(path.join(dir, primary), path.join(dir, sib));
+              console.log('wrote', sib);
+            }
+            console.log('primary', primary);
+          "
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist-installer/Fantasy-Writer-Setup-*.exe
+            dist-installer/H-NoveList-Setup-*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

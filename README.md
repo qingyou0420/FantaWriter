@@ -54,6 +54,17 @@ npm run dev
 
 桌面安装包：`Fantasy-Writer-Setup-2.0.1.exe`。库存 1.8.1 客户端请用字节相同的 `H-NoveList-Setup-2.0.1.exe`（同一二进制，更新器只认旧文件名）。
 
+## 桌面端更新（GitHub Release）
+
+已安装的 Windows 客户端默认从本仓 **GitHub Releases** 检查更新、下载并安装。本地扫桌面/安装目录仍作为失败打底（`publish-update.mjs` 保留）。
+
+1. 把 `package.json` 的 `version` 改成要发的 `X.Y.Z`，合进 GitHub  
+2. 打标签并推送：`git tag vX.Y.Z && git push origin vX.Y.Z`（也可在 Actions 里 `workflow_dispatch`，标签须与 `version` 一致）  
+3. `release-win` workflow 在 `windows-latest` 打 NSIS 包，用 `GITHUB_TOKEN` 上传到该 tag 的 Release；主资源为 `Fantasy-Writer-Setup-x.y.z.exe`（并附兼容名 `H-NoveList-Setup-x.y.z.exe`）。CI 无证书时跳过签名，不阻断发版。`.env.local` / 密钥不会打进包  
+4. 已装客户端：设置 → **检查更新**。有新版本可 **一键安装**（先下载到临时目录，再走原安装流程）
+
+仓 `qingyou0420/fantasy-writer` 是**私有**的，未登录拉不到 Release。请在本机「设置 → 更新用 GitHub 令牌」填写具有 **Contents: Read** 的 PAT（classic 也可用 `repo`）。令牌只写入 `%APPDATA%\h-novelist\config.env`，**不要**提交到 git，也不要写进 `.env.local`。没令牌时仍会试无鉴权，失败再回退本地目录扫描。
+
 ## 推荐工作流
 
 1. **新建项目**，选择常规或色情写作台；旧稿用「原作焕新」粘贴原文，不要从零遍构  

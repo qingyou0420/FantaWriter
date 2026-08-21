@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **桌面更新走 GitHub Release**：打 `vX.Y.Z` tag 或手动跑 `release-win` Actions，在 Windows 上打 NSIS 包并上传到该 tag 的 Release（`Fantasy-Writer-Setup-x.y.z.exe`）。已装客户端默认读 latest release；私有仓需在设置里填「更新用 GitHub 令牌」（只存本机）。云端有新版本时可下载到临时目录再一键安装。本地目录扫描与 `publish-update.mjs` 仍作失败打底。
 - **原作焕新**：项目可挂原作底稿并锁定设定（名称 + 一句话）。人物扩写、大纲、正文生成会注入原文摘录与用户锁定条目；违规检测按锁定说明判断。从零开写的旧项目不受影响。首页新建可选「原作焕新」，书内「设定 → 原作焕新」。
 - **写进仓库**：把当前章或全部已完成章（`status === "done"`）写成 `novels/<书名>/ch-<chapterId>.md`。桌面端写入本地所选目录（同章再导出覆盖）；浏览器下载 Markdown / ZIP。导出根目录与子目录存在本机 AppPrefs。全书 MD/TXT/EPUB/DOC 导出不变。
 
