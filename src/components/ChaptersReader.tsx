@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CastPicker } from "@/components/CastPicker";
 import { TagSelector } from "@/components/TagEditor";
 import { useToast } from "@/components/Toast";
 import {
@@ -12,10 +13,19 @@ import {
 import { exportBook } from "@/lib/export-book";
 import { attachOriginalContext } from "@/lib/original";
 import { exportChaptersToRepo } from "@/lib/export-chapters";
+import {
+  chapterBelowMin,
+  continueLengthRequirement,
+  countChapterChars,
+  expandTargetChars,
+  lengthRangeFor,
+} from "@/lib/length";
+import { sliceAroundSelection } from "@/lib/prompts";
 import { loadReaderPrefs, saveReaderPrefs } from "@/lib/storage";
 import type { RewriteMode } from "@/lib/prompts";
 import {
   DEFAULT_READER_PREFS,
+  LENGTH_LABELS,
   pushChapterVersion,
   type ChapterContent,
   type ChapterScene,
@@ -50,6 +60,7 @@ export function ChaptersReader({
   onGenerateChapter,
   onContentChange,
   onChapterTagsChange,
+  onChapterCastChange,
   onGenerateAll,
   onCancel,
   onUpdateChapterMeta,
@@ -65,6 +76,7 @@ export function ChaptersReader({
   onGenerateChapter: (ch: OutlineChapter) => void;
   onContentChange: (chapterId: string, content: string, opts?: { pushVersion?: string }) => void;
   onChapterTagsChange: (chapterId: string, tags: string[]) => void;
+  onChapterCastChange: (chapterId: string, castIds: string[]) => void;
   onGenerateAll: () => void;
   onCancel: () => void;
   onUpdateChapterMeta: (
@@ -85,6 +97,7 @@ export function ChaptersReader({
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [rewriteMode, setRewriteMode] = useState<RewriteMode>("polish");
   const [rewriteInstruction, setRewriteInstruction] = useState("");
+  const [expandScale, setExpandScale] = useState<1.5 | 2>(2);
   const [continueHint, setContinueHint] = useState("");
   const [selection, setSelection] = useState({ start: 0, end: 0, text: "" });
   const [localStreaming, setLocalStreaming] = useState("");
@@ -164,9 +177,11 @@ export function ChaptersReader({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedOutline, busy, onGenerateChapter]);
-  const wordCount = (selectedContent?.content || "").replace(/\s/g, "").length;
-  const chapterTagCount = selectedOutline?.tags?.length || 0;
   const content = selectedContent?.content || "";
+  const wordCount = countChapterChars(content);
+  const lengthRange = lengthRangeFor(project.settings.length);
+  const needsFill = !!content && chapterBelowMin(content, project.settings.length);
+  const chapterTagCount = selectedOutline?.tags?.length || 0;
   const displayContent =
     busy?.startsWith("chapter:") ||
     busy === "rewrite" ||
@@ -261,17 +276,30 @@ export function ChaptersReader({
     abortRef.current = ac;
     try {
       // push version via parent when applying - we'll replace selection
+      const prior = buildPreviousContext(project, selectedOutline.order);
+      const windowCtx = sliceAroundSelection(content, start, end, 2000);
+      const selectedChars = countChapterChars(selectedText);
       const rewritten = await streamGenerate(
         attachOriginalContext(project, {
           mode: "rewrite",
           writingBoard: project.writingBoard,
           rewriteMode,
           selectedText,
-          fullContext: content,
+          fullContext: windowCtx,
           instruction: rewriteInstruction,
           characters: project.characters,
           background: project.background,
           settings: project.settings,
+          priorBlock: prior.priorBlock,
+          previousSummaries: prior.previousSummaries,
+          chapter: selectedOutline,
+          outline: project.outline,
+          loreEntries: project.lore,
+          expandScale: rewriteMode === "expand" ? expandScale : undefined,
+          expandTargetChars:
+            rewriteMode === "expand"
+              ? expandTargetChars(selectedChars, expandScale)
+              : undefined,
         }),
         {
           signal: ac.signal,
@@ -319,13 +347,16 @@ export function ChaptersReader({
           background: project.background,
           settings: project.settings,
           chapter: selectedOutline,
+          outline: project.outline,
           previousSummary: prior.previousSummaries,
+          previousSummaries: prior.previousSummaries,
           characterStateCard: prior.characterStateCard,
           plotThreads:
             prior.plotThreads ||
             formatPlotThreadsForPrompt(project.plotThreads),
           lore: prior.lore,
           priorBlock: prior.priorBlock,
+          loreEntries: project.lore,
         }),
         {
           signal: ac.signal,
@@ -462,6 +493,85 @@ export function ChaptersReader({
     } finally {
       onBusy(null);
       abortRef.current = null;
+    }
+  }
+
+  async function fillToLength() {
+    if (!selectedOutline || !content.trim()) return;
+    onError("");
+    onBusy("continue");
+    const base = content;
+    setLocalStreaming(base);
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    try {
+      const prior = buildPreviousContext(project, selectedOutline.order);
+      const instruction = continueLengthRequirement(
+        project.settings,
+        countChapterChars(base)
+      );
+      const extra = await streamGenerate(
+        attachOriginalContext(project, {
+          mode: "continue",
+          writingBoard: project.writingBoard,
+          existingText: base,
+          instruction,
+          characters: project.characters,
+          background: project.background,
+          settings: project.settings,
+          chapter: selectedOutline,
+          outline: project.outline,
+          previousSummary: prior.previousSummaries,
+          previousSummaries: prior.previousSummaries,
+          characterStateCard: prior.characterStateCard,
+          plotThreads:
+            prior.plotThreads ||
+            formatPlotThreadsForPrompt(project.plotThreads),
+          lore: prior.lore,
+          priorBlock: prior.priorBlock,
+          loreEntries: project.lore,
+        }),
+        {
+          signal: ac.signal,
+          onDelta: (_d, full) => setLocalStreaming(base + full),
+        }
+      );
+      onContentChange(selectedOutline.id, base + extra, {
+        pushVersion: "continue",
+      });
+      setLocalStreaming("");
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        onError("已取消补足");
+      } else {
+        onError(e instanceof Error ? e.message : String(e));
+      }
+      setLocalStreaming("");
+    } finally {
+      onBusy(null);
+      abortRef.current = null;
+    }
+  }
+
+  async function regenerateSummary() {
+    if (!selectedOutline || !content.trim()) return;
+    onError("");
+    onBusy("chapter_summary");
+    try {
+      const data = await postGenerate({
+        mode: "chapter_summary",
+        writingBoard: project.writingBoard,
+        content,
+        title: selectedOutline.title,
+      });
+      onUpdateChapterMeta(selectedOutline.id, {
+        summary: String(data.summary || "").trim(),
+      });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      onBusy(null);
     }
   }
 
@@ -629,7 +739,7 @@ export function ChaptersReader({
                 </h2>
                 <span className="text-xs text-[var(--text-muted)] tabular-nums">
                   {wordCount > 0
-                    ? `${wordCount.toLocaleString()} 字`
+                    ? `${wordCount.toLocaleString()} 字 · 目标 ${lengthRange.min}–${lengthRange.max}`
                     : "暂无正文"}
                 </span>
                 {busy ? (
@@ -660,6 +770,52 @@ export function ChaptersReader({
                     "生成本章"
                   )}
                 </button>
+              </div>
+
+              {needsFill ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--warning)]">
+                  <span>
+                    未达 {LENGTH_LABELS[project.settings.length]} 下限（{lengthRange.min} 字）
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!!busy}
+                    onClick={() => void fillToLength()}
+                  >
+                    {busy === "continue" ? "补足中…" : "一键补足"}
+                  </button>
+                </div>
+              ) : null}
+
+              {selectedContent?.canonWarnings?.length ? (
+                <div className="mt-2 rounded-md border border-[var(--warning)]/50 bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--warning)]">
+                  与锁定设定可能冲突：{selectedContent.canonWarnings.join("；")}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-[var(--text-muted)]">
+                {(selectedContent?.summary || "").trim() ? (
+                  <span className="line-clamp-2">
+                    摘要：{selectedContent?.summary}
+                  </span>
+                ) : content.trim() ? (
+                  <span>无摘要</span>
+                ) : null}
+                {content.trim() ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={!!busy}
+                    onClick={() => void regenerateSummary()}
+                  >
+                    {busy === "chapter_summary"
+                      ? "生成摘要中…"
+                      : selectedContent?.summary
+                        ? "重新生成摘要"
+                        : "生成摘要"}
+                  </button>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center gap-1 mt-2">
@@ -937,6 +1093,13 @@ export function ChaptersReader({
                     label="本章额外标签"
                     hint="勾选后重新生成时会强制写出这些行为。"
                   />
+                  <CastPicker
+                    characters={project.characters}
+                    castIds={selectedOutline.castIds}
+                    onChange={(ids) =>
+                      onChapterCastChange(selectedOutline.id, ids)
+                    }
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -990,6 +1153,19 @@ export function ChaptersReader({
                       </option>
                     ))}
                   </select>
+                  {rewriteMode === "expand" ? (
+                    <select
+                      className="!w-auto"
+                      value={String(expandScale)}
+                      onChange={(e) =>
+                        setExpandScale(Number(e.target.value) as 1.5 | 2)
+                      }
+                      disabled={!!busy}
+                    >
+                      <option value="1.5">1.5×</option>
+                      <option value="2">2×</option>
+                    </select>
+                  ) : null}
                   {rewriteMode === "custom" ? (
                     <input
                       className="!w-auto min-w-[8rem] flex-1"

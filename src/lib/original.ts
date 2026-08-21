@@ -4,6 +4,7 @@ import type {
   CanonKind,
   Character,
   LockedCanonFact,
+  LoreEntry,
   NovelProject,
   OriginalManuscript,
 } from "./types";
@@ -13,7 +14,8 @@ export const ORIGINAL_GROUNDING_HEADING = "原作摘录（须忠实）";
 export const LOCKED_CANON_HEADING = "锁定设定（原作焕新，硬性）";
 export const ORIGINAL_SYSTEM_RULE = `你正在「原作焕新」：扩写/润色旧稿，不是从零编造。
 必须遵守「锁定设定」：不得改写身份、物种、性别、从属关系。锁定条目优先于常识推断。
-生成内容不得与作者写下的锁定说明冲突。`;
+生成内容不得与作者写下的锁定说明冲突。
+忠实的是情节、身份、事实与锁定设定；文笔、节奏、句式、描写以文风指南和写作参数为准，允许并鼓励重写原句，禁止照搬原稿里需要焕新的写法。`;
 
 const CANON_KIND_LABEL: Record<CanonKind, string> = {
   character: "人物",
@@ -58,27 +60,43 @@ export function formatLockedCanon(facts?: LockedCanonFact[] | null): string {
     .join("\n");
 }
 
+function findAllIndexes(text: string, term: string): number[] {
+  const out: number[] = [];
+  if (!term.trim()) return out;
+  let from = 0;
+  while (from < text.length) {
+    const i = text.indexOf(term, from);
+    if (i < 0) break;
+    out.push(i);
+    from = i + Math.max(1, term.length);
+  }
+  return out;
+}
+
 function windowsAround(
   text: string,
   term: string,
   radius = 280,
-  limit = 3
+  limit = 3,
+  preferNear?: number
 ): { start: number; end: number }[] {
-  const out: { start: number; end: number }[] = [];
-  if (!term.trim()) return out;
-  let from = 0;
-  let found = 0;
-  while (found < limit) {
-    const i = text.indexOf(term, from);
-    if (i < 0) break;
-    out.push({
-      start: Math.max(0, i - radius),
-      end: Math.min(text.length, i + term.length + radius),
-    });
-    from = i + term.length;
-    found += 1;
-  }
-  return out;
+  const hits = findAllIndexes(text, term);
+  if (!hits.length) return [];
+  const ranked =
+    preferNear == null
+      ? hits
+      : [...hits].sort(
+          (a, b) => Math.abs(a - preferNear) - Math.abs(b - preferNear)
+        );
+  const nearby =
+    preferNear == null
+      ? ranked
+      : ranked.filter((i) => Math.abs(i - preferNear) <= text.length * 0.35);
+  const picked = (nearby.length ? nearby : ranked.slice(0, 1)).slice(0, limit);
+  return picked.map((i) => ({
+    start: Math.max(0, i - radius),
+    end: Math.min(text.length, i + term.length + radius),
+  }));
 }
 
 function mergeWindows(
@@ -116,22 +134,36 @@ export function canonSearchKeys(facts?: LockedCanonFact[] | null): string[] {
 export function selectOriginalExcerpts(
   text: string,
   keys: string[] = [],
-  maxChars = ORIGINAL_EXCERPT_MAX
+  maxChars = ORIGINAL_EXCERPT_MAX,
+  opts?: { chapterOrder?: number; chapterCount?: number }
 ): string {
   const clean = text.replace(/\r\n/g, "\n").trim();
   if (!clean) return "";
   if (clean.length <= maxChars) return clean;
 
+  const order = Math.max(1, Number(opts?.chapterOrder) || 1);
+  const total = Math.max(1, Number(opts?.chapterCount) || 1);
+  const ratio = Math.min(1, Math.max(0, (order - 0.5) / total));
+  const focus = Math.floor(clean.length * ratio);
+  const regionRadius = 700;
   const windows: { start: number; end: number }[] = [
-    { start: 0, end: Math.min(1400, clean.length) },
+    {
+      start: Math.max(0, focus - regionRadius),
+      end: Math.min(clean.length, focus + regionRadius),
+    },
   ];
   for (const key of keys.filter(Boolean)) {
-    windows.push(...windowsAround(clean, key));
+    windows.push(...windowsAround(clean, key, 280, 3, focus));
   }
   const merged = mergeWindows(windows);
-  const parts: string[] = [];
+  const ranked = [...merged].sort((a, b) => {
+    const da = Math.abs((a.start + a.end) / 2 - focus);
+    const db = Math.abs((b.start + b.end) / 2 - focus);
+    return da - db;
+  });
+  const chosen: { start: number; end: number }[] = [];
   let used = 0;
-  for (const w of merged) {
+  for (const w of ranked) {
     const slice = clean.slice(w.start, w.end).trim();
     if (!slice) continue;
     const chunk =
@@ -139,17 +171,35 @@ export function selectOriginalExcerpts(
       slice +
       (w.end < clean.length ? "…" : "");
     if (used + chunk.length > maxChars) {
+      const nearFocus =
+        Math.abs((w.start + w.end) / 2 - focus) <= clean.length * 0.35;
       const remain = maxChars - used;
-      if (remain > 80) parts.push(chunk.slice(0, remain) + "…");
+      if (nearFocus && remain > 80) {
+        chosen.push({
+          start: w.start,
+          end: Math.min(w.end, w.start + remain),
+        });
+      }
       break;
     }
-    parts.push(chunk);
+    chosen.push(w);
     used += chunk.length + 2;
   }
-  if (!parts.length) {
+  if (!chosen.length) {
     return sampleTextForStyleLearning(clean, maxChars);
   }
-  return parts.join("\n\n");
+  const parts: string[] = [];
+  for (const w of mergeWindows(chosen)) {
+    const slice = clean.slice(w.start, w.end).trim();
+    if (!slice) continue;
+    parts.push(
+      (w.start > 0 ? "…" : "") +
+        slice +
+        (w.end < clean.length ? "…" : "")
+    );
+  }
+  const joined = parts.join("\n\n");
+  return joined.length > maxChars ? joined.slice(0, maxChars) + "…" : joined;
 }
 
 export function queryFromGeneratePayload(
@@ -173,22 +223,53 @@ export function queryFromGeneratePayload(
   return parts.filter(Boolean).join("\n");
 }
 
+function addNameKeys(
+  keys: string[],
+  seen: Set<string>,
+  name?: string,
+  aliases?: string[]
+) {
+  for (const raw of [name, ...(aliases || [])]) {
+    const s = String(raw || "").trim();
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      keys.push(s);
+    }
+  }
+}
+
+/** 检索词只用名称/别名/世界观 keys，不再把章摘要整句切进去 */
 export function excerptKeysFromPayload(
   payload: Record<string, unknown>,
   facts?: LockedCanonFact[] | null
 ): string[] {
   const keys = [...canonSearchKeys(facts)];
-  const extra = queryFromGeneratePayload(payload)
-    .split(/[\s,，、;；\n]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 2);
   const seen = new Set(keys);
-  for (const k of extra) {
-    if (!seen.has(k)) {
-      seen.add(k);
-      keys.push(k);
+
+  const single = payload.character as
+    | { name?: string; aliases?: string[] }
+    | undefined;
+  addNameKeys(keys, seen, single?.name, single?.aliases);
+
+  const characters = payload.characters as
+    | { name?: string; aliases?: string[] }[]
+    | undefined;
+  if (Array.isArray(characters)) {
+    for (const c of characters) {
+      addNameKeys(keys, seen, c?.name, c?.aliases);
     }
   }
+
+  const loreEntries = (payload.loreEntries || payload.lore) as
+    | LoreEntry[]
+    | undefined;
+  if (Array.isArray(loreEntries)) {
+    for (const entry of loreEntries) {
+      if (!entry || typeof entry !== "object") continue;
+      addNameKeys(keys, seen, entry.title, entry.keys);
+    }
+  }
+
   return keys;
 }
 
@@ -196,12 +277,19 @@ export function buildOriginalGrounding(opts: {
   original?: OriginalManuscript | null;
   canon?: LockedCanonFact[] | null;
   queryKeys?: string[];
+  chapterOrder?: number;
+  chapterCount?: number;
 }): string {
   const locked = formatLockedCanon(opts.canon);
   const excerpts = hasOriginalText(opts.original)
     ? selectOriginalExcerpts(
         opts.original!.text,
-        opts.queryKeys || canonSearchKeys(opts.canon)
+        opts.queryKeys || canonSearchKeys(opts.canon),
+        ORIGINAL_EXCERPT_MAX,
+        {
+          chapterOrder: opts.chapterOrder,
+          chapterCount: opts.chapterCount,
+        }
       )
     : "";
   if (!locked && !excerpts) return "";
@@ -221,6 +309,7 @@ export function buildOriginalGrounding(opts: {
     parts.push(
       `## ${ORIGINAL_GROUNDING_HEADING}`,
       label ? `来源：${label}` : "来源：作者粘贴的原作底稿",
+      "下列摘录只供核对情节与事实，文笔须按文风指南重写，不要照抄原句。",
       excerpts
     );
   }
@@ -262,10 +351,16 @@ export function injectOriginalGrounding(
   if (!hasOriginalText(original) && !hasLockedCanon(canon)) {
     return assembled;
   }
+  const chapter = payload.chapter as { order?: number } | undefined;
+  const outline = payload.outline as { chapters?: unknown[] } | undefined;
   const block = buildOriginalGrounding({
     original,
     canon,
     queryKeys: excerptKeysFromPayload(payload, canon),
+    chapterOrder: chapter?.order,
+    chapterCount: Array.isArray(outline?.chapters)
+      ? outline.chapters.length
+      : undefined,
   });
   if (!block) return assembled;
   return {

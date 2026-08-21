@@ -17,7 +17,17 @@ import { ToolsPanel } from "@/components/ToolsPanel";
 import { VolumesPanel } from "@/components/VolumesPanel";
 import { LorePanel } from "@/components/LorePanel";
 import { OriginalPanel } from "@/components/OriginalPanel";
-import { attachOriginalContext } from "@/lib/original";
+import { attachOriginalContext, detectCanonViolations } from "@/lib/original";
+import {
+  chapterBelowMin,
+  continueLengthRequirement,
+  countChapterChars,
+} from "@/lib/length";
+import {
+  mergeVolumeChapters,
+  previousVolumeEnding,
+  volumeHasWrittenChapters,
+} from "@/lib/volumes";
 import { useProjectStore } from "@/hooks/useProjectStore";
 import { loadAppPrefs } from "@/lib/theme";
 import { readProjectTab, writeProjectTab } from "@/lib/storage";
@@ -26,6 +36,7 @@ import {
   formatPlotThreadsForPrompt,
   postGenerate,
   streamGenerate,
+  type GenerateRequest,
 } from "@/lib/api";
 import {
   createBookJob,
@@ -243,6 +254,7 @@ export default function ProjectPage() {
           learnedStyleId: style.id,
           learnedStyleGuide: style.styleGuide,
           learnedStyleName: style.name,
+          learnedStyleFingerprints: style.fingerprints || [],
         },
       };
     });
@@ -260,6 +272,7 @@ export default function ProjectPage() {
         learnedStyleId: "",
         learnedStyleGuide: "",
         learnedStyleName: "",
+        learnedStyleFingerprints: [],
       },
     }));
   }
@@ -303,6 +316,80 @@ export default function ProjectPage() {
         bookJob: null,
       });
       if (outline.chapters[0]) setSelectedChapterId(outline.chapters[0].id);
+      setTab("outline");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateVolumeOutline(volumeId: string, chapterCount: number) {
+    if (!project) return;
+    const volume = (project.volumes || []).find((v) => v.id === volumeId);
+    if (!volume) return;
+    const live = getLive() || project;
+    if (volumeHasWrittenChapters(live, volumeId)) {
+      if (
+        !confirm(
+          "本卷已有章节正文。重新生成本卷大纲会替换这些章，已写正文将丢失。确定继续？"
+        )
+      ) {
+        return;
+      }
+    }
+    setError("");
+    setBusy(`outline_volume:${volumeId}`);
+    try {
+      const fresh = getLive() || project;
+      const res = await postGenerate(
+        attachOriginalContext(fresh, {
+          mode: "outline_volume",
+          writingBoard: fresh.writingBoard,
+          characters: fresh.characters,
+          background: fresh.background,
+          settings: fresh.settings,
+          volume,
+          volumeId,
+          previousEnding: previousVolumeEnding(fresh, volumeId),
+          chapterCount,
+          projectTags: fresh.tags || [],
+        })
+      );
+      if (res.parseError) setError(String(res.parseError));
+      const incoming = res.outline as Outline;
+      incoming.chapters = (incoming.chapters || []).map((ch) => ({
+        ...ch,
+        tags: Array.isArray(ch.tags) ? ch.tags : [],
+        volumeId,
+      }));
+      update((p) => {
+        const nextChapters = mergeVolumeChapters(
+          p.outline?.chapters || [],
+          incoming.chapters,
+          volumeId,
+          p.volumes
+        );
+        const outline: Outline = {
+          premise: p.outline?.premise || incoming.premise || "",
+          endingNote: p.outline?.endingNote || incoming.endingNote || "",
+          chapters: nextChapters,
+          raw: incoming.raw,
+        };
+        const chapters = nextChapters.map((ch) => {
+          const old = p.chapters.find((c) => c.chapterId === ch.id);
+          return (
+            old || {
+              chapterId: ch.id,
+              title: ch.title,
+              content: "",
+              status: "idle" as const,
+              updatedAt: new Date().toISOString(),
+            }
+          );
+        });
+        return { ...p, outline, chapters };
+      });
       setTab("outline");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -383,9 +470,12 @@ export default function ProjectPage() {
         fresh.outline?.chapters.find((c) => c.id === chapter.id) || chapter;
       const prior = buildPreviousContext(fresh, liveChapter.order);
 
-      const text = await streamGenerate(
+      const buildBody = (
+        mode: "chapter" | "continue",
+        extra?: { existingText?: string; instruction?: string }
+      ): GenerateRequest =>
         attachOriginalContext(fresh, {
-          mode: "chapter",
+          mode,
           writingBoard: fresh.writingBoard,
           characters: fresh.characters,
           background: fresh.background,
@@ -394,19 +484,46 @@ export default function ProjectPage() {
           chapter: liveChapter,
           previousChapterSnippet: prior.previousSnippet,
           previousSummaries: prior.previousSummaries,
+          previousSummary: prior.previousSummaries,
           characterStateCard: prior.characterStateCard,
           priorBlock: prior.priorBlock,
           plotThreads:
             prior.plotThreads ||
             formatPlotThreadsForPrompt(fresh.plotThreads),
           lore: prior.lore,
+          loreEntries: fresh.lore,
           projectTags: fresh.tags || [],
-        }),
-        {
-          signal: ac.signal,
-          onDelta: (_d, full) => setStreamPreview(full),
+          existingText: extra?.existingText,
+          instruction: extra?.instruction,
+        });
+
+      let text = await streamGenerate(buildBody("chapter"), {
+        signal: ac.signal,
+        onDelta: (_d, full) => setStreamPreview(full),
+      });
+
+      if (chapterBelowMin(text, fresh.settings.length) && !ac.signal.aborted) {
+        try {
+          const extra = await streamGenerate(
+            buildBody("continue", {
+              existingText: text,
+              instruction: continueLengthRequirement(
+                fresh.settings,
+                countChapterChars(text)
+              ),
+            }),
+            {
+              signal: ac.signal,
+              onDelta: (_d, full) => setStreamPreview(text + full),
+            }
+          );
+          text = text + extra;
+        } catch (e) {
+          if (e instanceof Error && e.name === "AbortError") throw e;
         }
-      );
+      }
+
+      const canonWarnings = detectCanonViolations(text, fresh.canon);
 
       void postGenerate({
         mode: "chapter_summary",
@@ -428,7 +545,17 @@ export default function ProjectPage() {
             return { ...p, chapters };
           });
         })
-        .catch(() => {});
+        .catch(() => {
+          update((p) => {
+            const chapters = [...p.chapters];
+            const idx = chapters.findIndex(
+              (c) => c.chapterId === liveChapter.id
+            );
+            if (idx < 0) return p;
+            chapters[idx] = { ...chapters[idx], summary: "" };
+            return { ...p, chapters };
+          });
+        });
 
       update((p) => {
         const chapters = [...p.chapters];
@@ -443,6 +570,7 @@ export default function ProjectPage() {
           versions: prev?.versions,
           scenes: prev?.scenes,
           summary: prev?.summary,
+          canonWarnings: canonWarnings.length ? canonWarnings : undefined,
         };
         if (idx >= 0) chapters[idx] = row;
         else chapters.push(row);
@@ -1109,6 +1237,10 @@ export default function ProjectPage() {
             onGenerateVolume={(volumeId) =>
               startBookJob("missing", volumeId)
             }
+            onGenerateVolumeOutline={(volumeId, n) =>
+              void generateVolumeOutline(volumeId, n)
+            }
+            busy={busy}
           />
         )}
         {tab === "tags" && (
@@ -1141,6 +1273,7 @@ export default function ProjectPage() {
             library={tagLibrary}
             writingBoard={project.writingBoard}
             volumes={project.volumes}
+            characters={project.characters}
             busy={busy}
             onGenerate={generateOutline}
             onChange={(outline) => {
@@ -1322,6 +1455,20 @@ export default function ProjectPage() {
                     ...p.outline,
                     chapters: p.outline.chapters.map((c) =>
                       c.id === chapterId ? { ...c, tags } : c
+                    ),
+                  },
+                };
+              });
+            }}
+            onChapterCastChange={(chapterId, castIds) => {
+              update((p) => {
+                if (!p.outline) return p;
+                return {
+                  ...p,
+                  outline: {
+                    ...p.outline,
+                    chapters: p.outline.chapters.map((c) =>
+                      c.id === chapterId ? { ...c, castIds } : c
                     ),
                   },
                 };

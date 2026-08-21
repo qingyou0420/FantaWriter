@@ -13,10 +13,14 @@ export function VolumesPanel({
   project,
   onChange,
   onGenerateVolume,
+  onGenerateVolumeOutline,
+  busy,
 }: {
   project: NovelProject;
   onChange: (volumes: Volume[], chapters?: NovelProject["outline"]) => void;
   onGenerateVolume: (volumeId: string) => void;
+  onGenerateVolumeOutline?: (volumeId: string, chapterCount: number) => void;
+  busy?: string | null;
 }) {
   const volumes = sortedVolumes(project);
 
@@ -73,8 +77,27 @@ export function VolumesPanel({
                   </button>
                   <button
                     type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!!busy || !onGenerateVolumeOutline}
+                    onClick={() =>
+                      onGenerateVolumeOutline?.(
+                        v.id,
+                        Math.max(3, project.settings.chapterCount || 10)
+                      )
+                    }
+                  >
+                    {busy === `outline_volume:${v.id}` ? (
+                      <>
+                        <span className="spinner" /> 排大纲
+                      </>
+                    ) : (
+                      "为本卷生成大纲"
+                    )}
+                  </button>
+                  <button
+                    type="button"
                     className="btn btn-primary btn-sm"
-                    disabled={!count}
+                    disabled={!count || !!busy}
                     onClick={() => onGenerateVolume(v.id)}
                   >
                     生成本卷

@@ -4,7 +4,6 @@ import {
   buildChapterSummaryUserPrompt,
   buildConsistencyCheckUserPrompt,
   buildOutlineVsContentUserPrompt,
-  buildPriorContextBlock,
   parseBackgroundFields,
   parseCastBundle,
   parseCharacterFields,
@@ -101,14 +100,25 @@ export async function POST(req: NextRequest) {
     const wantStream = Boolean(body.stream);
     const writingBoard = parseWritingBoard(body);
 
-    if (body.mode === "outline") {
-      const { system, user } = assemble("outline", writingBoard, body);
+    if (body.mode === "outline" || body.mode === "outline_volume") {
+      const { system, user } = assemble(
+        body.mode === "outline_volume" ? "outline_volume" : "outline",
+        writingBoard,
+        body
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.8,
-        maxTokens: 4096,
+        maxTokens: 8192,
       });
       try {
-        const outline = parseOutlineJson(text);
+        const volumeId =
+          body.mode === "outline_volume"
+            ? String(body.volume?.id || body.volumeId || "")
+            : "";
+        const outline = parseOutlineJson(
+          text,
+          volumeId ? { volumeId } : undefined
+        );
         return NextResponse.json({ ok: true, outline, raw: text });
       } catch {
         return NextResponse.json({
@@ -126,31 +136,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "chapter") {
-      const prior = buildPriorContextBlock({
-        previousSummaries: body.previousSummaries as string | undefined,
-        previousSnippet: body.previousChapterSnippet as string | undefined,
-        plotThreads: body.plotThreads as string | undefined,
-        characterStateCard: body.characterStateCard as string | undefined,
-        lore: body.lore as string | undefined,
-        priorBlock: body.priorBlock as string | undefined,
-      });
       const assembled = assemble("chapter", writingBoard, body);
-      let user = assembled.user;
-      if (prior) {
-        user = user.replace(
-          /## 正文要求/,
-          `${prior}\n\n## 正文要求`
-        );
-      }
       if (wantStream) {
         return streamResponse(
           assembled.system,
-          user,
+          assembled.user,
           { temperature: 0.9, maxTokens: 8192 },
           signal
         );
       }
-      const text = await chatComplete(assembled.system, user, {
+      const text = await chatComplete(assembled.system, assembled.user, {
         temperature: 0.9,
         maxTokens: 8192,
       });
@@ -158,22 +153,24 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "rewrite") {
+      const rewriteMode = (body.rewriteMode || "polish") as RewriteMode;
       const { system, user } = assemble("rewrite", writingBoard, {
         ...body,
-        mode: (body.rewriteMode || "polish") as RewriteMode,
-        rewriteMode: body.rewriteMode || "polish",
+        mode: rewriteMode,
+        rewriteMode,
       });
+      const rewriteTokens = rewriteMode === "expand" ? 8192 : 4096;
       if (wantStream) {
         return streamResponse(
           system,
           user,
-          { temperature: 0.75, maxTokens: 4096 },
+          { temperature: 0.75, maxTokens: rewriteTokens },
           signal
         );
       }
       const text = await chatComplete(system, user, {
         temperature: 0.75,
-        maxTokens: 4096,
+        maxTokens: rewriteTokens,
       });
       return NextResponse.json({ ok: true, content: text });
     }
@@ -184,13 +181,13 @@ export async function POST(req: NextRequest) {
         return streamResponse(
           system,
           user,
-          { temperature: 0.9, maxTokens: 4096 },
+          { temperature: 0.9, maxTokens: 8192 },
           signal
         );
       }
       const text = await chatComplete(system, user, {
         temperature: 0.9,
-        maxTokens: 4096,
+        maxTokens: 8192,
       });
       return NextResponse.json({ ok: true, content: text });
     }

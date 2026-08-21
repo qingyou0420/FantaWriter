@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CastPicker } from "@/components/CastPicker";
 import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import { TagSelector } from "@/components/TagEditor";
 import { boardCopy } from "@/lib/copy";
 import type {
+  Character,
   Outline,
   OutlineChapter,
   Volume,
@@ -18,6 +20,7 @@ export function OutlinePanel({
   library,
   writingBoard = "general",
   volumes,
+  characters,
   busy,
   onGenerate,
   onChange,
@@ -29,6 +32,7 @@ export function OutlinePanel({
   library: string[];
   writingBoard?: WritingBoard;
   volumes?: Volume[];
+  characters?: Character[];
   busy: string | null;
   onGenerate: () => void;
   onChange: (o: Outline) => void;
@@ -541,6 +545,11 @@ export function OutlinePanel({
                   onChange={(tags) => patchChapter(active.id, { tags })}
                   label="本章标签"
                   hint="叠加在本书标签之上；生成本章前建议先「优化大纲」"
+                />
+                <CastPicker
+                  characters={characters || []}
+                  castIds={active.castIds}
+                  onChange={(castIds) => patchChapter(active.id, { castIds })}
                 />
               </div>
             </>
