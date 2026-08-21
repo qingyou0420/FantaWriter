@@ -97,3 +97,56 @@ export function chaptersGroupedByVolume(project: NovelProject): {
     chapters: chaptersInVolume(project, volume.id),
   }));
 }
+
+/** 前卷终局：上一卷摘要 + 该卷最后一章摘要/正文头 */
+export function previousVolumeEnding(
+  project: NovelProject,
+  volumeId: string
+): string {
+  const vols = sortedVolumes(project);
+  const current = vols.find((v) => v.id === volumeId);
+  if (!current) return "";
+  const prev = [...vols].reverse().find((v) => v.order < current.order);
+  if (!prev) return "";
+  const lastCh = [...chaptersInVolume(project, prev.id)].pop();
+  const row = lastCh
+    ? project.chapters.find((c) => c.chapterId === lastCh.id)
+    : undefined;
+  const parts = [
+    prev.summary && `上卷《${prev.title}》主题：${prev.summary}`,
+    lastCh &&
+      `上卷终章《${lastCh.title}》：${row?.summary || lastCh.summary || (row?.content || "").replace(/\s+/g, " ").slice(0, 200) || "（无摘要）"}`,
+  ].filter(Boolean);
+  return parts.join("\n");
+}
+
+/** 把一卷新大纲挂上 volumeId，插入该卷应在的位置并重排 order */
+export function mergeVolumeChapters(
+  existing: OutlineChapter[],
+  incoming: OutlineChapter[],
+  volumeId: string,
+  volumes?: Volume[]
+): OutlineChapter[] {
+  const kept = existing.filter((c) => (c.volumeId || "") !== volumeId);
+  const stamped = incoming.map((c) => ({
+    ...c,
+    id: c.id || crypto.randomUUID(),
+    volumeId,
+    tags: Array.isArray(c.tags) ? c.tags : [],
+  }));
+  const volOrder = volumes?.find((v) => v.id === volumeId)?.order;
+  if (volOrder != null && volumes) {
+    const laterVolIds = new Set(
+      volumes.filter((v) => v.order > volOrder).map((v) => v.id)
+    );
+    const insertAt = kept.findIndex(
+      (c) => c.volumeId && laterVolIds.has(c.volumeId)
+    );
+    const merged =
+      insertAt < 0
+        ? [...kept, ...stamped]
+        : [...kept.slice(0, insertAt), ...stamped, ...kept.slice(insertAt)];
+    return merged.map((c, i) => ({ ...c, order: i + 1 }));
+  }
+  return [...kept, ...stamped].map((c, i) => ({ ...c, order: i + 1 }));
+}

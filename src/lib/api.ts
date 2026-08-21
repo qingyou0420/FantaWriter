@@ -124,7 +124,7 @@ export async function streamGenerate(
 export function buildPreviousContext(
   project: Pick<
     NovelProject,
-    "characters" | "outline" | "chapters" | "plotThreads" | "lore"
+    "characters" | "outline" | "chapters" | "plotThreads" | "lore" | "volumes"
   >,
   currentOrder: number
 ): {

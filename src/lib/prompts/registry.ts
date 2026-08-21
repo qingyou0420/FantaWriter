@@ -16,6 +16,7 @@ import {
   generalOutlineUser,
   generalPolishOutlineUser,
   generalRewriteUser,
+  generalVolumeOutlineUser,
 } from "./general";
 import {
   buildContinueUserPrompt,
@@ -29,6 +30,7 @@ import {
 
 export type GenerateTaskMode =
   | "outline"
+  | "outline_volume"
   | "chapter"
   | "rewrite"
   | "continue"
@@ -152,11 +154,29 @@ export function previewBuiltInSystem(_board?: WritingBoard): string {
   return `${CRAFT_SYSTEM}\n\n${GENERAL_CHAPTER_SYSTEM}`;
 }
 
+function learnedStyleSystemAppendix(
+  settings: { writingStyle?: string; learnedStyleGuide?: string; learnedStyleFingerprints?: string[] } | undefined
+): string {
+  if (!settings || settings.writingStyle !== "learned") return "";
+  const guide = (settings.learnedStyleGuide || "").trim();
+  if (!guide) return "";
+  const prints = (settings.learnedStyleFingerprints || [])
+    .map((f) => String(f || "").trim())
+    .filter(Boolean);
+  const fp = prints.length
+    ? `\n\n## 风格例句（模仿其气质，勿照抄）\n${prints.map((f, i) => `${i + 1}. ${f}`).join("\n")}`
+    : "";
+  return `\n\n## 固定学习文风指南（硬性，优先于默认文风习惯）\n${guide}${fp}`;
+}
+
 function assembleGeneral(
   task: GenerateTaskMode,
   payload: Record<string, unknown>
 ): { system: string; user: string } {
-  const chapterSys = `${CRAFT_SYSTEM}\n\n${GENERAL_CHAPTER_SYSTEM}`;
+  const settings = payload.settings as
+    | { writingStyle?: string; learnedStyleGuide?: string; learnedStyleFingerprints?: string[] }
+    | undefined;
+  const chapterSys = `${CRAFT_SYSTEM}\n\n${GENERAL_CHAPTER_SYSTEM}${learnedStyleSystemAppendix(settings)}`;
   switch (task) {
     case "outline":
       return {
@@ -167,6 +187,19 @@ function assembleGeneral(
           payload.settings as never,
           payload.projectTags as string[] | undefined
         ),
+      };
+    case "outline_volume":
+      return {
+        system: chapterSys,
+        user: generalVolumeOutlineUser({
+          characters: payload.characters as never,
+          background: payload.background as never,
+          settings: payload.settings as never,
+          volume: payload.volume as never,
+          previousEnding: payload.previousEnding as string | undefined,
+          chapterCount: Number(payload.chapterCount || 10),
+          projectTags: payload.projectTags as string[] | undefined,
+        }),
       };
     case "chapter":
     case "continue":
@@ -182,7 +215,8 @@ function assembleGeneral(
                 payload.outline as never,
                 payload.chapter as never,
                 payload.previousChapterSnippet as string | undefined,
-                payload.projectTags as string[] | undefined
+                payload.projectTags as string[] | undefined,
+                payload.priorBlock as string | undefined
               )
             : task === "continue"
               ? buildContinueUserPrompt({

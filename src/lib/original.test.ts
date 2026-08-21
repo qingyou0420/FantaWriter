@@ -5,11 +5,13 @@ import {
   buildOriginalGrounding,
   detectCanonViolations,
   detectCharacterCanonViolations,
+  excerptKeysFromPayload,
   formatLockedCanon,
   hasOriginalGrounding,
   injectOriginalGrounding,
   LOCKED_CANON_HEADING,
   ORIGINAL_GROUNDING_HEADING,
+  ORIGINAL_SYSTEM_RULE,
   parseCanonFacts,
   selectOriginalExcerpts,
 } from "./original";
@@ -275,6 +277,58 @@ describe("excerpts and persistence", () => {
     const excerpt = selectOriginalExcerpts(long, ["清溪"], 2000);
     expect(excerpt).toContain("清溪");
     expect(excerpt.length).toBeLessThan(long.length);
+  });
+
+  it("does not tokenize chapter summary sentences into excerpt keys", () => {
+    const keys = excerptKeysFromPayload(
+      {
+        chapter: {
+          title: "夜奔",
+          summary: "他终于在渡口见到了那匹白马",
+          keyPoints: "渡口相见",
+        },
+        characters: [{ name: "流渊", aliases: ["小渊"] }],
+        loreEntries: [{ title: "霜桥", keys: ["霜桥", "北城门"] }],
+      },
+      [QINGXI_LOCK]
+    );
+    expect(keys).toEqual(
+      expect.arrayContaining(["清溪", "流渊", "小渊", "霜桥", "北城门"])
+    );
+    expect(keys).not.toContain("他终于在渡口见到了那匹白马");
+    expect(keys).not.toContain("渡口相见");
+  });
+
+  it("later chapters excerpt later original segments", () => {
+    const long = `${"甲".repeat(4000)}\n清溪在开头饮水\n${"乙".repeat(4000)}\n清溪在中段踏雪\n${"丙".repeat(4000)}\n清溪在末卷回望\n${"丁".repeat(2000)}`;
+    const late = selectOriginalExcerpts(long, ["清溪"], 2200, {
+      chapterOrder: 5,
+      chapterCount: 5,
+    });
+    expect(late).toContain("末卷回望");
+    expect(late).not.toContain("在开头饮水");
+  });
+
+  it("original system rule decouples facts from prose", () => {
+    expect(ORIGINAL_SYSTEM_RULE).toMatch(/情节|事实/);
+    expect(ORIGINAL_SYSTEM_RULE).toMatch(/文笔|重写原句/);
+    const grounded = injectOriginalGrounding(
+      { system: "SYS", user: "USER" },
+      "chapter",
+      {
+        original: {
+          title: "旧稿",
+          sourceLabel: "粘贴导入",
+          text: ZUI_CI_SNIPPET,
+          updatedAt: "",
+        } satisfies OriginalManuscript,
+        canon: [QINGXI_LOCK],
+        chapter: { order: 1, title: "一", summary: "上路", keyPoints: "" },
+        outline: { chapters: [{}, {}, {}, {}, {}] },
+      }
+    );
+    expect(grounded.system).toMatch(/文笔|重写原句/);
+    expect(grounded.user).toContain("文笔须按文风指南重写");
   });
 
   it("export/import JSON keeps original + locked canon", () => {

@@ -137,6 +137,8 @@ export interface GenerationSettings {
   /** 启用时的风格指南快照（导出项目/生成时不依赖库是否还在） */
   learnedStyleGuide: string;
   learnedStyleName: string;
+  /** apply 学习文风时一并快照的指纹例句 */
+  learnedStyleFingerprints?: string[];
   person: NarrativePerson;
   /** 目标篇幅：短/中/长 */
   length: "short" | "medium" | "long";
@@ -163,6 +165,8 @@ export interface OutlineChapter {
   intensityNote?: string;
   /** 本章强制体现的行为标签（生成本章时生效） */
   tags: string[];
+  /** 本章出场人物 id；未选则生成时仍全量注入 */
+  castIds?: string[];
 }
 
 export interface Outline {
@@ -200,6 +204,8 @@ export interface ChapterContent {
   scenes?: ChapterScene[];
   /** AI 生成的本章摘要（供后续章衔接） */
   summary?: string;
+  /** 正文与锁定设定的可能冲突（只提示，不阻断） */
+  canonWarnings?: string[];
 }
 
 export type PlotThreadStatus = "planted" | "active" | "resolved";
@@ -532,6 +538,9 @@ export function normalizeProject(p: NovelProject): NovelProject {
       learnedStyleId: settings.learnedStyleId || "",
       learnedStyleGuide: settings.learnedStyleGuide || "",
       learnedStyleName: settings.learnedStyleName || "",
+      learnedStyleFingerprints: Array.isArray(settings.learnedStyleFingerprints)
+        ? settings.learnedStyleFingerprints.map((s) => String(s).trim()).filter(Boolean)
+        : [],
     },
     outline: p.outline
       ? {
@@ -547,6 +556,9 @@ export function normalizeProject(p: NovelProject): NovelProject {
               tags: Array.isArray(c.tags) ? c.tags : [],
               intensityNote,
               eroticNote: intensityNote,
+              castIds: Array.isArray(c.castIds)
+                ? c.castIds.map((id) => String(id).trim()).filter(Boolean)
+                : [],
             };
           }),
         }
@@ -556,6 +568,7 @@ export function normalizeProject(p: NovelProject): NovelProject {
       versions: Array.isArray(c.versions) ? c.versions : [],
       scenes: Array.isArray(c.scenes) ? c.scenes : undefined,
       summary: c.summary || "",
+      canonWarnings: Array.isArray(c.canonWarnings) ? c.canonWarnings : undefined,
     })),
   };
 }
@@ -628,11 +641,19 @@ export const PERSON_LABELS: Record<NarrativePerson, string> = {
   third: "第三人称",
 };
 
-export const LENGTH_LABELS = {
-  short: "短篇（约800–1500字/章）",
-  medium: "中篇（约1500–3000字/章）",
-  long: "长篇（约3000–5000字/章）",
+export const LENGTH_RANGES = {
+  short: { min: 800, max: 1500 },
+  medium: { min: 1500, max: 3000 },
+  long: { min: 3000, max: 5000 },
 } as const;
+
+export type ChapterLength = keyof typeof LENGTH_RANGES;
+
+export const LENGTH_LABELS: Record<ChapterLength, string> = {
+  short: `短篇（${LENGTH_RANGES.short.min}–${LENGTH_RANGES.short.max}字/章）`,
+  medium: `中篇（${LENGTH_RANGES.medium.min}–${LENGTH_RANGES.medium.max}字/章）`,
+  long: `长篇（${LENGTH_RANGES.long.min}–${LENGTH_RANGES.long.max}字/章）`,
+};
 
 export function createEmptyCharacter(): Character {
   return {
@@ -671,6 +692,7 @@ export function createDefaultSettings(): GenerationSettings {
     learnedStyleId: "",
     learnedStyleGuide: "",
     learnedStyleName: "",
+    learnedStyleFingerprints: [],
     person: "third",
     length: "medium",
     language: "zh",

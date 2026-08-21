@@ -6,6 +6,7 @@ import {
   addVolume,
   chaptersInVolume,
   chaptersGroupedByVolume,
+  mergeVolumeChapters,
   removeVolume,
 } from "./volumes";
 
@@ -101,5 +102,55 @@ describe("volumes + per-volume job + export", () => {
     const p = createEmptyProject("一卷", "general");
     const next = removeVolume(p, p.volumes![0].id);
     expect(next.volumes).toHaveLength(1);
+  });
+
+  it("mergeVolumeChapters stamps volumeId and inserts before later volumes", () => {
+    const p = createEmptyProject("合并", "general");
+    p.volumes = [
+      { id: "v1", order: 1, title: "上", summary: "" },
+      { id: "v2", order: 2, title: "中", summary: "" },
+      { id: "v3", order: 3, title: "下", summary: "" },
+    ];
+    const existing = [
+      {
+        id: "c1",
+        order: 1,
+        title: "一",
+        summary: "",
+        keyPoints: "",
+        tags: [],
+        volumeId: "v1",
+      },
+      {
+        id: "c9",
+        order: 2,
+        title: "末",
+        summary: "",
+        keyPoints: "",
+        tags: [],
+        volumeId: "v3",
+      },
+    ];
+    const incoming = Array.from({ length: 3 }, (_, i) => ({
+      id: `n${i}`,
+      order: i + 1,
+      title: `中${i + 1}`,
+      summary: "s",
+      keyPoints: "",
+      tags: [],
+    }));
+    const merged = mergeVolumeChapters(existing, incoming, "v2", p.volumes);
+    expect(merged.map((c) => c.volumeId)).toEqual([
+      "v1",
+      "v2",
+      "v2",
+      "v2",
+      "v3",
+    ]);
+    expect(merged.every((c) => c.volumeId !== "v2" || c.title.startsWith("中"))).toBe(
+      true
+    );
+    expect(merged[merged.length - 1].id).toBe("c9");
+    expect(merged.map((c) => c.order)).toEqual([1, 2, 3, 4, 5]);
   });
 });

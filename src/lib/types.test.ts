@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CURRENT_SCHEMA_VERSION,
+  LENGTH_RANGES,
   MAX_CHAPTER_VERSIONS,
   assertWritingBoardImmutable,
   createEmptyProject,
@@ -37,6 +38,13 @@ describe("mergeTags", () => {
   });
 });
 
+describe("LENGTH_RANGES", () => {
+  it("pins long-band floors used by chapter prompts", () => {
+    expect(LENGTH_RANGES.long.min).toBe(3000);
+    expect(LENGTH_RANGES.long.max).toBe(5000);
+  });
+});
+
 describe("createEmptyProject / defaultVolumeId", () => {
   it("defaults writingBoard to general and schemaVersion 2", () => {
     const p = createEmptyProject("测试");
@@ -44,6 +52,7 @@ describe("createEmptyProject / defaultVolumeId", () => {
     expect(p.writingBoard).toBe("general");
     expect(p.contentRating).toBe("unrated");
     expect(p.volumes?.[0]?.id).toBe(defaultVolumeId(p.id));
+    expect(p.settings.learnedStyleFingerprints).toEqual([]);
   });
 });
 
@@ -102,7 +111,9 @@ describe("normalizeProject", () => {
     expect(a.outline?.chapters[0].intensityNote).toBe("紧张");
     expect(b.volumes?.[0]?.id).toBe(a.volumes?.[0]?.id);
     expect(a.settings.learnedStyleId).toBe("");
+    expect(a.settings.learnedStyleFingerprints).toEqual([]);
     expect(a.settings.eroticLevel).toBe(4);
+    expect(a.outline?.chapters[0].castIds).toEqual([]);
   });
 
   it("keeps writingBoard=general", () => {

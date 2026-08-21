@@ -4,7 +4,9 @@ import type {
   Outline,
   OutlineChapter,
   StoryBackground,
+  Volume,
 } from "../types";
+import { chapterLengthRequirement } from "../length";
 import {
   contextBlock,
   formatBackground,
@@ -78,7 +80,8 @@ export function generalChapterUser(
   outline: Outline,
   chapter: OutlineChapter,
   previousChapterSnippet?: string,
-  projectTags?: string[]
+  projectTags?: string[],
+  priorBlock?: string
 ): string {
   const allChapters = outline.chapters
     .map(
@@ -88,10 +91,12 @@ export function generalChapterUser(
     .join("\n");
   const tags = formatTagBlock(projectTags, chapter.tags, "chapter", "general");
   const intensity = chapter.intensityNote || chapter.eroticNote || "无";
+  const lengthRule = chapterLengthRequirement(settings.length);
+  const memory = (priorBlock || "").trim();
   return `请根据完整大纲，撰写**其中一章**的详细正文。
 
 ## 人物设定
-${formatCharacters(characters)}
+${formatCharacters(characters, { castIds: chapter.castIds })}
 
 ## 故事背景
 ${formatBackground(background)}
@@ -105,7 +110,7 @@ ${outline.premise}
 
 ## 全书大纲（供连贯性参考）
 ${allChapters}
-
+${memory ? `\n${memory}\n` : previousChapterSnippet ? `\n## 上一章结尾片段（衔接用）\n${previousChapterSnippet}\n` : ""}
 ## 当前要写的章节
 章节序号：${chapter.order}
 标题：${chapter.title}
@@ -113,13 +118,13 @@ ${allChapters}
 关键点：${chapter.keyPoints}
 节奏备注：${intensity}
 
-${previousChapterSnippet ? `## 上一章结尾片段（衔接用）\n${previousChapterSnippet}\n` : ""}
 ## 正文要求
 1. 只写本章正文，不要写「第X章」以外的元说明。
 2. 开头可保留一行标题：# ${chapter.title}
 3. 严格按文风与人称；人物口吻与设定一致。
 4. 情节完整、有起承转合，与前后章可衔接。
-5. 直接输出小说正文。`;
+5. ${lengthRule}
+6. 直接输出小说正文。`;
 }
 
 export function generalExpandCharacterUser(opts: {
@@ -331,13 +336,27 @@ export function generalRewriteUser(opts: {
   characters: Character[];
   background: StoryBackground;
   settings: GenerationSettings;
+  priorBlock?: string;
+  expandScale?: number;
+  expandTargetChars?: number;
 }): string {
+  const expand =
+    opts.mode === "expand" || String(opts.mode).includes("扩写");
+  const target =
+    expand && opts.expandTargetChars
+      ? `扩写目标：至少写到约 ${opts.expandTargetChars} 字（约 ${opts.expandScale || 2} 倍），不要低于该目标的 80%。`
+      : expand
+        ? "扩写目标：按选区加长，至少 1.5 倍，不要只改几个词。"
+        : "";
+  const memory = (opts.priorBlock || "").trim();
   return `请对下列小说正文片段进行改写。
 
 ## 改写目标
 ${opts.mode}
 ${opts.instruction ? `用户补充指令：${opts.instruction}` : ""}
+${target}
 
+${memory ? `## 前情记忆（连贯用）\n${memory}\n` : ""}
 ## 人物设定
 ${formatCharacters(opts.characters)}
 
@@ -347,7 +366,7 @@ ${formatBackground(opts.background)}
 ## 写作参数
 ${formatSettings(opts.settings, "general")}
 
-${opts.fullContext ? `## 所在章节上下文（供连贯，勿重复输出全文）\n${opts.fullContext.slice(0, 2500)}\n` : ""}
+${opts.fullContext ? `## 所在章节上下文（选区前后滑窗，供连贯，勿重复输出全文）\n${opts.fullContext}\n` : ""}
 ## 待改写片段
 ${opts.selectedText}
 
@@ -355,6 +374,52 @@ ${opts.selectedText}
 1. 只输出改写后的正文片段，不要解释。
 2. 保持人称、时态与前后可衔接。
 3. 可保留非性化未成年配角（仅当故事需要）；禁止任何涉及未成年人的性内容。`;
+}
+
+export function generalVolumeOutlineUser(opts: {
+  characters: Character[];
+  background: StoryBackground;
+  settings: GenerationSettings;
+  volume: Volume;
+  previousEnding?: string;
+  chapterCount: number;
+  projectTags?: string[];
+}): string {
+  const tags = formatTagBlock(opts.projectTags, undefined, "outline", "general");
+  const n = Math.max(3, Math.min(20, opts.chapterCount || 10));
+  return `请只为**这一卷**生成可编辑的章节大纲，不要规划其它卷。
+
+## 本卷
+标题：${opts.volume.title}
+卷摘要/主题：${opts.volume.summary || "（未填写，请根据人物与背景自拟本卷弧线）"}
+期望章数：${n} 章（可 ±2）
+
+${opts.previousEnding ? `## 前卷终局状态（本卷须接上，勿重置）\n${opts.previousEnding}\n` : ""}
+## 人物设定
+${formatCharacters(opts.characters)}
+
+## 故事背景
+${formatBackground(opts.background)}
+
+## 生成参数
+${formatSettings(opts.settings, "general")}
+${tags ? `\n## 类型标签\n${tags}\n` : ""}
+## 输出要求
+请严格输出如下 JSON（不要 markdown 代码块，不要其它说明文字）：
+{
+  "premise": "本卷弧线一句话",
+  "endingNote": "本卷收束走向",
+  "chapters": [
+    {
+      "order": 1,
+      "title": "章节标题",
+      "summary": "本章剧情摘要（3–6句）",
+      "keyPoints": "关键情节点/冲突/转折，分号分隔",
+      "intensityNote": "可选：节奏/冲突/情绪强度备注；无则空字符串"
+    }
+  ]
+}
+chapters 长度约为 ${n}。`;
 }
 
 export function generalPolishOutlineUser(opts: {

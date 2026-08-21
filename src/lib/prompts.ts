@@ -12,32 +12,69 @@ import {
   STYLE_LABELS,
   mergeTags,
 } from "./types";
+import { continueLengthRequirement, countChapterChars } from "./length";
 import { GENERAL_SETTING_SYSTEM } from "./prompts/general";
 import { CRAFT_SYSTEM } from "./prompts/craft";
 
 export const SETTING_SYSTEM = GENERAL_SETTING_SYSTEM;
 export const ADULT_SYSTEM = CRAFT_SYSTEM;
 
-export function formatCharacters(characters: Character[]): string {
+function formatCharacterFull(c: Character, index: number): string {
+  const lines = [
+    `【人物 ${index + 1}】${c.name || "未命名"}`,
+    c.role && `定位：${c.role}`,
+    c.gender && `性别：${c.gender}`,
+    c.age && `年龄：${c.age}`,
+    c.appearance && `外貌：${c.appearance}`,
+    c.personality && `性格：${c.personality}`,
+    c.background && `背景：${c.background}`,
+    c.relationships && `人物关系：${c.relationships}`,
+    c.aliases?.length && `别名：${c.aliases.join("、")}`,
+    c.speechStyle && `说话风格：${c.speechStyle}`,
+    c.notes && `备注：${c.notes}`,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+/** 非出场人物：一行名片（姓名+定位+与出场人物的关系） */
+export function formatCharacterNameCard(
+  c: Character,
+  cast: Character[]
+): string {
+  const name = (c.name || "未命名").replace(/\s+/g, " ").trim();
+  const role = (c.role || "").replace(/\s+/g, " ").trim();
+  const castNames = cast.map((x) => x.name).filter(Boolean);
+  let rel = (c.relationships || "").replace(/\s+/g, " ").trim();
+  if (castNames.length && rel) {
+    const hit = castNames.find((n) => rel.includes(n));
+    if (hit) {
+      const idx = rel.indexOf(hit);
+      rel = rel.slice(Math.max(0, idx - 12), idx + 40).trim();
+    }
+  }
+  if (rel.length > 48) rel = `${rel.slice(0, 48)}…`;
+  return `- ${name}${role ? `｜${role}` : ""}${rel ? `｜${rel}` : ""}`;
+}
+
+export function formatCharacters(
+  characters: Character[],
+  opts?: { castIds?: string[] }
+): string {
   if (!characters.length) return "（暂无人物）";
-  return characters
-    .map((c, i) => {
-      const lines = [
-        `【人物 ${i + 1}】${c.name || "未命名"}`,
-        c.role && `定位：${c.role}`,
-        c.gender && `性别：${c.gender}`,
-        c.age && `年龄：${c.age}`,
-        c.appearance && `外貌：${c.appearance}`,
-        c.personality && `性格：${c.personality}`,
-        c.background && `背景：${c.background}`,
-        c.relationships && `人物关系：${c.relationships}`,
-        c.aliases?.length && `别名：${c.aliases.join("、")}`,
-        c.speechStyle && `说话风格：${c.speechStyle}`,
-        c.notes && `备注：${c.notes}`,
-      ].filter(Boolean);
-      return lines.join("\n");
-    })
-    .join("\n\n");
+  const castIds = (opts?.castIds || []).filter(Boolean);
+  if (!castIds.length) {
+    return characters.map((c, i) => formatCharacterFull(c, i)).join("\n\n");
+  }
+  const castSet = new Set(castIds);
+  const featured = characters.filter((c) => castSet.has(c.id));
+  const others = characters.filter((c) => !castSet.has(c.id));
+  const featuredBlock = featured.length
+    ? featured.map((c, i) => formatCharacterFull(c, i)).join("\n\n")
+    : "（未匹配到出场人物，回退为全量）\n" +
+      characters.map((c, i) => formatCharacterFull(c, i)).join("\n\n");
+  if (!others.length || !featured.length) return featuredBlock;
+  const cards = others.map((c) => formatCharacterNameCard(c, featured)).join("\n");
+  return `## 本章出场人物（完整设定）\n${featuredBlock}\n\n## 其余人物（仅名片，非必要勿写入正文）\n${cards}`;
 }
 
 export function formatBackground(bg: StoryBackground): string {
@@ -85,6 +122,16 @@ export function formatSettings(
       s.learnedStyleGuide.trim(),
       exec
     );
+    const prints = (s.learnedStyleFingerprints || [])
+      .map((f) => String(f || "").trim())
+      .filter(Boolean);
+    if (prints.length) {
+      lines.push(
+        "",
+        "## 风格例句（模仿其气质，勿照抄）",
+        ...prints.map((f, i) => `${i + 1}. ${f}`)
+      );
+    }
   }
 
   return lines.join("\n");
@@ -212,7 +259,10 @@ export function extractJsonObject(text: string): string {
   return raw;
 }
 
-export function parseOutlineJson(text: string): Outline {
+export function parseOutlineJson(
+  text: string,
+  opts?: { volumeId?: string }
+): Outline {
   const data = JSON.parse(extractJsonObject(text)) as {
     premise?: string;
     endingNote?: string;
@@ -238,6 +288,8 @@ export function parseOutlineJson(text: string): Outline {
       eroticNote,
       intensityNote: intensityNote || eroticNote || undefined,
       tags: [],
+      volumeId: opts?.volumeId,
+      castIds: [],
     };
   });
 
@@ -542,6 +594,7 @@ export function parseSettingsFields(
     learnedStyleId: fallback.learnedStyleId || "",
     learnedStyleGuide: fallback.learnedStyleGuide || "",
     learnedStyleName: fallback.learnedStyleName || "",
+    learnedStyleFingerprints: fallback.learnedStyleFingerprints || [],
     person,
     length,
     language,
@@ -549,6 +602,7 @@ export function parseSettingsFields(
     extraInstructions: String(
       data.extraInstructions ?? fallback.extraInstructions
     ),
+    extraRules: fallback.extraRules,
   };
 }
 
@@ -779,7 +833,7 @@ ${opts.existingText.slice(-6000)}
 ## 输出要求
 1. 只输出续写部分，不要重复上文。
 2. 保持文风、人称、尺度一致，情节连贯；称呼与人物状态勿漂移。
-3. 续写约 400–1200 字（除非用户另有要求）。`;
+3. ${continueLengthRequirement(opts.settings, countChapterChars(opts.existingText))}`;
 }
 
 export function buildChapterSummaryUserPrompt(content: string, title: string): string {
@@ -1005,32 +1059,26 @@ ${opts.lore ? `## 世界观设定（关键词命中）\n${opts.lore}\n` : ""}
 3. 直接输出正文。`;
 }
 
-/** 增强章生成：附带角色状态卡、前情摘要、伏笔与命中设定 */
+/** 记忆包只走 priorBlock，不再从散字段拼装 */
 export function buildPriorContextBlock(opts: {
   previousSummaries?: string;
   previousSnippet?: string;
   plotThreads?: string;
   characterStateCard?: string;
   lore?: string;
-  /** 若已有完整记忆块则优先使用 */
   priorBlock?: string;
 }): string {
-  if (opts.priorBlock?.trim()) return opts.priorBlock.trim();
-  const parts: string[] = [];
-  if (opts.characterStateCard) {
-    parts.push(`## 角色状态卡\n${opts.characterStateCard}`);
-  }
-  if (opts.previousSummaries) {
-    parts.push(`## 前情摘要（前几章）\n${opts.previousSummaries}`);
-  }
-  if (opts.previousSnippet) {
-    parts.push(`## 上一章结尾片段（衔接用）\n${opts.previousSnippet}`);
-  }
-  if (opts.plotThreads) {
-    parts.push(`## 伏笔/线索（本章可推进或回收）\n${opts.plotThreads}`);
-  }
-  if (opts.lore) {
-    parts.push(`## 世界观设定（关键词命中）\n${opts.lore}`);
-  }
-  return parts.join("\n\n");
+  return (opts.priorBlock || "").trim();
+}
+
+/** 选区前后各 windowChars 字的滑窗，供润色看见远处上下文 */
+export function sliceAroundSelection(
+  full: string,
+  start: number,
+  end: number,
+  windowChars = 2000
+): string {
+  const from = Math.max(0, Math.min(start, end) - windowChars);
+  const to = Math.min(full.length, Math.max(start, end) + windowChars);
+  return full.slice(from, to);
 }

@@ -4,6 +4,7 @@ import type {
   NovelProject,
   OutlineChapter,
   PlotThread,
+  Volume,
 } from "./types";
 
 function formatPlotThreads(threads?: PlotThread[]): string {
@@ -21,6 +22,7 @@ export interface MemoryPack {
   characterStateCard: string;
   plotThreads: string;
   lore: string;
+  volumeMemory: string;
   /** 合并后的提示块，可直接拼进 prior context */
   priorBlock: string;
 }
@@ -31,39 +33,64 @@ function sortOutline(
   return [...(chapters || [])].sort((a, b) => a.order - b.order);
 }
 
-/** 角色状态卡：设定摘要 + 近期章节摘要中的痕迹 */
+function sortVolumes(volumes?: Volume[]): Volume[] {
+  return [...(volumes || [])].sort((a, b) => a.order - b.order);
+}
+
+/** 本卷主题 + 已完成卷的一句话总结 */
+export function formatVolumeMemory(
+  volumes: Volume[] | undefined,
+  current?: OutlineChapter
+): string {
+  const vols = sortVolumes(volumes).filter((v) => v.summary?.trim());
+  if (!vols.length) return "";
+  const currentVol = current?.volumeId
+    ? vols.find((v) => v.id === current.volumeId) ||
+      sortVolumes(volumes).find((v) => v.id === current.volumeId)
+    : undefined;
+  const lines: string[] = [];
+  if (currentVol) {
+    lines.push(
+      `本卷《${currentVol.title}》：${(currentVol.summary || "").trim() || "（未填摘要）"}`
+    );
+    const done = sortVolumes(volumes).filter(
+      (v) => v.order < currentVol.order && v.summary?.trim()
+    );
+    if (done.length) {
+      lines.push("已完成卷：");
+      for (const v of done) {
+        lines.push(`- 《${v.title}》：${v.summary.trim()}`);
+      }
+    }
+  } else {
+    lines.push("分卷主题：");
+    for (const v of vols) {
+      lines.push(`- 《${v.title}》：${v.summary.trim()}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * 角色状态卡：只保留近期情节线索，不再重复人物静态字段。
+ * 未选 cast 时仍用全部近期摘要；有 cast 时摘要不变（摘要是章级的）。
+ */
 export function buildCharacterStateCard(
   characters: Character[],
   recentSummaries: string[]
 ): string {
-  if (!characters.length) return "";
-
-  const lines = characters.map((c, i) => {
-    const bits = [
-      c.name || "未命名",
-      c.role && `定位:${c.role}`,
-      c.gender && `性别:${c.gender}`,
-      c.age && `年龄:${c.age}`,
-      c.personality && `性格:${c.personality.slice(0, 80)}`,
-      c.relationships && `关系:${c.relationships.slice(0, 100)}`,
-      c.notes && `备注:${c.notes.slice(0, 80)}`,
-    ].filter(Boolean);
-    return `${i + 1}. ${bits.join(" · ")}`;
-  });
-
   const recent = recentSummaries.filter(Boolean).join("\n");
-  const parts = [
-    "【角色状态卡 — 本章须保持称呼、性格、关系一致】",
-    ...lines,
-  ];
-  if (recent) {
-    parts.push(
-      "",
-      "【近期情节中的状态线索（请延续，勿无故重置）】",
-      recent
-    );
-  }
-  return parts.join("\n");
+  if (!recent) return "";
+  const names = characters
+    .map((c) => c.name)
+    .filter(Boolean)
+    .slice(0, 12);
+  const who = names.length ? `（关注：${names.join("、")}）` : "";
+  return [
+    `【角色状态卡 — 近期状态线索${who}】`,
+    "请延续下列状态，勿无故重置称呼、伤势、关系与情绪。",
+    recent,
+  ].join("\n");
 }
 
 /**
@@ -73,7 +100,7 @@ export function buildCharacterStateCard(
 export function buildMemoryPack(
   project: Pick<
     NovelProject,
-    "characters" | "outline" | "chapters" | "plotThreads" | "lore"
+    "characters" | "outline" | "chapters" | "plotThreads" | "lore" | "volumes"
   >,
   currentOrder: number,
   opts?: { summaryLimit?: number; snippetChars?: number; chapterText?: string }
@@ -104,15 +131,20 @@ export function buildMemoryPack(
     if (row?.content) previousSnippet = row.content.slice(-snippetChars);
   }
 
+  const current = outlineChs.find((c) => c.order === currentOrder);
+  const castIds = (current?.castIds || []).filter(Boolean);
+  const castChars = castIds.length
+    ? (project.characters || []).filter((c) => castIds.includes(c.id))
+    : project.characters || [];
+
   const characterStateCard = buildCharacterStateCard(
-    project.characters || [],
+    castChars,
     rawSummaries.slice(-3)
   );
 
   const plotThreads = formatPlotThreads(project.plotThreads);
   const previousSummaries = summaryLines.join("\n");
 
-  const current = outlineChs.find((c) => c.order === currentOrder);
   const currentRow = current
     ? project.chapters.find((c) => c.chapterId === current.id)
     : undefined;
@@ -128,8 +160,12 @@ export function buildMemoryPack(
       .join("\n");
   const loreEntries = selectLoreForPrompt(project, chapterText);
   const lore = formatLoreBlock(loreEntries);
+  const volumeMemory = formatVolumeMemory(project.volumes, current);
 
   const priorParts: string[] = [];
+  if (volumeMemory) {
+    priorParts.push(`## 分卷记忆\n${volumeMemory}`);
+  }
   if (characterStateCard) {
     priorParts.push(`## 角色状态卡\n${characterStateCard}`);
   }
@@ -152,6 +188,7 @@ export function buildMemoryPack(
     characterStateCard,
     plotThreads,
     lore,
+    volumeMemory,
     priorBlock: priorParts.join("\n\n"),
   };
 }
