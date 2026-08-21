@@ -1,5 +1,5 @@
 /**
- * 把章节正文写成仓库内的 Markdown，供 Cursor / 作者在磁盘上润色。
+ * 把章节正文写成文件夹内的 Markdown，供作者在磁盘上润色。
  * 与「导出全书」MD/TXT/EPUB/DOC 独立；不写项目 JSON。
  */
 import { downloadBlob } from "./export-book";
@@ -274,7 +274,7 @@ export function selectChaptersForRepoExport(
     return [ch];
   }
   const done = outline.filter((ch) => isFinishedChapter(project, ch.id));
-  if (!done.length) throw new Error("没有已完成（status=done）且有正文的章节");
+  if (!done.length) throw new Error("没有已完成且有正文的章节");
   return done;
 }
 
@@ -311,7 +311,7 @@ function downloadChapterRepoFiles(
       ok: true,
       via: "download",
       files: [f.relativePath],
-      message: `浏览器无法写入仓库，已下载 ${f.fileName}`,
+      message: `浏览器无法写入文件夹，已下载 ${f.fileName}`,
     };
   }
   downloadBlob(
@@ -322,7 +322,7 @@ function downloadChapterRepoFiles(
     ok: true,
     via: "download",
     files: files.map((f) => f.relativePath),
-    message: `浏览器无法写入仓库，已下载 ${files.length} 章压缩包（解压到仓库根即可）`,
+    message: `浏览器无法写入文件夹，已下载 ${files.length} 章压缩包（解压到所选目录即可）`,
   };
 }
 
@@ -347,7 +347,7 @@ export async function pickChapterRepoRoot(): Promise<{
     }
   }
   const picked = await bridge.pickDirectory({
-    title: "选择章节 Markdown 写入的仓库或文件夹",
+    title: "选择章节 Markdown 写入的文件夹",
     defaultPath: defaultPath || undefined,
   });
   if (!picked.ok || !picked.path) {

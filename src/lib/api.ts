@@ -3,6 +3,7 @@ import { originalContextFrom } from "./original";
 import { recordUsage } from "./storage";
 import type { GenerateTaskMode } from "./prompts/registry";
 import type { NovelProject, WritingBoard } from "./types";
+import { UserFacingError } from "./user-error";
 
 export type GenerateRequest = {
   mode: GenerateTaskMode;
@@ -36,7 +37,12 @@ export async function postGenerate(
     signal: opts?.signal,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "请求失败");
+  if (!res.ok) {
+    throw new UserFacingError(
+      data.error || "请求失败",
+      typeof data.diagnostic === "string" ? data.diagnostic : undefined
+    );
+  }
   const mode = String(body.mode || "unknown");
   const out =
     typeof data.content === "string"
@@ -68,7 +74,11 @@ export async function streamGenerate(
     try {
       const data = await res.json();
       msg = data.error || msg;
-    } catch {
+      if (typeof data.diagnostic === "string" && data.diagnostic) {
+        throw new UserFacingError(msg, data.diagnostic);
+      }
+    } catch (e) {
+      if (e instanceof UserFacingError) throw e;
       msg = await res.text();
     }
     throw new Error(msg);

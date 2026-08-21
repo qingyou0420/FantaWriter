@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import { createEmptyLoreEntry } from "@/lib/lore";
 import { parseTagsFromText, type LoreEntry, type NovelProject } from "@/lib/types";
@@ -52,7 +53,19 @@ export function LorePanel({
       </div>
 
       {!lore.length ? (
-        <div className="card empty">尚无设定。长篇建议先记下关键地名与规则。</div>
+        <EmptyState
+          title="尚无世界观设定"
+          description="长篇建议先记下关键地名与规则。生成正文时，命中的条目会注入提示。"
+          action={
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => onChange([createEmptyLoreEntry(), ...lore])}
+            >
+              添加设定
+            </button>
+          }
+        />
       ) : (
         <ul className="list-none p-0 m-0 space-y-3">
           {lore.map((e) => (

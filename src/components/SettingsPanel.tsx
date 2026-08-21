@@ -169,6 +169,26 @@ export function SettingsPanel({
             <option value="en">English</option>
           </select>
         </Field>
+        <Field
+          label="正文温度"
+          hint="中转模型高温易水词。默认 0.9，不动则与现在一致。"
+        >
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0.6}
+              max={1}
+              step={0.05}
+              value={settings.temperature ?? 0.9}
+              onChange={(e) =>
+                patch({ temperature: Number(e.target.value) })
+              }
+            />
+            <span className="text-sm tabular-nums w-10">
+              {(settings.temperature ?? 0.9).toFixed(2)}
+            </span>
+          </div>
+        </Field>
         <Field label="建议章节数">
           <input
             type="number"

@@ -14,29 +14,105 @@ import {
   parsePolishedChapterOutline,
   parseScenePlan,
   parseSettingsFields,
+  parseTouchedThreads,
+  stripTouchedThreadLine,
   type RewriteMode,
 } from "@/lib/prompts";
 import type {
   Character,
   GenerationSettings,
   LockedCanonFact,
+  Outline,
   OutlineChapter,
   StoryBackground,
+  Volume,
   WritingBoard,
 } from "@/lib/types";
+import { resolveChapterTemperature, sampleTextForStyleLearning } from "@/lib/types";
 import { AssembleError, assemble } from "@/lib/prompts/registry";
+import { UserFacingError } from "@/lib/user-error";
 import {
   assertCharactersRespectCanon,
   CanonViolationError,
   parseCanonFacts,
 } from "@/lib/original";
-import { sampleTextForStyleLearning } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Body = Record<string, any> & { mode: string; stream?: boolean };
+type ChapterSample = {
+  order: number;
+  title: string;
+  content?: string;
+  summary?: string;
+};
+
+type BodyBase = {
+  stream?: boolean;
+  writingBoard?: WritingBoard;
+  settings?: GenerationSettings;
+  characters?: Character[];
+  background?: StoryBackground;
+  outline?: Outline;
+  chapter?: OutlineChapter;
+  projectTags?: string[];
+  original?: unknown;
+  canon?: LockedCanonFact[];
+  instruction?: string;
+  extraRules?: string;
+  priorBlock?: string;
+  rewriteMode?: RewriteMode | string;
+};
+
+type Body =
+  | (BodyBase & { mode: "outline" })
+  | (BodyBase & {
+      mode: "outline_volume";
+      volume?: Volume;
+      volumeId?: string;
+      previousEnding?: string;
+      chapterCount?: number;
+    })
+  | (BodyBase & { mode: "chapter" })
+  | (BodyBase & { mode: "rewrite"; selectedText?: string; fullContext?: string })
+  | (BodyBase & { mode: "continue"; existingText?: string })
+  | (BodyBase & {
+      mode: "chapter_summary";
+      content?: string;
+      title?: string;
+      openThreads?: string[];
+    })
+  | (BodyBase & { mode: "consistency_check"; chapters?: ChapterSample[] })
+  | (BodyBase & { mode: "outline_vs_content"; content?: string })
+  | (BodyBase & { mode: "scene_plan" })
+  | (BodyBase & { mode: "scene_chapter"; scene?: { order: number; title: string; summary: string } })
+  | (BodyBase & { mode: "expand_character"; seed?: string; character?: Character })
+  | (BodyBase & { mode: "optimize_character"; character?: Character })
+  | (BodyBase & { mode: "expand_background"; seed?: string })
+  | (BodyBase & { mode: "optimize_background" })
+  | (BodyBase & { mode: "expand_cast"; seed?: string; characterCount?: number })
+  | (BodyBase & { mode: "optimize_settings" })
+  | (BodyBase & { mode: "learn_style"; sampleText?: string; nameHint?: string })
+  | (BodyBase & {
+      mode: "extract_canon";
+      sampleText?: string;
+      originalText?: string;
+      titleHint?: string;
+    })
+  | (BodyBase & { mode: "polish_chapter_outline" })
+  | (BodyBase & {
+      mode: "volume_summary";
+      volume?: Volume;
+      chapterSummaries?: { order: number; title: string; summary: string }[];
+    });
+
+function asAssemblePayload(body: Body): Record<string, unknown> {
+  return body as unknown as Record<string, unknown>;
+}
+
+function chapterTemperature(settings?: GenerationSettings): number {
+  return resolveChapterTemperature(settings);
+}
 
 function sseEncode(obj: unknown): string {
   return `data: ${JSON.stringify(obj)}\n\n`;
@@ -104,7 +180,7 @@ export async function POST(req: NextRequest) {
       const { system, user } = assemble(
         body.mode === "outline_volume" ? "outline_volume" : "outline",
         writingBoard,
-        body
+        asAssemblePayload(body)
       );
       const text = await chatComplete(system, user, {
         temperature: 0.8,
@@ -136,17 +212,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "chapter") {
-      const assembled = assemble("chapter", writingBoard, body);
+      const assembled = assemble("chapter", writingBoard, asAssemblePayload(body));
+      const temperature = chapterTemperature(body.settings);
       if (wantStream) {
         return streamResponse(
           assembled.system,
           assembled.user,
-          { temperature: 0.9, maxTokens: 8192 },
+          { temperature, maxTokens: 8192 },
           signal
         );
       }
       const text = await chatComplete(assembled.system, assembled.user, {
-        temperature: 0.9,
+        temperature,
         maxTokens: 8192,
       });
       return NextResponse.json({ ok: true, content: text });
@@ -155,7 +232,7 @@ export async function POST(req: NextRequest) {
     if (body.mode === "rewrite") {
       const rewriteMode = (body.rewriteMode || "polish") as RewriteMode;
       const { system, user } = assemble("rewrite", writingBoard, {
-        ...body,
+        ...asAssemblePayload(body),
         mode: rewriteMode,
         rewriteMode,
       });
@@ -176,17 +253,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "continue") {
-      const { system, user } = assemble("continue", writingBoard, body);
+      const { system, user } = assemble("continue", writingBoard, asAssemblePayload(body));
+      const temperature = chapterTemperature(body.settings);
       if (wantStream) {
         return streamResponse(
           system,
           user,
-          { temperature: 0.9, maxTokens: 8192 },
+          { temperature, maxTokens: 8192 },
           signal
         );
       }
       const text = await chatComplete(system, user, {
-        temperature: 0.9,
+        temperature,
         maxTokens: 8192,
       });
       return NextResponse.json({ ok: true, content: text });
@@ -195,28 +273,39 @@ export async function POST(req: NextRequest) {
     if (body.mode === "chapter_summary") {
       const text = await chatComplete(
         "你是小说编辑，只输出简洁中文摘要。",
-        buildChapterSummaryUserPrompt(
-          String(body.content || ""),
-          String(body.title || "")
-        ),
+        buildChapterSummaryUserPrompt({
+          content: String(body.content || ""),
+          title: String(body.title || ""),
+          openThreads: body.openThreads,
+        }),
         { temperature: 0.4, maxTokens: 512 }
       );
-      return NextResponse.json({ ok: true, summary: text.trim() });
+      const raw = text.trim();
+      return NextResponse.json({
+        ok: true,
+        summary: stripTouchedThreadLine(raw) || raw,
+        touchedThreads: parseTouchedThreads(raw),
+        raw,
+      });
     }
 
     if (body.mode === "consistency_check") {
       const text = await chatComplete(
         "你是严格的小说连续性审稿人。只输出 JSON。",
         buildConsistencyCheckUserPrompt({
-          characters: body.characters as Character[],
-          background: body.background as StoryBackground,
-          chapters: body.chapters as {
-            order: number;
-            title: string;
-            content: string;
-          }[],
+          characters: body.characters || [],
+          background: body.background || {
+            title: "",
+            synopsis: "",
+            setting: "",
+            era: "",
+            themes: "",
+            tone: "",
+            extra: "",
+          },
+          chapters: body.chapters || [],
         }),
-        { temperature: 0.3, maxTokens: 3072 }
+        { temperature: 0.3, maxTokens: 8192 }
       );
       try {
         const result = parseConsistencyResult(text);
@@ -259,7 +348,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "scene_plan") {
-      const { system, user } = assemble("scene_plan", writingBoard, body);
+      const { system, user } = assemble(
+        "scene_plan",
+        writingBoard,
+        asAssemblePayload(body)
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.7,
         maxTokens: 2048,
@@ -276,24 +369,33 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "scene_chapter") {
-      const { system, user } = assemble("scene_chapter", writingBoard, body);
+      const { system, user } = assemble(
+        "scene_chapter",
+        writingBoard,
+        asAssemblePayload(body)
+      );
+      const temperature = chapterTemperature(body.settings);
       if (wantStream) {
         return streamResponse(
           system,
           user,
-          { temperature: 0.9, maxTokens: 4096 },
+          { temperature, maxTokens: 4096 },
           signal
         );
       }
       const text = await chatComplete(system, user, {
-        temperature: 0.9,
+        temperature,
         maxTokens: 4096,
       });
       return NextResponse.json({ ok: true, content: text });
     }
 
     if (body.mode === "expand_character") {
-      const { system, user } = assemble("expand_character", writingBoard, body);
+      const { system, user } = assemble(
+        "expand_character",
+        writingBoard,
+        asAssemblePayload(body)
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.85,
         maxTokens: 2048,
@@ -304,7 +406,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "optimize_character") {
-      const { system, user } = assemble("optimize_character", writingBoard, body);
+      const { system, user } = assemble(
+        "optimize_character",
+        writingBoard,
+        asAssemblePayload(body)
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.75,
         maxTokens: 2048,
@@ -315,7 +421,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "expand_background") {
-      const { system, user } = assemble("expand_background", writingBoard, body);
+      const { system, user } = assemble(
+        "expand_background",
+        writingBoard,
+        asAssemblePayload(body)
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.85,
         maxTokens: 2048,
@@ -325,7 +435,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "optimize_background") {
-      const { system, user } = assemble("optimize_background", writingBoard, body);
+      const { system, user } = assemble(
+        "optimize_background",
+        writingBoard,
+        asAssemblePayload(body)
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.75,
         maxTokens: 2048,
@@ -335,7 +449,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "expand_cast") {
-      const { system, user } = assemble("expand_cast", writingBoard, body);
+      const { system, user } = assemble(
+        "expand_cast",
+        writingBoard,
+        asAssemblePayload(body)
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.85,
         maxTokens: 4096,
@@ -346,7 +464,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "optimize_settings") {
-      const { system, user } = assemble("optimize_settings", writingBoard, body);
+      const { system, user } = assemble(
+        "optimize_settings",
+        writingBoard,
+        asAssemblePayload(body)
+      );
       const text = await chatComplete(system, user, {
         temperature: 0.7,
         maxTokens: 1024,
@@ -371,7 +493,7 @@ export async function POST(req: NextRequest) {
           ? sample.slice(0, 8000) + "\n\n…\n\n" + sample.slice(-8000)
           : sample;
       const { system, user } = assemble("learn_style", writingBoard, {
-        ...body,
+        ...asAssemblePayload(body),
         sampleText: capped,
       });
       const text = await chatComplete(system, user, {
@@ -401,10 +523,18 @@ export async function POST(req: NextRequest) {
       }
       const capped =
         sample.length > 16000 ? sampleTextForStyleLearning(sample, 14000) : sample;
+      const originalTitle =
+        body.original &&
+        typeof body.original === "object" &&
+        "title" in body.original
+          ? String(
+              (body.original as { title?: string }).title || ""
+            )
+          : "";
       const { system, user } = assemble("extract_canon", writingBoard, {
-        ...body,
+        ...asAssemblePayload(body),
         sampleText: capped,
-        titleHint: body.titleHint || body.original?.title,
+        titleHint: body.titleHint || originalTitle,
       });
       const text = await chatComplete(system, user, {
         temperature: 0.4,
@@ -424,7 +554,7 @@ export async function POST(req: NextRequest) {
       const { system, user } = assemble(
         "polish_chapter_outline",
         writingBoard,
-        body
+        asAssemblePayload(body)
       );
       const text = await chatComplete(system, user, {
         temperature: 0.75,
@@ -440,7 +570,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, chapter: polished, raw: text });
     }
 
-    return NextResponse.json({ error: "未知 mode" }, { status: 400 });
+    if (body.mode === "volume_summary") {
+      const { system, user } = assemble(
+        "volume_summary",
+        writingBoard,
+        asAssemblePayload(body)
+      );
+      const text = await chatComplete(system, user, {
+        temperature: 0.3,
+        maxTokens: 512,
+      });
+      return NextResponse.json({ ok: true, summary: text.trim(), raw: text });
+    }
+
+    return NextResponse.json(
+      { error: "不支持的生成类型（前后端版本可能不一致）" },
+      { status: 400 }
+    );
   } catch (e) {
     if (e instanceof AssembleError) {
       return NextResponse.json(
@@ -454,20 +600,17 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const message = e instanceof Error ? e.message : String(e);
     if (e instanceof Error && e.name === "AbortError") {
       return NextResponse.json({ error: "已取消生成" }, { status: 499 });
     }
-    const isAuth =
-      /incorrect api key|invalid api key|invalid_api_key|authentication_error/i.test(
-        message
-      ) && /api key|api_key|sk-|Bearer/i.test(message);
+    const message = e instanceof Error ? e.message : String(e);
+    const diagnostic =
+      e instanceof UserFacingError ? e.diagnostic : undefined;
+    const isAuth = /鉴权失败|密钥/.test(message);
     return NextResponse.json(
       {
-        error: isAuth
-          ? `鉴权失败（Key 可能无效或未加载）：${message}`
-          : message,
-        env: getEnvDiagnostics(),
+        error: message,
+        diagnostic,
       },
       { status: isAuth ? 401 : 500 }
     );

@@ -11,6 +11,7 @@ import {
   normalizeProject,
   parseTagsFromText,
   pushChapterVersion,
+  resolveChapterTemperature,
   type ChapterContent,
   type LearnedStyle,
   type NovelProject,
@@ -53,6 +54,12 @@ describe("createEmptyProject / defaultVolumeId", () => {
     expect(p.contentRating).toBe("unrated");
     expect(p.volumes?.[0]?.id).toBe(defaultVolumeId(p.id));
     expect(p.settings.learnedStyleFingerprints).toEqual([]);
+    expect(p.settings.temperature).toBe(0.9);
+  });
+
+  it("serializes a new project without erotic leftovers", () => {
+    const json = JSON.stringify(createEmptyProject("新书"));
+    expect(json.toLowerCase()).not.toMatch(/erotic/);
   });
 });
 
@@ -165,6 +172,14 @@ describe("legacyProject helper sanity", () => {
     const p = createEmptyProject();
     expect(p.name).toBe("未命名小说");
     expect(p.writingBoard).toBe("general");
+  });
+});
+
+describe("resolveChapterTemperature", () => {
+  it("defaults to 0.9 and passes through a slider value", () => {
+    expect(resolveChapterTemperature(undefined)).toBe(0.9);
+    expect(resolveChapterTemperature({ temperature: 0.7 })).toBe(0.7);
+    expect(resolveChapterTemperature({ temperature: Number.NaN })).toBe(0.9);
   });
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CastPicker } from "@/components/CastPicker";
 import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
@@ -52,16 +52,12 @@ export function OutlinePanel({
     [outline]
   );
 
-  // 保持 active 有效
-  useEffect(() => {
-    if (!sorted.length) {
-      setActiveId(null);
-      return;
-    }
-    if (!activeId || !sorted.some((c) => c.id === activeId)) {
-      setActiveId(sorted[0].id);
-    }
-  }, [sorted, activeId]);
+  const resolvedActiveId =
+    !sorted.length
+      ? null
+      : activeId && sorted.some((c) => c.id === activeId)
+        ? activeId
+        : sorted[0].id;
 
   if (!outline) {
     return (
@@ -112,7 +108,6 @@ export function OutlinePanel({
       title: `第 ${order} 章`,
       summary: "",
       keyPoints: "",
-      eroticNote: "",
       tags: [],
       volumeId: volId,
     };
@@ -134,7 +129,7 @@ export function OutlinePanel({
       ...outline!,
       chapters: nextChapters,
     });
-    if (activeId === id) {
+    if (resolvedActiveId === id) {
       setActiveId(nextChapters[0]?.id ?? null);
     }
   }
@@ -207,7 +202,7 @@ export function OutlinePanel({
     });
   }
 
-  const active = sorted.find((c) => c.id === activeId) || null;
+  const active = sorted.find((c) => c.id === resolvedActiveId) || null;
   const batchSelectedTags =
     selected.size === 1
       ? sorted.find((c) => selected.has(c.id))?.tags || []
@@ -346,7 +341,7 @@ export function OutlinePanel({
             {sorted.map((ch) => {
               const isOver = dragOverId === ch.id && dragId !== ch.id;
               const isDragging = dragId === ch.id;
-              const isActive = activeId === ch.id;
+              const isActive = resolvedActiveId === ch.id;
               return (
                 <li
                   key={ch.id}
@@ -531,7 +526,6 @@ export function OutlinePanel({
                   onChange={(e) =>
                     patchChapter(active.id, {
                       intensityNote: e.target.value,
-                      eroticNote: e.target.value,
                     })
                   }
                   rows={5}

@@ -17,6 +17,9 @@ export type UpdateCheckResult = {
   installerPath?: string;
   downloadUrl?: string;
   assetApiUrl?: string;
+  sha256?: string;
+  sha256DownloadUrl?: string;
+  sha256AssetApiUrl?: string;
   source?: string;
   message: string;
   searchedDirs?: string[];
@@ -56,7 +59,14 @@ export type DesktopBridge = {
   setGithubUpdateToken?: (token: string) => Promise<{ ok: boolean; hasGithubToken: boolean }>;
   checkUpdate: () => Promise<UpdateCheckResult>;
   downloadUpdate?: (
-    opts: { downloadUrl?: string; assetApiUrl?: string; version?: string } | string
+    opts: {
+      downloadUrl?: string;
+      assetApiUrl?: string;
+      version?: string;
+      sha256?: string;
+      sha256DownloadUrl?: string;
+      sha256AssetApiUrl?: string;
+    } | string
   ) => Promise<DownloadUpdateResult>;
   installUpdate: (installerPath: string) => Promise<{ ok: boolean; message: string }>;
   pickInstaller: () => Promise<{ ok: boolean; path?: string; version?: string; message: string }>;

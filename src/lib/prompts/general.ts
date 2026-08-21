@@ -6,7 +6,8 @@ import type {
   StoryBackground,
   Volume,
 } from "../types";
-import { chapterLengthRequirement } from "../length";
+import { chapterLengthRequirement, continueLengthRequirement, countChapterChars } from "../length";
+import { mergeTags } from "../types";
 import {
   contextBlock,
   formatBackground,
@@ -466,4 +467,146 @@ ${others || "（无）"}
   "keyPoints": "关键点，分号分隔",
   "intensityNote": "节奏/冲突/情绪强度备注"
 }`;
+}
+
+export function generalContinueUser(opts: {
+  existingText: string;
+  instruction?: string;
+  characters: Character[];
+  background: StoryBackground;
+  settings: GenerationSettings;
+  chapter?: OutlineChapter;
+  outlineContext?: string;
+  previousSummary?: string;
+  previousSummaries?: string;
+  plotThreads?: string;
+  characterStateCard?: string;
+  lore?: string;
+  priorBlock?: string;
+}): string {
+  const previousSummary = opts.previousSummary || opts.previousSummaries;
+  const memory = (opts.priorBlock || "").trim();
+  return `请从给定正文**末尾自然续写**，不要重复已有内容。
+
+## 人物设定
+${formatCharacters(opts.characters, { castIds: opts.chapter?.castIds })}
+
+## 故事背景
+${formatBackground(opts.background)}
+
+## 写作参数
+${formatSettings(opts.settings, "general")}
+${memory ? `\n${memory}\n` : ""}${!memory && opts.characterStateCard ? `## 角色状态卡\n${opts.characterStateCard}\n` : ""}
+${opts.chapter ? `## 本章目标\n标题：${opts.chapter.title}\n摘要：${opts.chapter.summary}\n关键点：${opts.chapter.keyPoints}\n` : ""}
+${opts.outlineContext ? `## 大纲参考\n${opts.outlineContext}\n` : ""}
+${!memory && previousSummary ? `## 前情摘要\n${previousSummary}\n` : ""}
+${!memory && opts.plotThreads ? `## 伏笔线索（可推进，勿无故遗忘）\n${opts.plotThreads}\n` : ""}
+${!memory && opts.lore ? `## 世界观设定（关键词命中）\n${opts.lore}\n` : ""}
+${opts.instruction ? `## 续写方向\n${opts.instruction}\n` : ""}
+## 已有正文（请接在其后）
+${opts.existingText.slice(-6000)}
+
+## 输出要求
+1. 只输出续写部分，不要重复上文。
+2. 保持文风、人称、尺度一致，情节连贯；称呼与人物状态勿漂移。
+3. ${continueLengthRequirement(opts.settings, countChapterChars(opts.existingText))}`;
+}
+
+export function generalScenePlanUser(opts: {
+  characters: Character[];
+  background: StoryBackground;
+  settings: GenerationSettings;
+  chapter: OutlineChapter;
+  projectTags?: string[];
+}): string {
+  const intensity = `节奏：${opts.chapter.intensityNote || opts.chapter.eroticNote || "无"}`;
+  return `把本章拆成 3–6 个可连续写作的场景，便于分场景生成正文。
+
+## 人物
+${formatCharacters(opts.characters, { castIds: opts.chapter.castIds })}
+
+## 背景
+${formatBackground(opts.background)}
+
+## 参数
+${formatSettings(opts.settings, "general")}
+
+## 本章大纲
+标题：${opts.chapter.title}
+摘要：${opts.chapter.summary}
+关键点：${opts.chapter.keyPoints}
+${intensity}
+标签：${mergeTags(opts.projectTags, opts.chapter.tags).join("、") || "无"}
+
+## 输出 JSON
+{
+  "scenes": [
+    { "order": 1, "title": "场景名", "summary": "本场景要写什么（2-4句）" }
+  ]
+}`;
+}
+
+export function generalSceneChapterUser(opts: {
+  characters: Character[];
+  background: StoryBackground;
+  settings: GenerationSettings;
+  chapter: OutlineChapter;
+  scene: { order: number; title: string; summary: string };
+  previousScenesText?: string;
+  previousChapterSnippet?: string;
+  projectTags?: string[];
+  plotThreads?: string;
+  lore?: string;
+  priorBlock?: string;
+}): string {
+  const memory = (opts.priorBlock || "").trim();
+  return `撰写本章中的**一个场景**正文（不是整章）。
+
+## 人物
+${formatCharacters(opts.characters, { castIds: opts.chapter.castIds })}
+
+## 背景
+${formatBackground(opts.background)}
+
+## 参数
+${formatSettings(opts.settings, "general")}
+
+## 本章
+${opts.chapter.order}. ${opts.chapter.title}
+${opts.chapter.summary}
+标签：${mergeTags(opts.projectTags, opts.chapter.tags).join("、") || "无"}
+
+## 当前场景 ${opts.scene.order}
+标题：${opts.scene.title}
+摘要：${opts.scene.summary}
+
+${opts.previousScenesText ? `## 本章已写场景（衔接）\n${opts.previousScenesText.slice(-2000)}\n` : ""}
+${memory ? `${memory}\n` : opts.previousChapterSnippet ? `## 上章结尾\n${opts.previousChapterSnippet}\n` : ""}
+${!memory && opts.plotThreads ? `## 伏笔\n${opts.plotThreads}\n` : ""}
+${!memory && opts.lore ? `## 世界观设定（关键词命中）\n${opts.lore}\n` : ""}
+## 要求
+1. 只写本场景，约 400–1500 字。
+2. 不要写「场景X」元标题；可自然过渡。
+3. 直接输出正文。`;
+}
+
+export function generalVolumeSummaryUser(opts: {
+  volume: Volume;
+  chapterSummaries: { order: number; title: string; summary: string }[];
+}): string {
+  const rows = opts.chapterSummaries
+    .map(
+      (c) =>
+        `第${c.order}章《${c.title}》：${(c.summary || "").trim() || "（无摘要）"}`
+    )
+    .join("\n");
+  return `请根据本卷各章摘要，写一段 100–200 字的卷摘要，供后续卷衔接使用。
+只写已发生的事实与未解冲突，不要剧透未写章节，不要标题。
+
+## 本卷
+标题：${opts.volume.title}
+已有卷摘要（可参考改写）：${opts.volume.summary || "（无）"}
+
+## 各章摘要
+${rows || "（无）"}`;
 }

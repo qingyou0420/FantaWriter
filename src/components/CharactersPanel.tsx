@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AiBox } from "@/components/AiBox";
+import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
 import { assertCharactersRespectCanon, hasOriginalGrounding } from "@/lib/original";
@@ -402,7 +403,15 @@ export function CharactersPanel({
             </Field>
           </div>
         ) : (
-          <div className="card empty">请添加人物</div>
+          <EmptyState
+            title="还没有人物"
+            description="至少写一个主角姓名，再去生成大纲。"
+            action={
+              <button type="button" className="btn btn-primary btn-sm" onClick={add}>
+                添加人物
+              </button>
+            }
+          />
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { GlobalFindReplace } from "@/components/GlobalFindReplace";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
 import { useToast } from "@/components/Toast";
@@ -72,8 +72,12 @@ export function ToolsPanel({
     project.outline?.chapters[0]?.id || ""
   );
   const [backupInfo, setBackupInfo] = useState("");
-  const [repoRoot, setRepoRoot] = useState("");
-  const [repoSubdir, setRepoSubdir] = useState(DEFAULT_CHAPTER_EXPORT_SUBDIR);
+  const [repoRoot, setRepoRoot] = useState(
+    () => loadAppPrefs().chapterRepoRoot || ""
+  );
+  const [repoSubdir, setRepoSubdir] = useState(
+    () => loadAppPrefs().chapterExportSubdir ?? DEFAULT_CHAPTER_EXPORT_SUBDIR
+  );
   const [repoInfo, setRepoInfo] = useState("");
   const [singleChapterId, setSingleChapterId] = useState(
     project.outline?.chapters[0]?.id || ""
@@ -82,27 +86,17 @@ export function ToolsPanel({
   const desktop = isDesktopApp();
   const toc = buildTocPreview(project);
   const totalWords = projectWordCount(project);
-  const chapters = project.outline?.chapters
-    ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
-    : [];
-
-  useEffect(() => {
-    const prefs = loadAppPrefs();
-    setRepoRoot(prefs.chapterRepoRoot || "");
-    setRepoSubdir(
-      prefs.chapterExportSubdir ?? DEFAULT_CHAPTER_EXPORT_SUBDIR
-    );
-  }, []);
-
-  useEffect(() => {
-    if (
-      singleChapterId &&
-      chapters.some((c) => c.id === singleChapterId)
-    ) {
-      return;
-    }
-    setSingleChapterId(chapters[0]?.id || "");
-  }, [chapters, singleChapterId]);
+  const chapters = useMemo(
+    () =>
+      project.outline?.chapters
+        ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
+        : [],
+    [project.outline]
+  );
+  const resolvedSingleId =
+    singleChapterId && chapters.some((c) => c.id === singleChapterId)
+      ? singleChapterId
+      : chapters[0]?.id || "";
 
   async function runConsistency() {
     onError("");
@@ -110,25 +104,31 @@ export function ToolsPanel({
     try {
       const rows = chapters
         .map((ch) => {
-          const body =
-            project.chapters.find((c) => c.chapterId === ch.id)?.content || "";
-          return body
-            ? { order: ch.order, title: ch.title, content: body }
-            : null;
+          const row = project.chapters.find((c) => c.chapterId === ch.id);
+          const summary = row?.summary || "";
+          const body = row?.content || "";
+          if (!summary.trim() && !body.trim()) return null;
+          return {
+            order: ch.order,
+            title: ch.title,
+            summary,
+            content: body,
+          };
         })
         .filter(Boolean) as {
         order: number;
         title: string;
+        summary: string;
         content: string;
       }[];
-      if (!rows.length) throw new Error("请先生成至少一章正文");
+      if (!rows.length) throw new Error("请先生成至少一章正文或摘要");
       const data = await postGenerate(
         attachOriginalContext(project, {
           mode: "consistency_check",
           writingBoard: project.writingBoard,
           characters: project.characters,
           background: project.background,
-          chapters: rows.slice(0, 12),
+          chapters: rows,
         })
       );
       setConsistency(data.result);
@@ -223,7 +223,7 @@ export function ToolsPanel({
       persistRepoPrefs(repoRoot, repoSubdir);
       const result = await exportChaptersToRepo(project, {
         mode,
-        currentChapterId: mode === "current" ? singleChapterId : undefined,
+        currentChapterId: mode === "current" ? resolvedSingleId : undefined,
         root: repoRoot || undefined,
         subdir: repoSubdir,
       });
@@ -373,16 +373,15 @@ export function ToolsPanel({
       </div>
 
       <div className="card">
-        <h2 className="text-base font-semibold m-0 mb-1">写进仓库</h2>
+        <h2 className="text-base font-semibold m-0 mb-1">导出到文件夹</h2>
         <p className="text-sm text-[var(--text-muted)] mt-0 mb-3">
           把章节正文写成{" "}
           <code className="text-xs">novels/书名/ch-章节id.md</code>
-          ，方便用 Cursor 在磁盘上润色。桌面端写入你选择的目录（同一 chapterId
-          再导出覆盖）；浏览器会下载 Markdown 或 ZIP，不会假装写入成功。
+          ，方便在磁盘上润色。桌面端写入你选择的目录（同一章节再导出会覆盖）；浏览器会下载 Markdown 或 ZIP，不会假装写入成功。
         </p>
         {desktop ? (
           <div className="space-y-2 mb-3">
-            <label className="field-label">导出根目录（仓库或任意文件夹）</label>
+            <label className="field-label">导出根目录</label>
             <div className="flex flex-wrap gap-2 items-center">
               <input
                 className="flex-1 min-w-[12rem]"
@@ -425,7 +424,7 @@ export function ToolsPanel({
         ) : (
           <p className="text-sm text-[var(--text-muted)] mt-0 mb-3">
             当前是浏览器：将下载{" "}
-            <code className="text-xs">.md</code> 或按路径打包的 ZIP，请自行放到仓库的{" "}
+            <code className="text-xs">.md</code> 或按路径打包的 ZIP，请自行放到所选文件夹的{" "}
             <code className="text-xs">{repoSubdir || "novels"}/</code> 下。
           </p>
         )}
@@ -433,7 +432,7 @@ export function ToolsPanel({
           <div className="flex-1 min-w-[12rem]">
             <label className="field-label">本章</label>
             <select
-              value={singleChapterId}
+              value={resolvedSingleId}
               onChange={(e) => setSingleChapterId(e.target.value)}
             >
               {chapters.map((c) => (
@@ -454,7 +453,7 @@ export function ToolsPanel({
                 <span className="spinner" /> 写入中
               </>
             ) : (
-              "把本章写进仓库"
+              "把本章导出到文件夹"
             )}
           </button>
           <button
@@ -472,7 +471,7 @@ export function ToolsPanel({
           </p>
         ) : (
           <p className="text-xs text-[var(--text-muted)] mt-2 mb-0">
-            已完成指章节状态为 done 且有正文。文件头含书名、章序、chapterId，正文只含本章散文。
+            已完成指已写完且有正文的章节。文件头含书名、章序、章节编号，正文只含本章散文。
           </p>
         )}
       </div>

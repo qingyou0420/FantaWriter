@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
 import {
@@ -47,14 +47,11 @@ export function StyleLearnPanel({
   const [hint, setHint] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (styles.length && !styles.find((s) => s.id === selectedId)) {
-      setSelectedId(styles[0].id);
-    }
-  }, [styles, selectedId]);
+  const effectiveSelectedId =
+    styles.find((s) => s.id === selectedId)?.id || styles[0]?.id || "";
 
   const selected =
-    styles.find((s) => s.id === selectedId) || styles[0] || null;
+    styles.find((s) => s.id === effectiveSelectedId) || styles[0] || null;
 
   async function learn() {
     const raw = text.trim();

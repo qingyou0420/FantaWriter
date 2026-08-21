@@ -84,4 +84,39 @@ describe("volume memory", () => {
     expect(pack.priorBlock).toContain("少年离乡");
     expect(pack.priorBlock).toContain("甲离开渡口");
   });
+
+  it("uses volume summaries for distant finished volumes and chapter summaries for the recent window", () => {
+    const p = createEmptyProject("分层记忆");
+    p.volumes = [
+      { id: "v1", order: 1, title: "上卷", summary: "远卷：少年离乡，渡口定约。" },
+      { id: "v2", order: 2, title: "中卷", summary: "近卷：朝堂裂开。" },
+    ];
+    const chapters = Array.from({ length: 8 }, (_, i) => ({
+      id: `c${i + 1}`,
+      order: i + 1,
+      title: `第${i + 1}章`,
+      summary: `大纲${i + 1}`,
+      keyPoints: "",
+      tags: [] as string[],
+      volumeId: i < 4 ? "v1" : "v2",
+    }));
+    p.outline = { premise: "p", endingNote: "e", chapters };
+    p.chapters = chapters.map((ch, i) => ({
+      chapterId: ch.id,
+      title: ch.title,
+      content: i < 7 ? `正文${i + 1}` : "",
+      status: i < 7 ? ("done" as const) : ("idle" as const),
+      updatedAt: "",
+      summary: i < 7 ? `章摘要${i + 1}：近窗细节。` : "",
+    }));
+
+    const pack = buildMemoryPack(p, 8);
+    expect(pack.volumeMemory).toContain("远卷：少年离乡");
+    expect(pack.volumeMemory).toContain("近卷：朝堂裂开");
+    expect(pack.previousSummaries).toContain("章摘要7");
+    expect(pack.previousSummaries).toContain("章摘要4");
+    expect(pack.previousSummaries).not.toContain("章摘要2");
+    expect(pack.priorBlock).toContain("分卷记忆");
+    expect(pack.priorBlock).toContain("前情摘要");
+  });
 });

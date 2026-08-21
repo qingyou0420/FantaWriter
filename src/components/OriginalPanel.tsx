@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
 import { mergeCanonFacts } from "@/lib/original";
@@ -226,9 +227,15 @@ export function OriginalPanel({
       </div>
 
       {!canon.length ? (
-        <div className="card empty">
-          尚无锁定。可点「从原文抽取设定」，或手工加一条：名称 + 一句不能被改的事实。
-        </div>
+        <EmptyState
+          title="尚无锁定设定"
+          description="可从原文抽取，或手工加一条：名称 + 一句不能被改的事实。"
+          action={
+            <button type="button" className="btn btn-primary btn-sm" onClick={addFact}>
+              添加锁定
+            </button>
+          }
+        />
       ) : (
         <ul className="list-none p-0 m-0 space-y-3">
           {canon.map((f) => (

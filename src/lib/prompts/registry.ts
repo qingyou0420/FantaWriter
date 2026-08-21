@@ -16,13 +16,12 @@ import {
   generalOutlineUser,
   generalPolishOutlineUser,
   generalRewriteUser,
+  generalSceneChapterUser,
+  generalScenePlanUser,
+  generalContinueUser,
   generalVolumeOutlineUser,
+  generalVolumeSummaryUser,
 } from "./general";
-import {
-  buildContinueUserPrompt,
-  buildSceneChapterUserPrompt,
-  buildScenePlanUserPrompt,
-} from "../prompts";
 import {
   buildExtractCanonUserPrompt,
   injectOriginalGrounding,
@@ -47,7 +46,8 @@ export type GenerateTaskMode =
   | "optimize_settings"
   | "learn_style"
   | "polish_chapter_outline"
-  | "extract_canon";
+  | "extract_canon"
+  | "volume_summary";
 
 export const GENERAL_BANNED_SUBSTRINGS = [
   "色情尺度",
@@ -125,7 +125,7 @@ export function assemble(
   ) {
     throw new AssembleError(
       "REWRITE_MODE_NOT_ALLOWED",
-      "REWRITE_MODE_NOT_ALLOWED"
+      "当前版本不支持这种改写方式"
     );
   }
 
@@ -219,14 +219,8 @@ function assembleGeneral(
                 payload.priorBlock as string | undefined
               )
             : task === "continue"
-              ? buildContinueUserPrompt({
-                  ...(payload as object as Record<string, unknown>),
-                  writingBoard: "general",
-                } as never)
-              : buildSceneChapterUserPrompt({
-                  ...(payload as object as Record<string, unknown>),
-                  writingBoard: "general",
-                } as never),
+              ? generalContinueUser(payload as never)
+              : generalSceneChapterUser(payload as never),
       };
     case "rewrite":
       return {
@@ -236,10 +230,17 @@ function assembleGeneral(
     case "scene_plan":
       return {
         system: chapterSys,
-        user: buildScenePlanUserPrompt({
-          ...(payload as object as Record<string, unknown>),
-          writingBoard: "general",
-        } as never),
+        user: generalScenePlanUser(payload as never),
+      };
+    case "volume_summary":
+      return {
+        system: GENERAL_SETTING_SYSTEM,
+        user: generalVolumeSummaryUser({
+          volume: payload.volume as never,
+          chapterSummaries: (payload.chapterSummaries ||
+            payload.summaries ||
+            []) as never,
+        }),
       };
     case "expand_character":
       return {
