@@ -98,6 +98,17 @@ export function chaptersGroupedByVolume(project: NovelProject): {
   }));
 }
 
+/** 该卷是否已有非空正文（按卷重排大纲前必须确认） */
+export function volumeHasWrittenChapters(
+  project: NovelProject,
+  volumeId: string
+): boolean {
+  return chaptersInVolume(project, volumeId).some((ch) => {
+    const row = project.chapters.find((c) => c.chapterId === ch.id);
+    return Boolean(row?.content?.trim());
+  });
+}
+
 /** 前卷终局：上一卷摘要 + 该卷最后一章摘要/正文头 */
 export function previousVolumeEnding(
   project: NovelProject,

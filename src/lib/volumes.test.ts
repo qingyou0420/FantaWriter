@@ -8,6 +8,7 @@ import {
   chaptersGroupedByVolume,
   mergeVolumeChapters,
   removeVolume,
+  volumeHasWrittenChapters,
 } from "./volumes";
 
 describe("volumes + per-volume job + export", () => {
@@ -152,5 +153,37 @@ describe("volumes + per-volume job + export", () => {
     );
     expect(merged[merged.length - 1].id).toBe("c9");
     expect(merged.map((c) => c.order)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("volumeHasWrittenChapters is true only when that volume has body text", () => {
+    const p = createEmptyProject("有正文", "general");
+    const volId = p.volumes![0].id;
+    p.outline = {
+      premise: "",
+      endingNote: "",
+      chapters: [
+        {
+          id: "c1",
+          order: 1,
+          title: "一",
+          summary: "",
+          keyPoints: "",
+          tags: [],
+          volumeId: volId,
+        },
+      ],
+    };
+    p.chapters = [
+      {
+        chapterId: "c1",
+        title: "一",
+        content: "",
+        status: "idle",
+        updatedAt: "",
+      },
+    ];
+    expect(volumeHasWrittenChapters(p, volId)).toBe(false);
+    p.chapters[0].content = "已写的一章正文";
+    expect(volumeHasWrittenChapters(p, volId)).toBe(true);
   });
 });

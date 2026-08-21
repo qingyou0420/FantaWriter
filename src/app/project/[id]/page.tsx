@@ -23,7 +23,11 @@ import {
   continueLengthRequirement,
   countChapterChars,
 } from "@/lib/length";
-import { mergeVolumeChapters, previousVolumeEnding } from "@/lib/volumes";
+import {
+  mergeVolumeChapters,
+  previousVolumeEnding,
+  volumeHasWrittenChapters,
+} from "@/lib/volumes";
 import { useProjectStore } from "@/hooks/useProjectStore";
 import { loadAppPrefs } from "@/lib/theme";
 import { readProjectTab, writeProjectTab } from "@/lib/storage";
@@ -32,6 +36,7 @@ import {
   formatPlotThreadsForPrompt,
   postGenerate,
   streamGenerate,
+  type GenerateRequest,
 } from "@/lib/api";
 import {
   createBookJob,
@@ -323,6 +328,16 @@ export default function ProjectPage() {
     if (!project) return;
     const volume = (project.volumes || []).find((v) => v.id === volumeId);
     if (!volume) return;
+    const live = getLive() || project;
+    if (volumeHasWrittenChapters(live, volumeId)) {
+      if (
+        !confirm(
+          "本卷已有章节正文。重新生成本卷大纲会替换这些章，已写正文将丢失。确定继续？"
+        )
+      ) {
+        return;
+      }
+    }
     setError("");
     setBusy(`outline_volume:${volumeId}`);
     try {
@@ -455,9 +470,12 @@ export default function ProjectPage() {
         fresh.outline?.chapters.find((c) => c.id === chapter.id) || chapter;
       const prior = buildPreviousContext(fresh, liveChapter.order);
 
-      const chapterBody = (extra: Record<string, unknown> = {}) =>
+      const buildBody = (
+        mode: "chapter" | "continue",
+        extra?: { existingText?: string; instruction?: string }
+      ): GenerateRequest =>
         attachOriginalContext(fresh, {
-          mode: "chapter",
+          mode,
           writingBoard: fresh.writingBoard,
           characters: fresh.characters,
           background: fresh.background,
@@ -466,6 +484,7 @@ export default function ProjectPage() {
           chapter: liveChapter,
           previousChapterSnippet: prior.previousSnippet,
           previousSummaries: prior.previousSummaries,
+          previousSummary: prior.previousSummaries,
           characterStateCard: prior.characterStateCard,
           priorBlock: prior.priorBlock,
           plotThreads:
@@ -474,10 +493,11 @@ export default function ProjectPage() {
           lore: prior.lore,
           loreEntries: fresh.lore,
           projectTags: fresh.tags || [],
-          ...extra,
+          existingText: extra?.existingText,
+          instruction: extra?.instruction,
         });
 
-      let text = await streamGenerate(chapterBody(), {
+      let text = await streamGenerate(buildBody("chapter"), {
         signal: ac.signal,
         onDelta: (_d, full) => setStreamPreview(full),
       });
@@ -485,8 +505,7 @@ export default function ProjectPage() {
       if (chapterBelowMin(text, fresh.settings.length) && !ac.signal.aborted) {
         try {
           const extra = await streamGenerate(
-            chapterBody({
-              mode: "continue",
+            buildBody("continue", {
               existingText: text,
               instruction: continueLengthRequirement(
                 fresh.settings,

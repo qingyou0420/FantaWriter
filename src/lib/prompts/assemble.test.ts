@@ -289,6 +289,19 @@ describe("assemble isolation", () => {
     expect(src).not.toMatch(/user\.replace\(\s*\/## 正文要求/);
   });
 
+  it("continue user reads previousSummaries as 前情摘要", () => {
+    const cont = assemble("continue", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      existingText: "前文。",
+      chapter,
+      previousSummaries: "第1章：渡口定约已破。",
+    });
+    expect(cont.user).toContain("前情摘要");
+    expect(cont.user).toContain("渡口定约已破");
+  });
+
   it("continue and scene_chapter user include lore when provided", () => {
     const lore = "- 【地点·灰港】雾中港口";
     const cont = assemble("continue", "general", {

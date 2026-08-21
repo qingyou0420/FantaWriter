@@ -299,6 +299,40 @@ describe("excerpts and persistence", () => {
     expect(keys).not.toContain("渡口相见");
   });
 
+  it("injectOriginalGrounding uses outline.chapters.length, not default 1", () => {
+    const long = `${"甲".repeat(4000)}\n清溪在开头饮水\n${"乙".repeat(4000)}\n清溪在中段踏雪\n${"丙".repeat(4000)}\n清溪在末卷回望\n${"丁".repeat(2000)}`;
+    const original = {
+      title: "旧稿",
+      sourceLabel: "粘贴导入",
+      text: long,
+      updatedAt: "",
+    } satisfies OriginalManuscript;
+    const chapter = {
+      order: 2,
+      title: "二",
+      summary: "上路",
+      keyPoints: "",
+    };
+    const missingOutline = injectOriginalGrounding(
+      { system: "SYS", user: "USER" },
+      "rewrite",
+      { original, canon: [QINGXI_LOCK], chapter }
+    );
+    const withOutline = injectOriginalGrounding(
+      { system: "SYS", user: "USER" },
+      "rewrite",
+      {
+        original,
+        canon: [QINGXI_LOCK],
+        chapter,
+        outline: { chapters: [{}, {}, {}, {}, {}] },
+      }
+    );
+    expect(missingOutline.user).toContain("末卷回望");
+    expect(withOutline.user).toContain("中段踏雪");
+    expect(withOutline.user).not.toContain("末卷回望");
+  });
+
   it("later chapters excerpt later original segments", () => {
     const long = `${"甲".repeat(4000)}\n清溪在开头饮水\n${"乙".repeat(4000)}\n清溪在中段踏雪\n${"丙".repeat(4000)}\n清溪在末卷回望\n${"丁".repeat(2000)}`;
     const late = selectOriginalExcerpts(long, ["清溪"], 2200, {

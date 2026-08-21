@@ -41,5 +41,7 @@ describe("length ranges", () => {
   it("expand 2× is at least 1.6×", () => {
     expect(expandTargetChars(1000, 2)).toBeGreaterThanOrEqual(1600);
     expect(expandTargetChars(1000, 2)).toBe(2000);
+    expect(expandTargetChars(1000, Number("2"))).toBe(2000);
+    expect(expandTargetChars(1000, 1.5)).toBe(1500);
   });
 });

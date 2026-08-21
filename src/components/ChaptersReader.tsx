@@ -97,7 +97,7 @@ export function ChaptersReader({
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [rewriteMode, setRewriteMode] = useState<RewriteMode>("polish");
   const [rewriteInstruction, setRewriteInstruction] = useState("");
-  const [expandScale, setExpandScale] = useState<1.5 | 2>("2");
+  const [expandScale, setExpandScale] = useState<1.5 | 2>(2);
   const [continueHint, setContinueHint] = useState("");
   const [selection, setSelection] = useState({ start: 0, end: 0, text: "" });
   const [localStreaming, setLocalStreaming] = useState("");
@@ -293,6 +293,7 @@ export function ChaptersReader({
           priorBlock: prior.priorBlock,
           previousSummaries: prior.previousSummaries,
           chapter: selectedOutline,
+          outline: project.outline,
           loreEntries: project.lore,
           expandScale: rewriteMode === "expand" ? expandScale : undefined,
           expandTargetChars:
@@ -346,7 +347,9 @@ export function ChaptersReader({
           background: project.background,
           settings: project.settings,
           chapter: selectedOutline,
+          outline: project.outline,
           previousSummary: prior.previousSummaries,
+          previousSummaries: prior.previousSummaries,
           characterStateCard: prior.characterStateCard,
           plotThreads:
             prior.plotThreads ||
@@ -518,7 +521,9 @@ export function ChaptersReader({
           background: project.background,
           settings: project.settings,
           chapter: selectedOutline,
+          outline: project.outline,
           previousSummary: prior.previousSummaries,
+          previousSummaries: prior.previousSummaries,
           characterStateCard: prior.characterStateCard,
           plotThreads:
             prior.plotThreads ||

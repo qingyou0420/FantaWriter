@@ -51,6 +51,7 @@ export function expandTargetChars(
   selectedChars: number,
   scale: number
 ): number {
-  const s = Number.isFinite(scale) && scale > 1 ? scale : 1.5;
+  const n = typeof scale === "number" ? scale : Number(scale);
+  const s = Number.isFinite(n) && n > 1 ? n : 1.5;
   return Math.max(selectedChars + 80, Math.round(selectedChars * s));
 }

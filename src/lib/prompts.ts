@@ -805,10 +805,12 @@ export function buildContinueUserPrompt(opts: {
   chapter?: OutlineChapter;
   outlineContext?: string;
   previousSummary?: string;
+  previousSummaries?: string;
   plotThreads?: string;
   characterStateCard?: string;
   lore?: string;
 }): string {
+  const previousSummary = opts.previousSummary || opts.previousSummaries;
   return `请从给定正文**末尾自然续写**，不要重复已有内容。
 
 ## 人物设定
@@ -823,7 +825,7 @@ ${formatSettings(opts.settings, "general")}
 ${opts.characterStateCard ? `## 角色状态卡\n${opts.characterStateCard}\n` : ""}
 ${opts.chapter ? `## 本章目标\n标题：${opts.chapter.title}\n摘要：${opts.chapter.summary}\n关键点：${opts.chapter.keyPoints}\n` : ""}
 ${opts.outlineContext ? `## 大纲参考\n${opts.outlineContext}\n` : ""}
-${opts.previousSummary ? `## 前情摘要\n${opts.previousSummary}\n` : ""}
+${previousSummary ? `## 前情摘要\n${previousSummary}\n` : ""}
 ${opts.plotThreads ? `## 伏笔线索（可推进，勿无故遗忘）\n${opts.plotThreads}\n` : ""}
 ${opts.lore ? `## 世界观设定（关键词命中）\n${opts.lore}\n` : ""}
 ${opts.instruction ? `## 续写方向\n${opts.instruction}\n` : ""}
