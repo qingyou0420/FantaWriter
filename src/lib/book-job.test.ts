@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeStaleJob, type BookJob } from "./book-job";
+import {
+  allowsWholeBookGenerate,
+  normalizeStaleJob,
+  type BookJob,
+} from "./book-job";
+import { createEmptyProject } from "./types";
 
 describe("normalizeStaleJob", () => {
   it("turns orphaned running jobs into paused with pending items", () => {
@@ -34,5 +39,19 @@ describe("normalizeStaleJob", () => {
       items: [{ chapterId: "c1", order: 1, title: "一", status: "pending" }],
     };
     expect(normalizeStaleJob(job)).toEqual(job);
+  });
+});
+
+describe("BookGenerationJob stays for from-scratch books", () => {
+  it("is disabled only when original text is present", () => {
+    expect(allowsWholeBookGenerate(createEmptyProject("从零"))).toBe(true);
+    const p = createEmptyProject("焕新");
+    p.original = {
+      title: "旧稿",
+      sourceLabel: "粘贴导入",
+      text: "北城门破。",
+      updatedAt: "",
+    };
+    expect(allowsWholeBookGenerate(p)).toBe(false);
   });
 });

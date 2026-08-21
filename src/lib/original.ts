@@ -22,6 +22,7 @@ const CANON_KIND_LABEL: Record<CanonKind, string> = {
   identity: "身份",
   relationship: "关系",
   place: "地点",
+  item: "物品",
   fact: "事实",
 };
 
@@ -338,7 +339,11 @@ export function attachOriginalContext<T extends Record<string, unknown>>(
   return { ...body, ...extra };
 }
 
-const SKIP_ORIGINAL_INJECT = new Set(["extract_canon", "learn_style"]);
+const SKIP_ORIGINAL_INJECT = new Set([
+  "extract_canon",
+  "extract_skeleton",
+  "learn_style",
+]);
 
 export function injectOriginalGrounding(
   assembled: { system: string; user: string },
@@ -535,6 +540,7 @@ export function parseCanonFacts(text: string): LockedCanonFact[] {
     "identity",
     "relationship",
     "place",
+    "item",
     "fact",
   ];
   return (data.facts || [])

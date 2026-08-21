@@ -22,7 +22,13 @@ import {
 } from "@/lib/length";
 import { parseTouchedThreads, sliceAroundSelection } from "@/lib/prompts";
 import { createThrottledTextSink } from "@/lib/stream-throttle";
+import { BeatWorkbench } from "@/components/BeatWorkbench";
 import { EmptyState } from "@/components/EmptyState";
+import { collectChapterAnchors } from "@/lib/beat-contract";
+import type { BeatCommitDeltas } from "@/lib/beat-contract";
+import { hasOriginalText } from "@/lib/original";
+import { allowsWholeBookGenerate } from "@/lib/renewal";
+import type { ChapterPersistResult } from "@/lib/renewal";
 import { loadReaderPrefs, saveReaderPrefs } from "@/lib/storage";
 import { chaptersGroupedByVolume } from "@/lib/volumes";
 import type { RewriteMode } from "@/lib/prompts";
@@ -68,6 +74,7 @@ export function ChaptersReader({
   onGenerateAll,
   onCancel,
   onUpdateChapterMeta,
+  onCommitBeatDeltas,
   onBusy,
   onError,
   onOpenSettings,
@@ -79,7 +86,12 @@ export function ChaptersReader({
   busy: string | null;
   onSelect: (id: string) => void;
   onGenerateChapter: (ch: OutlineChapter) => void;
-  onContentChange: (chapterId: string, content: string, opts?: { pushVersion?: string }) => void;
+  onContentChange: (
+    chapterId: string,
+    content: string,
+    opts?: { pushVersion?: string; forceCanon?: boolean }
+  ) => ChapterPersistResult | void;
+  onCommitBeatDeltas?: (chapterId: string, deltas: BeatCommitDeltas) => void;
   onChapterTagsChange: (chapterId: string, tags: string[]) => void;
   onChapterCastChange: (chapterId: string, castIds: string[]) => void;
   onGenerateAll: () => void;
@@ -106,6 +118,10 @@ export function ChaptersReader({
   const [continueHint, setContinueHint] = useState("");
   const [selection, setSelection] = useState({ start: 0, end: 0, text: "" });
   const [localStreaming, setLocalStreaming] = useState("");
+  const [blockedSave, setBlockedSave] = useState<{
+    content: string;
+    violations: string[];
+  } | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamSinkRef = useRef(
@@ -170,6 +186,26 @@ export function ChaptersReader({
 
   const selectedOutline = chapters.find((c) => c.id === selectedChapterId);
 
+  function persistContent(
+    next: string,
+    opts?: { pushVersion?: string; forceCanon?: boolean }
+  ): ChapterPersistResult | void {
+    if (!selectedOutline) return;
+    const result = onContentChange(selectedOutline.id, next, opts);
+    if (result && !result.ok) {
+      setBlockedSave({ content: next, violations: result.violations });
+      onError("与锁定设定冲突，正文未保存。可继续改，或强制保存并警告。");
+      return result;
+    }
+    setBlockedSave(null);
+    if (result?.violations?.length) {
+      onUpdateChapterMeta(selectedOutline.id, {
+        canonWarnings: result.violations,
+      });
+    }
+    return result;
+  }
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey) || e.key !== "Enter") return;
@@ -185,13 +221,16 @@ export function ChaptersReader({
   const lengthRange = lengthRangeFor(project.settings.length);
   const needsFill = !!content && chapterBelowMin(content, project.settings.length);
   const chapterTagCount = selectedOutline?.tags?.length || 0;
+  const renewal = hasOriginalText(project.original);
   const displayContent =
-    busy?.startsWith("chapter:") ||
+    blockedSave?.content ??
+    (busy?.startsWith("chapter:") ||
     busy === "rewrite" ||
     busy === "continue" ||
-    busy === "scene_gen"
+    busy === "scene_gen" ||
+    busy?.startsWith("beat:")
       ? localStreaming || content
-      : content;
+      : content);
 
   const findMatches = useMemo(() => {
     if (!findQuery) return [] as number[];
@@ -252,17 +291,15 @@ export function ChaptersReader({
       content.slice(0, pos) +
       replaceQuery +
       content.slice(pos + findQuery.length);
-    onContentChange(selectedOutline.id, next);
+    persistContent(next);
   }
 
   function replaceAll() {
     if (!selectedOutline || !findQuery) return;
     if (!content.includes(findQuery)) return;
-    onContentChange(
-      selectedOutline.id,
-      content.split(findQuery).join(replaceQuery),
-      { pushVersion: "replace" }
-    );
+    persistContent(content.split(findQuery).join(replaceQuery), {
+      pushVersion: "replace",
+    });
   }
 
   async function runRewrite() {
@@ -308,6 +345,7 @@ export function ChaptersReader({
             rewriteMode === "expand"
               ? expandTargetChars(selectedChars, expandScale)
               : undefined,
+          verbatimAnchors: collectChapterAnchors(selectedContent?.scenes),
         }),
         {
           signal: ac.signal,
@@ -319,7 +357,7 @@ export function ChaptersReader({
         }
       );
       const next = content.slice(0, start) + rewritten + content.slice(end);
-      onContentChange(selectedOutline.id, next, { pushVersion: "rewrite" });
+      persistContent(next, { pushVersion: "rewrite" });
       setLocalStreaming("");
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
@@ -371,7 +409,7 @@ export function ChaptersReader({
           onDelta: (_d, full) => streamSinkRef.current.push(base + full),
         }
       );
-      onContentChange(selectedOutline.id, base + cont, {
+      persistContent(base + cont, {
         pushVersion: "continue",
       });
       setLocalStreaming("");
@@ -445,7 +483,7 @@ export function ChaptersReader({
     setLocalStreaming("");
     try {
       if (selectedContent.content) {
-        onContentChange(selectedOutline.id, selectedContent.content, {
+        persistContent(selectedContent.content, {
           pushVersion: "before-scenes",
         });
       }
@@ -488,12 +526,12 @@ export function ChaptersReader({
         assembled += (assembled ? "\n\n" : "") + piece;
         setLocalStreaming(assembled);
       }
-      onContentChange(selectedOutline.id, assembled);
+      persistContent(assembled);
       setLocalStreaming("");
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
         onError("已取消场景生成");
-        if (assembled) onContentChange(selectedOutline.id, assembled);
+        if (assembled) persistContent(assembled);
       } else {
         onError(e instanceof Error ? e.message : String(e));
       }
@@ -545,7 +583,7 @@ export function ChaptersReader({
           onDelta: (_d, full) => streamSinkRef.current.push(base + full),
         }
       );
-      onContentChange(selectedOutline.id, base + extra, {
+      persistContent(base + extra, {
         pushVersion: "continue",
       });
       setLocalStreaming("");
@@ -612,7 +650,7 @@ export function ChaptersReader({
   function restoreVersion(v: ChapterVersion) {
     if (!selectedOutline) return;
     if (!confirm("恢复此版本？当前正文会进入历史。")) return;
-    onContentChange(selectedOutline.id, v.content, {
+    persistContent(v.content, {
       pushVersion: "before-restore",
     });
     setShowVersions(false);
@@ -658,14 +696,18 @@ export function ChaptersReader({
           <span className="text-xs font-medium text-[var(--text-muted)]">
             章节（{chapters.length}）
           </span>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={!!busy}
-            onClick={onGenerateAll}
-          >
-            全部生成
-          </button>
+          {allowsWholeBookGenerate(project) ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={!!busy}
+              onClick={onGenerateAll}
+            >
+              全部生成
+            </button>
+          ) : (
+            <span className="text-[0.7rem] text-[var(--text-muted)]">按拍扩写</span>
+          )}
         </div>
         {onOpenSettings ? (
           <button
@@ -1158,14 +1200,16 @@ export function ChaptersReader({
                     >
                       {busy === "scene_plan" ? "规划中…" : "AI 规划场景"}
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={!!busy || !selectedContent?.scenes?.length}
-                      onClick={generateByScenes}
-                    >
-                      按场景生成
-                    </button>
+                    {allowsWholeBookGenerate(project) ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={!!busy || !selectedContent?.scenes?.length}
+                        onClick={generateByScenes}
+                      >
+                        按场景生成
+                      </button>
+                    ) : null}
                   </div>
                   {selectedContent?.scenes?.length ? (
                     <ol className="text-sm text-[var(--text-muted)] m-0 pl-4">
@@ -1275,6 +1319,48 @@ export function ChaptersReader({
               </div>
             </div>
 
+            {renewal && selectedOutline ? (
+              <BeatWorkbench
+                project={project}
+                outlineChapter={selectedOutline}
+                chapter={selectedContent}
+                busy={busy}
+                onBusy={onBusy}
+                onError={onError}
+                onUpdateScenes={(scenes) =>
+                  onUpdateChapterMeta(selectedOutline.id, { scenes })
+                }
+                onAppendContent={(piece, opts) => {
+                  const base = selectedContent?.content || "";
+                  const next = base
+                    ? `${base.replace(/\s+$/, "")}\n\n${piece}`
+                    : piece;
+                  return persistContent(next, {
+                    pushVersion: "beat",
+                    forceCanon: opts?.forceCanon,
+                  });
+                }}
+                onCommitDeltas={(deltas) =>
+                  onCommitBeatDeltas?.(selectedOutline.id, deltas)
+                }
+              />
+            ) : null}
+
+            {blockedSave?.violations.length ? (
+              <div className="px-4 py-2 text-xs text-[var(--danger-text)] border-t border-[var(--border-soft)]">
+                <p className="mt-0 mb-2">{blockedSave.violations.join("；")}</p>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() =>
+                    persistContent(blockedSave.content, { forceCanon: true })
+                  }
+                >
+                  强制保存并警告
+                </button>
+              </div>
+            ) : null}
+
             {selectedContent?.status === "generating" &&
             !localStreaming &&
             !busy?.startsWith("chapter") ? (
@@ -1292,8 +1378,7 @@ export function ChaptersReader({
                   onKeyUp={captureSelection}
                   onChange={(e) => {
                     if (busy) return;
-                    // 直接提交字符串；父级已防抖落盘，保证可增删改
-                    onContentChange(selectedOutline.id, e.target.value);
+                    persistContent(e.target.value);
                   }}
                   readOnly={!!busy}
                   spellCheck={false}

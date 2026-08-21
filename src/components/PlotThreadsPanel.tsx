@@ -7,12 +7,18 @@ import {
   type NovelProject,
   type PlotThread,
   type PlotThreadStatus,
+  type PlotThreadVisibility,
 } from "@/lib/types";
 
 const STATUS_LABEL: Record<PlotThreadStatus, string> = {
   planted: "已埋下",
   active: "推进中",
   resolved: "已回收",
+};
+
+const VISIBILITY_LABEL: Record<PlotThreadVisibility, string> = {
+  reader_known: "读者已知（进记忆包）",
+  author_only: "仅作者（暗线，不泄漏）",
 };
 
 export function PlotThreadsPanel({
@@ -61,7 +67,7 @@ export function PlotThreadsPanel({
           <div>
             <h2 className="text-base font-semibold m-0">伏笔 / 线索板</h2>
             <p className="text-sm text-[var(--text-muted)] mt-1 mb-0">
-              记录埋下与回收的线索；生成正文时会把「已埋下 / 推进中」的线索注入提示，避免遗忘。
+              记录埋下与回收的线索。只有「读者已知」的未回收线索会进记忆包；仅作者的暗线不会泄漏给模型正文。
             </p>
           </div>
           <button
@@ -122,6 +128,24 @@ export function PlotThreadsPanel({
                     </select>
                   </Field>
                 </div>
+                <Field label="可见性">
+                  <select
+                    value={t.visibility === "author_only" ? "author_only" : "reader_known"}
+                    onChange={(e) =>
+                      updateThread(t.id, {
+                        visibility: e.target.value as PlotThreadVisibility,
+                      })
+                    }
+                  >
+                    {(
+                      Object.keys(VISIBILITY_LABEL) as PlotThreadVisibility[]
+                    ).map((k) => (
+                      <option key={k} value={k}>
+                        {VISIBILITY_LABEL[k]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 {hits.length ? (
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="badge">

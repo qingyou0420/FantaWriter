@@ -26,6 +26,7 @@ import {
   buildExtractCanonUserPrompt,
   injectOriginalGrounding,
 } from "../original";
+import { buildExtractSkeletonUserPrompt } from "../skeleton";
 
 export type GenerateTaskMode =
   | "outline"
@@ -47,6 +48,7 @@ export type GenerateTaskMode =
   | "learn_style"
   | "polish_chapter_outline"
   | "extract_canon"
+  | "extract_skeleton"
   | "volume_summary";
 
 export const GENERAL_BANNED_SUBSTRINGS = [
@@ -287,6 +289,14 @@ function assembleGeneral(
       return {
         system: GENERAL_SETTING_SYSTEM,
         user: buildExtractCanonUserPrompt({
+          sampleText: String(payload.sampleText || payload.originalText || ""),
+          titleHint: String(payload.titleHint || payload.nameHint || ""),
+        }),
+      };
+    case "extract_skeleton":
+      return {
+        system: GENERAL_SETTING_SYSTEM,
+        user: buildExtractSkeletonUserPrompt({
           sampleText: String(payload.sampleText || payload.originalText || ""),
           titleHint: String(payload.titleHint || payload.nameHint || ""),
         }),
