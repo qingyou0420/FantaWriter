@@ -7,7 +7,7 @@ import {
   resetStorageState,
   resetTagLibraryToDefaultFor,
 } from "./storage";
-import { DEFAULT_GENERAL_TAG_LIBRARY, DEFAULT_TAG_LIBRARY } from "./types";
+import { DEFAULT_GENERAL_TAG_LIBRARY } from "./types";
 
 function installLocalStorage() {
   const mem = new Map<string, string>();
@@ -42,12 +42,11 @@ describe("library namespaces", () => {
     vi.unstubAllGlobals();
   });
 
-  it("general default tags are not erotic act tags", () => {
-    const general = resetTagLibraryToDefaultFor("general");
-    const erotic = loadTagLibraryFor("erotic");
-    expect(general).toEqual([...DEFAULT_GENERAL_TAG_LIBRARY]);
-    expect(general).not.toContain("口交");
-    expect(erotic).toContain("口交");
-    expect(erotic).toEqual([...DEFAULT_TAG_LIBRARY]);
+  it("default tags are conventional genre tags", () => {
+    const tags = resetTagLibraryToDefaultFor("general");
+    expect(tags).toEqual([...DEFAULT_GENERAL_TAG_LIBRARY]);
+    expect(loadTagLibraryFor("general")).toEqual([...DEFAULT_GENERAL_TAG_LIBRARY]);
+    expect(tags).toContain("悬疑");
+    expect(tags).toContain("奇幻");
   });
 });

@@ -1,4 +1,4 @@
-/** 色情尺度 1–5 */
+/** 旧项目 JSON 可能带 1–5；本版不展示、不写入提示词 */
 export type EroticLevel = 1 | 2 | 3 | 4 | 5;
 
 /** 人称 */
@@ -16,8 +16,8 @@ export type WritingStyle =
   | "custom" // 自定义描述
   | "learned"; // 从范文学习的固定文风
 
-/** 写作台。对外文案：常规 / 色情。禁止使用 "literary"（与 WritingStyle 撞名）。 */
-export type WritingBoard = "general" | "erotic";
+/** 本版只有常规小说。字段保留以便导入旧 JSON。 */
+export type WritingBoard = "general";
 
 export const CURRENT_SCHEMA_VERSION = 2 as const;
 
@@ -105,7 +105,6 @@ export interface StoryBackground {
 export interface LearnedStyle {
   id: string;
   name: string;
-  /** 旧数据缺省时由库迁移补 erotic */
   writingBoard: WritingBoard;
   createdAt: string;
   updatedAt: string;
@@ -118,8 +117,8 @@ export interface LearnedStyle {
   rhythm: string;
   narrative: string;
   dialogue: string;
-  /** 仅 erotic 档案；常规学习不请求、不落盘 */
-  erotic?: string;
+  /** 旧档案可能带此字段；本版不请求、不展示 */
+  extras?: string;
   sensory: string;
   structure: string;
   avoid: string;
@@ -158,9 +157,9 @@ export interface OutlineChapter {
   summary: string;
   /** 本章关键情节/冲突点 */
   keyPoints: string;
-  /** 本章是否含情色段落及强度提示；存储字段保留，常规 UI 隐藏 */
-  eroticNote: string;
-  /** 常规大纲 JSON 别名；parse 时写入 eroticNote 若后者为空 */
+  /** 旧 JSON 别名；normalize 时并入 intensityNote */
+  eroticNote?: string;
+  /** 节奏 / 冲突 / 情绪强度备注 */
   intensityNote?: string;
   /** 本章强制体现的行为标签（生成本章时生效） */
   tags: string[];
@@ -242,7 +241,7 @@ export interface NovelProject {
   name: string;
   schemaVersion: typeof CURRENT_SCHEMA_VERSION;
   writingBoard: WritingBoard;
-  /** 预留；默认 erotic→adult，general→unrated。2.0 UI 不读取 */
+  /** 预留；本版固定 unrated */
   contentRating: ContentRating;
   createdAt: string;
   updatedAt: string;
@@ -251,9 +250,9 @@ export interface NovelProject {
   lore?: LoreEntry[];
   volumes?: Volume[];
   settings: GenerationSettings;
-  /** general=类型标签；erotic=行为标签。同一字段，词汇表由 pack 定义 */
+  /** 类型 / 题材标签 */
   tags: string[];
-  /** 转换向导归档用；assemble 永不读取 */
+  /** 旧转换向导归档；assemble 不读取 */
   archivedActTags?: string[];
   /** 原作底稿；空则走从零开写 */
   original?: OriginalManuscript | null;
@@ -340,7 +339,7 @@ export function pushChapterVersion(
   };
 }
 
-/** 常规写作台默认类型标签（附录 A.9） */
+/** 默认类型 / 题材标签 */
 export const DEFAULT_GENERAL_TAG_LIBRARY = [
   "悬疑",
   "成长",
@@ -364,18 +363,10 @@ export const DEFAULT_GENERAL_TAG_LIBRARY = [
   "蒸汽朋克",
 ] as const;
 
-/** 默认标签库示例（用 / 分隔的批量格式同源） */
-export const DEFAULT_TAG_LIBRARY = [
-  "口交",
-  "肛交",
-  "舔阴",
-  "舔肛",
-  "后背式",
-  "传教式",
-  "女同",
-] as const;
+/** 与 DEFAULT_GENERAL_TAG_LIBRARY 相同，兼容旧调用名 */
+export const DEFAULT_TAG_LIBRARY = DEFAULT_GENERAL_TAG_LIBRARY;
 
-/** 解析「口交/肛交/舔阴」这类批量文本为去重标签列表 */
+/** 解析逗号 / 换行分隔的批量文本为去重标签列表 */
 export function parseTagsFromText(text: string): string[] {
   if (!text?.trim()) return [];
   const parts = text
@@ -408,12 +399,12 @@ export function mergeTags(...lists: (string[] | undefined)[]): string[] {
   return out;
 }
 
-export function defaultContentRating(board: WritingBoard): ContentRating {
-  return board === "erotic" ? "adult" : "unrated";
+export function defaultContentRating(_board?: WritingBoard): ContentRating {
+  return "unrated";
 }
 
-function resolveWritingBoard(value: unknown): WritingBoard {
-  return value === "general" ? "general" : "erotic";
+function resolveWritingBoard(_value?: unknown): WritingBoard {
+  return "general";
 }
 
 const CANON_KINDS: CanonKind[] = [
@@ -546,16 +537,16 @@ export function normalizeProject(p: NovelProject): NovelProject {
       ? {
           ...p.outline,
           chapters: (p.outline.chapters || []).map((c) => {
-            const eroticNote =
-              c.eroticNote ||
+            const intensityNote =
               (typeof c.intensityNote === "string" ? c.intensityNote : "") ||
+              c.eroticNote ||
               "";
             return {
               ...c,
               volumeId: c.volumeId || defaultVolId,
               tags: Array.isArray(c.tags) ? c.tags : [],
-              eroticNote,
-              intensityNote: c.intensityNote || eroticNote || undefined,
+              intensityNote,
+              eroticNote: intensityNote,
             };
           }),
         }
@@ -579,9 +570,16 @@ export function assertWritingBoardImmutable(
 }
 
 export function normalizeLearnedStyle(s: LearnedStyle): LearnedStyle {
+  const extras =
+    typeof s.extras === "string"
+      ? s.extras
+      : typeof (s as LearnedStyle & { erotic?: string }).erotic === "string"
+        ? (s as LearnedStyle & { erotic?: string }).erotic
+        : undefined;
   return {
     ...s,
-    writingBoard: s.writingBoard === "general" ? "general" : "erotic",
+    writingBoard: "general",
+    extras,
   };
 }
 
@@ -605,11 +603,11 @@ export function sampleTextForStyleLearning(
 }
 
 export const EROTIC_LEVEL_LABELS: Record<EroticLevel, string> = {
-  1: "含蓄暗示 — 点到为止，氛围为主",
-  2: "暧昧挑逗 — 有感官描写，无露骨细节",
-  3: "适中情欲 — 有明确性描写，文雅而不回避",
-  4: "露骨详细 — 过程与感官充分展开",
-  5: "极致直白 — 最大尺度、细节不删减",
+  1: "含蓄",
+  2: "克制",
+  3: "适中",
+  4: "浓烈",
+  5: "强烈",
 };
 
 export const STYLE_LABELS: Record<WritingStyle, string> = {
@@ -684,7 +682,7 @@ export function createDefaultSettings(): GenerationSettings {
 
 export function createEmptyProject(
   name = "未命名小说",
-  writingBoard: WritingBoard = "erotic"
+  _writingBoard?: WritingBoard
 ): NovelProject {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -692,8 +690,8 @@ export function createEmptyProject(
     id,
     name,
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    writingBoard,
-    contentRating: defaultContentRating(writingBoard),
+    writingBoard: "general",
+    contentRating: "unrated",
     createdAt: now,
     updatedAt: now,
     characters: [createEmptyCharacter()],

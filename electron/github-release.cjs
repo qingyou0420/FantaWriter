@@ -4,7 +4,7 @@
  */
 const { versionFromSetupName } = require("./setup-artifact.cjs");
 
-const DEFAULT_GITHUB_REPO = "qingyou0420/fantasy-writer";
+const DEFAULT_GITHUB_REPO = "qingyou0420/huanxiang-zuojia";
 const USER_AGENT = "Fantasy-Writer";
 
 const ALLOWED_DOWNLOAD_HOSTS = new Set([
@@ -83,7 +83,7 @@ function pickSetupAsset(assets) {
       version,
       downloadUrl,
       assetApiUrl,
-      prefer: /^Fantasy-Writer-Setup-/i.test(name) ? 0 : 1,
+      prefer: 0,
     });
   }
   matched.sort((a, b) => a.prefer - b.prefer);
@@ -137,10 +137,10 @@ function setupFileNameFromUrl(url) {
 function githubCheckErrorMessage(err) {
   const msg = err instanceof Error ? err.message : String(err);
   if (/HTTP 404/.test(msg)) {
-    return "无法读取 GitHub latest release（私有仓请在设置中填写更新用 GitHub 令牌）";
+    return "无法读取 GitHub latest release（本仓公开，请确认已发布 Fantasy-Writer-Setup 安装包）";
   }
   if (/HTTP 401|HTTP 403/.test(msg)) {
-    return "GitHub 令牌无效或权限不足";
+    return "GitHub 访问被拒绝，请稍后重试";
   }
   return `GitHub 检查更新失败：${msg}`;
 }

@@ -19,5 +19,4 @@ const desktopBridge = {
   getSuggestedExportRoot: () => ipcRenderer.invoke("fs:getSuggestedExportRoot"),
 };
 
-contextBridge.exposeInMainWorld("eroticNovelStudio", desktopBridge);
 contextBridge.exposeInMainWorld("fantasyWriter", desktopBridge);

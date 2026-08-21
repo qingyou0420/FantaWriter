@@ -16,7 +16,7 @@ export function OutlinePanel({
   outline,
   projectTags,
   library,
-  writingBoard = "erotic",
+  writingBoard = "general",
   volumes,
   busy,
   onGenerate,
@@ -523,21 +523,12 @@ export function OutlinePanel({
               </Field>
               <Field label={boardCopy(writingBoard).intensityLabel}>
                 <textarea
-                  value={
-                    writingBoard === "general"
-                      ? active.intensityNote || active.eroticNote
-                      : active.eroticNote
-                  }
+                  value={active.intensityNote || active.eroticNote || ""}
                   onChange={(e) =>
-                    patchChapter(
-                      active.id,
-                      writingBoard === "general"
-                        ? {
-                            intensityNote: e.target.value,
-                            eroticNote: e.target.value,
-                          }
-                        : { eroticNote: e.target.value }
-                    )
+                    patchChapter(active.id, {
+                      intensityNote: e.target.value,
+                      eroticNote: e.target.value,
+                    })
                   }
                   rows={5}
                   className="!min-h-[7rem] w-full outline-field-lg"

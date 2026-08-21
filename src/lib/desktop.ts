@@ -79,19 +79,16 @@ export type DesktopBridge = {
 
 declare global {
   interface Window {
-    eroticNovelStudio?: DesktopBridge;
     fantasyWriter?: DesktopBridge;
   }
 }
 
 export function isDesktopApp(): boolean {
   if (typeof window === "undefined") return false;
-  return Boolean(
-    window.fantasyWriter?.isDesktop || window.eroticNovelStudio?.isDesktop
-  );
+  return Boolean(window.fantasyWriter?.isDesktop);
 }
 
 export function getDesktop(): DesktopBridge | null {
   if (typeof window === "undefined") return null;
-  return window.fantasyWriter ?? window.eroticNovelStudio ?? null;
+  return window.fantasyWriter ?? null;
 }

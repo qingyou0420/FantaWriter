@@ -6,12 +6,10 @@ import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
 import { previewBuiltInSystem } from "@/lib/prompts/registry";
 import {
-  EROTIC_LEVEL_LABELS,
   LENGTH_LABELS,
   PERSON_LABELS,
   STYLE_LABELS,
   type Character,
-  type EroticLevel,
   type GenerationSettings,
   type LearnedStyle,
   type NarrativePerson,
@@ -27,7 +25,7 @@ export function SettingsPanel({
   styleLibrary,
   characters,
   background,
-  writingBoard = "erotic",
+  writingBoard = "general",
   original,
   canon,
   onChange,
@@ -82,34 +80,13 @@ export function SettingsPanel({
 
       <AiBox
         title="根据设定优化生成参数"
-        hint={
-          writingBoard === "general"
-            ? "结合人物与背景，智能推荐文风、人称、章节数与额外写作指令。"
-            : "结合人物与背景，智能推荐尺度、文风、人称、章节数与额外写作指令。可先填偏好再点优化。"
-        }
+        hint="结合人物与背景，智能推荐文风、人称、章节数与额外写作指令。"
         seed={seed}
         onSeedChange={setSeed}
         busy={busy}
         primaryLabel="AI 优化参数"
         onPrimary={optimizeSettings}
       />
-
-      {writingBoard === "erotic" ? (
-        <Field label="色情尺度" hint={EROTIC_LEVEL_LABELS[settings.eroticLevel]}>
-          <div className="level-track">
-            {([1, 2, 3, 4, 5] as EroticLevel[]).map((n) => (
-              <button
-                key={n}
-                type="button"
-                className={`level-btn ${settings.eroticLevel === n ? "active" : ""}`}
-                onClick={() => patch({ eroticLevel: n })}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </Field>
-      ) : null}
 
       <div className="grid sm:grid-cols-2 gap-x-4">
         <Field label="文笔文风">
@@ -139,7 +116,6 @@ export function SettingsPanel({
           >
             {(Object.keys(STYLE_LABELS) as WritingStyle[])
               .filter((k) => {
-                if (writingBoard !== "general") return true;
                 if (k === settings.writingStyle) return true;
                 return k !== "passionate" && k !== "restrained";
               })

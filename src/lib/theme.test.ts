@@ -65,10 +65,10 @@ describe("AppPrefs dual keys", () => {
     saveAppPrefs({
       theme: "light",
       autoConsistencyAfterBookJob: false,
-      defaultBoard: "erotic",
+      defaultBoard: "general",
     });
     expect(localStorage.getItem(THEME_STORAGE_KEY_NEW)).toBe("light");
-    expect(localStorage.getItem(APP_PREFS_KEY_NEW)).toContain("erotic");
+    expect(localStorage.getItem(APP_PREFS_KEY_NEW)).toContain("general");
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(APP_PREFS_KEY)).toBeNull();
   });

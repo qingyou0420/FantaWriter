@@ -41,8 +41,8 @@ export function useProjectStore(projectId: string) {
       const normalized = p ? normalizeProject(p) : null;
       projectRef.current = normalized;
       setProject(normalized);
-      setTagLibrary(loadTagLibraryFor(normalized?.writingBoard || "erotic"));
-      setStyleLibrary(loadStyleLibraryFor(normalized?.writingBoard || "erotic"));
+      setTagLibrary(loadTagLibraryFor("general"));
+      setStyleLibrary(loadStyleLibraryFor("general"));
       setReady(true);
       requestAnimationFrame(() => {
         if (!cancelled) skipPersistRef.current = false;
@@ -57,7 +57,7 @@ export function useProjectStore(projectId: string) {
 
   useEffect(() => {
     const refreshLibs = () => {
-      const board = projectRef.current?.writingBoard || "erotic";
+      const board = "general";
       setTagLibrary(loadTagLibraryFor(board));
       setStyleLibrary(loadStyleLibraryFor(board));
     };

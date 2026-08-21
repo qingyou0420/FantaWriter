@@ -1,11 +1,8 @@
 import {
   DEFAULT_GENERAL_TAG_LIBRARY,
   DEFAULT_READER_PREFS,
-  DEFAULT_TAG_LIBRARY,
   assertWritingBoardImmutable,
   createEmptyUsageStats,
-  defaultContentRating,
-  defaultVolumeId,
   normalizeLearnedStyle,
   normalizeProject,
   type LearnedStyle,
@@ -44,7 +41,6 @@ export type BoardLibraries = {
 
 export type StoredLibraries = {
   general: BoardLibraries;
-  erotic: BoardLibraries;
 };
 
 let projectsCache: NovelProject[] | null = null;
@@ -137,8 +133,8 @@ async function writeIdbProjects(
 function seedDefaultBoardIfMigrating(count: number) {
   if (count <= 0) return;
   const prefs = loadAppPrefs();
-  if (prefs.defaultBoard) return;
-  saveAppPrefs({ ...prefs, defaultBoard: "erotic" });
+  if (prefs.defaultBoard === "general") return;
+  saveAppPrefs({ ...prefs, defaultBoard: "general" });
 }
 
 /** 测试用：清空内存缓存，使下一次 initStorage 重新跑 */
@@ -288,111 +284,6 @@ export function upsertProject(project: NovelProject): void {
   saveProjects(list);
 }
 
-export const CONVERT_UNLOCK_TOKEN = "convertProjectWritingBoard" as const;
-
-export type ConvertWritingBoardOpts = {
-  unlockToken: typeof CONVERT_UNLOCK_TOKEN;
-  title: string;
-  inPlace?: boolean;
-  keepGenreTags?: string[];
-};
-
-function cloneProject(p: NovelProject): NovelProject {
-  return JSON.parse(JSON.stringify(p)) as NovelProject;
-}
-
-function remapVolumeIds(p: NovelProject, oldId: string): NovelProject {
-  const map = new Map<string, string>();
-  const volumes = (p.volumes || []).map((v, i) => {
-    const nid =
-      v.id === defaultVolumeId(oldId) || i === 0
-        ? defaultVolumeId(p.id)
-        : crypto.randomUUID();
-    map.set(v.id, nid);
-    return { ...v, id: nid };
-  });
-  const outline = p.outline
-    ? {
-        ...p.outline,
-        chapters: p.outline.chapters.map((c) => ({
-          ...c,
-          volumeId: (c.volumeId && map.get(c.volumeId)) || defaultVolumeId(p.id),
-        })),
-      }
-    : p.outline;
-  return { ...p, volumes, outline };
-}
-
-function applyBoardConversion(
-  clone: NovelProject,
-  from: WritingBoard,
-  to: WritingBoard,
-  keepGenreTags?: string[]
-): NovelProject {
-  let next = { ...clone, writingBoard: to, contentRating: defaultContentRating(to) };
-  if (from === "erotic" && to === "general") {
-    next.archivedActTags = [...(clone.tags || [])];
-    next.tags = [...(keepGenreTags || [])];
-    const keepLearned = next.settings.writingStyle !== "learned";
-    next.settings = {
-      ...next.settings,
-      learnedStyleId: "",
-      learnedStyleGuide: "",
-      learnedStyleName: "",
-      writingStyle: keepLearned ? next.settings.writingStyle : "literary",
-    };
-  } else if (from === "general" && to === "erotic") {
-    next.archivedActTags = [];
-  }
-  return next;
-}
-
-/** 存储层唯一允许改 writingBoard 的入口。默认另存为新书。 */
-export function convertProjectWritingBoard(
-  source: NovelProject,
-  to: WritingBoard,
-  opts: ConvertWritingBoardOpts
-): NovelProject {
-  if (opts.unlockToken !== CONVERT_UNLOCK_TOKEN) {
-    throw new Error("WRITING_BOARD_LOCKED");
-  }
-  if (source.writingBoard === to) {
-    throw new Error("ALREADY_ON_BOARD");
-  }
-  const title = opts.title.trim();
-  if (!title) throw new Error("请填写转换后的书名");
-
-  const now = new Date().toISOString();
-  let clone = cloneProject(source);
-  if (!opts.inPlace) {
-    const oldId = clone.id;
-    clone.id = crypto.randomUUID();
-    clone.createdAt = now;
-    clone = remapVolumeIds(clone, oldId);
-  }
-  clone.name = title;
-  clone.updatedAt = now;
-  clone.bookJob = null;
-  clone = applyBoardConversion(
-    clone,
-    source.writingBoard,
-    to,
-    opts.keepGenreTags
-  );
-  clone = normalizeProject(clone);
-
-  const list = loadProjects();
-  if (opts.inPlace) {
-    const idx = list.findIndex((p) => p.id === source.id);
-    if (idx < 0) list.unshift(clone);
-    else list[idx] = clone;
-    saveProjects(list);
-  } else {
-    upsertProject(clone);
-  }
-  return clone;
-}
-
 export function deleteProject(id: string): void {
   saveProjects(loadProjects().filter((p) => p.id !== id));
 }
@@ -445,7 +336,7 @@ export function importFullBackup(json: string): {
 
   const libs = loadLibraries();
   if (Array.isArray(data.tagLibrary) && data.tagLibrary.length) {
-    const merged = [...libs.erotic.tags];
+    const merged = [...libs.general.tags];
     const seen = new Set(merged);
     for (const t of data.tagLibrary) {
       const s = String(t).trim();
@@ -454,20 +345,39 @@ export function importFullBackup(json: string): {
         merged.push(s);
       }
     }
-    libs.erotic.tags = merged;
+    libs.general.tags = merged;
   }
   if (Array.isArray(data.styleLibrary)) {
-    const byId = new Map(libs.erotic.styles.map((s) => [s.id, s]));
+    const byId = new Map(libs.general.styles.map((s) => [s.id, s]));
     for (const s of data.styleLibrary) {
       const n = normalizeLearnedStyle(s);
       if (!byId.has(n.id)) {
-        libs.erotic.styles.push(n);
+        libs.general.styles.push(n);
         byId.set(n.id, n);
       }
     }
   }
-  if (data.libraries) {
-    /* 新格式：不覆盖已有书；库按桶合并，缺 writingBoard 的旧档案进 erotic */
+  if (data.libraries?.general) {
+    if (data.libraries.general.tags?.length) {
+      const seen = new Set(libs.general.tags);
+      for (const t of data.libraries.general.tags) {
+        const s = String(t).trim();
+        if (s && !seen.has(s)) {
+          seen.add(s);
+          libs.general.tags.push(s);
+        }
+      }
+    }
+    if (data.libraries.general.styles?.length) {
+      const byId = new Map(libs.general.styles.map((s) => [s.id, s]));
+      for (const s of data.libraries.general.styles) {
+        const n = normalizeLearnedStyle(s);
+        if (!byId.has(n.id)) {
+          libs.general.styles.push(n);
+          byId.set(n.id, n);
+        }
+      }
+    }
   }
   saveLibraries(libs);
   if (data.usageStats) {
@@ -486,23 +396,20 @@ export function importFullBackup(json: string): {
 function emptyLibraries(): StoredLibraries {
   return {
     general: { tags: [...DEFAULT_GENERAL_TAG_LIBRARY], styles: [] },
-    erotic: { tags: [...DEFAULT_TAG_LIBRARY], styles: [] },
   };
 }
 
 function parseLibraries(raw: string | null): StoredLibraries | null {
   if (!raw) return null;
   try {
-    const data = JSON.parse(raw) as Partial<StoredLibraries>;
+    const data = JSON.parse(raw) as Partial<StoredLibraries> & {
+      erotic?: BoardLibraries;
+    };
     if (!data || typeof data !== "object") return null;
     const base = emptyLibraries();
     if (data.general?.tags) base.general.tags = data.general.tags.map(String);
     if (data.general?.styles) {
       base.general.styles = data.general.styles.map(normalizeLearnedStyle);
-    }
-    if (data.erotic?.tags) base.erotic.tags = data.erotic.tags.map(String);
-    if (data.erotic?.styles) {
-      base.erotic.styles = data.erotic.styles.map(normalizeLearnedStyle);
     }
     return base;
   } catch {
@@ -517,44 +424,13 @@ export function loadLibraries(): StoredLibraries {
 }
 
 export function saveLibraries(libs: StoredLibraries): void {
-  lsSet(NEW_LIBRARIES_KEY, JSON.stringify(libs));
-  if (shouldDualWriteOld()) {
-    lsSet(OLD_TAG_LIBRARY_KEY, JSON.stringify(libs.erotic.tags));
-    lsSet(OLD_STYLE_LIBRARY_KEY, JSON.stringify(libs.erotic.styles));
-  }
+  lsSet(NEW_LIBRARIES_KEY, JSON.stringify({ general: libs.general }));
 }
 
 function migrateLibrariesIfNeeded() {
   if (typeof window === "undefined") return;
   if (lsGet(NEW_LIBRARIES_KEY)) return;
-  let eroticTags: string[] = [...DEFAULT_TAG_LIBRARY];
-  try {
-    const raw = lsGet(OLD_TAG_LIBRARY_KEY);
-    if (raw) {
-      const data = JSON.parse(raw) as string[];
-      if (Array.isArray(data) && data.length) {
-        eroticTags = data.map((t) => String(t).trim()).filter(Boolean);
-      }
-    }
-  } catch {
-    /* keep default */
-  }
-  let eroticStyles: LearnedStyle[] = [];
-  try {
-    const raw = lsGet(OLD_STYLE_LIBRARY_KEY);
-    if (raw) {
-      const data = JSON.parse(raw) as LearnedStyle[];
-      if (Array.isArray(data)) {
-        eroticStyles = data.map(normalizeLearnedStyle);
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  saveLibraries({
-    general: { tags: [...DEFAULT_GENERAL_TAG_LIBRARY], styles: [] },
-    erotic: { tags: eroticTags, styles: eroticStyles },
-  });
+  saveLibraries(emptyLibraries());
 }
 
 async function copyAutoBackupIfNeeded() {
@@ -583,37 +459,31 @@ function cleanTagList(tags: string[]): string[] {
   return clean;
 }
 
-export function loadTagLibraryFor(board: WritingBoard): string[] {
+export function loadTagLibraryFor(_board?: WritingBoard): string[] {
   if (typeof window === "undefined") {
-    return board === "general"
-      ? [...DEFAULT_GENERAL_TAG_LIBRARY]
-      : [...DEFAULT_TAG_LIBRARY];
+    return [...DEFAULT_GENERAL_TAG_LIBRARY];
   }
   migrateLibrariesIfNeeded();
   const libs = loadLibraries();
-  const tags = board === "general" ? libs.general.tags : libs.erotic.tags;
+  const tags = libs.general.tags;
   if (tags.length) return tags;
-  return board === "general"
-    ? [...DEFAULT_GENERAL_TAG_LIBRARY]
-    : [...DEFAULT_TAG_LIBRARY];
+  return [...DEFAULT_GENERAL_TAG_LIBRARY];
 }
 
-/** 兼容旧调用：默认 erotic 桶 */
 export function loadTagLibrary(): string[] {
-  return loadTagLibraryFor("erotic");
+  return loadTagLibraryFor("general");
 }
 
-export function saveTagLibraryFor(board: WritingBoard, tags: string[]): void {
+export function saveTagLibraryFor(_board: WritingBoard | undefined, tags: string[]): void {
   if (typeof window === "undefined") return;
   const clean = cleanTagList(tags);
   const libs = loadLibraries();
-  if (board === "general") libs.general.tags = clean;
-  else libs.erotic.tags = clean;
+  libs.general.tags = clean;
   saveLibraries(libs);
 }
 
 export function saveTagLibrary(tags: string[]): void {
-  saveTagLibraryFor("erotic", tags);
+  saveTagLibraryFor("general", tags);
 }
 
 export function addTagsToLibrary(tags: string[]): string[] {
@@ -636,77 +506,61 @@ export function removeTagFromLibrary(tag: string): string[] {
   return lib;
 }
 
-export function resetTagLibraryToDefaultFor(board: WritingBoard): string[] {
-  const initial =
-    board === "general"
-      ? [...DEFAULT_GENERAL_TAG_LIBRARY]
-      : [...DEFAULT_TAG_LIBRARY];
-  saveTagLibraryFor(board, initial);
+export function resetTagLibraryToDefaultFor(_board?: WritingBoard): string[] {
+  const initial = [...DEFAULT_GENERAL_TAG_LIBRARY];
+  saveTagLibraryFor("general", initial);
   return initial;
 }
 
 export function resetTagLibraryToDefault(): string[] {
-  return resetTagLibraryToDefaultFor("erotic");
+  return resetTagLibraryToDefaultFor("general");
 }
 
-export function loadStyleLibraryFor(board: WritingBoard): LearnedStyle[] {
+export function loadStyleLibraryFor(_board?: WritingBoard): LearnedStyle[] {
   if (typeof window === "undefined") return [];
   migrateLibrariesIfNeeded();
   const libs = loadLibraries();
-  const list = board === "general" ? libs.general.styles : libs.erotic.styles;
-  return list
-    .map(normalizeLearnedStyle)
-    .filter((s) => s.writingBoard === board);
+  return libs.general.styles.map(normalizeLearnedStyle);
 }
 
-/** 兼容旧调用：默认 erotic 桶 */
 export function loadStyleLibrary(): LearnedStyle[] {
-  return loadStyleLibraryFor("erotic");
+  return loadStyleLibraryFor("general");
 }
 
 export function saveStyleLibraryFor(
-  board: WritingBoard,
+  _board: WritingBoard | undefined,
   styles: LearnedStyle[]
 ): void {
   if (typeof window === "undefined") return;
   const libs = loadLibraries();
-  const next = styles.map((s) =>
-    normalizeLearnedStyle({ ...s, writingBoard: board })
+  libs.general.styles = styles.map((s) =>
+    normalizeLearnedStyle({ ...s, writingBoard: "general" })
   );
-  if (board === "general") libs.general.styles = next;
-  else libs.erotic.styles = next;
   saveLibraries(libs);
 }
 
 export function saveStyleLibrary(styles: LearnedStyle[]): void {
-  saveStyleLibraryFor("erotic", styles);
+  saveStyleLibraryFor("general", styles);
 }
 
 export function upsertLearnedStyle(style: LearnedStyle): LearnedStyle[] {
-  const n = normalizeLearnedStyle(style);
-  const list = loadStyleLibraryFor(n.writingBoard);
+  const n = normalizeLearnedStyle({ ...style, writingBoard: "general" });
+  const list = loadStyleLibraryFor("general");
   const idx = list.findIndex((s) => s.id === n.id);
   if (idx >= 0) list[idx] = n;
   else list.unshift(n);
-  saveStyleLibraryFor(n.writingBoard, list);
+  saveStyleLibraryFor("general", list);
   return list;
 }
 
 export function deleteLearnedStyle(id: string): LearnedStyle[] {
-  const libs = loadLibraries();
-  const inGeneral = libs.general.styles.some((s) => s.id === id);
-  const board: WritingBoard = inGeneral ? "general" : "erotic";
-  const list = loadStyleLibraryFor(board).filter((s) => s.id !== id);
-  saveStyleLibraryFor(board, list);
+  const list = loadStyleLibraryFor("general").filter((s) => s.id !== id);
+  saveStyleLibraryFor("general", list);
   return list;
 }
 
 export function getLearnedStyle(id: string): LearnedStyle | null {
-  const libs = loadLibraries();
-  const all = [...libs.general.styles, ...libs.erotic.styles].map(
-    normalizeLearnedStyle
-  );
-  return all.find((s) => s.id === id) ?? null;
+  return loadStyleLibraryFor("general").find((s) => s.id === id) ?? null;
 }
 
 /** 阅读偏好 */

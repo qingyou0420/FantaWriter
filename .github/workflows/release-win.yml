@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release 标签，如 v2.0.2；留空则用 package.json 的 version"
+        description: "Release 标签，如 v1.0.0；留空则用 package.json 的 version"
         required: false
         type: string
 
@@ -86,28 +86,6 @@ jobs:
           export CSC_IDENTITY_AUTO_DISCOVERY=false
           npx electron-builder --win nsis --publish never -c.win.signAndEditExecutable=false
 
-      - name: Dual-publish sibling filename
-        shell: bash
-        run: |
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            const { siblingSetupName } = require('./electron/setup-artifact.cjs');
-            const dir = 'dist-installer';
-            const names = fs.readdirSync(dir);
-            const primary = names.find((n) => /^Fantasy-Writer-Setup-\\d/.test(n) && n.endsWith('.exe'));
-            if (!primary) {
-              console.error('未找到 Fantasy-Writer-Setup-x.y.z.exe');
-              process.exit(1);
-            }
-            const sib = siblingSetupName(primary);
-            if (sib) {
-              fs.copyFileSync(path.join(dir, primary), path.join(dir, sib));
-              console.log('wrote', sib);
-            }
-            console.log('primary', primary);
-          "
-
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -117,6 +95,5 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist-installer/Fantasy-Writer-Setup-*.exe
-            dist-installer/H-NoveList-Setup-*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

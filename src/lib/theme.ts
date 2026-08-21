@@ -17,9 +17,8 @@ export interface AppPrefs {
   /** 全书队列全部完成后自动跑人物一致性检查 */
   autoConsistencyAfterBookJob: boolean;
   schemaVersion?: 2;
-  /** 全新安装首次询问前不得写入 */
+  /** 本版固定常规；旧偏好里的值会被忽略 */
   defaultBoard?: WritingBoard;
-  /** ISO；每用户配置确认一次；有值则跳过 AgeGate */
   adultConfirmedAt?: string;
   flags?: Record<string, boolean>;
   /** 桌面端：章节 Markdown 写入的仓库/文件夹绝对路径。仅存本机，不进 git。 */

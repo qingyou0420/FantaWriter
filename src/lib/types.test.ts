@@ -17,11 +17,11 @@ import {
 
 describe("parseTagsFromText", () => {
   it("splits slash / comma / newline and dedupes", () => {
-    expect(parseTagsFromText("口交/肛交/口交，舔阴\n女同")).toEqual([
-      "口交",
-      "肛交",
-      "舔阴",
-      "女同",
+    expect(parseTagsFromText("悬疑/科幻/悬疑，奇幻\n都市")).toEqual([
+      "悬疑",
+      "科幻",
+      "奇幻",
+      "都市",
     ]);
   });
 
@@ -38,28 +38,21 @@ describe("mergeTags", () => {
 });
 
 describe("createEmptyProject / defaultVolumeId", () => {
-  it("defaults writingBoard to erotic and schemaVersion 2", () => {
+  it("defaults writingBoard to general and schemaVersion 2", () => {
     const p = createEmptyProject("测试");
     expect(p.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-    expect(p.writingBoard).toBe("erotic");
-    expect(p.contentRating).toBe("adult");
-    expect(p.volumes?.[0]?.id).toBe(defaultVolumeId(p.id));
-  });
-
-  it("accepts general board", () => {
-    const p = createEmptyProject("常规", "general");
     expect(p.writingBoard).toBe("general");
     expect(p.contentRating).toBe("unrated");
-    expect(p.volumes?.[0]?.id).toBe(`${p.id}:vol:1`);
+    expect(p.volumes?.[0]?.id).toBe(defaultVolumeId(p.id));
   });
 });
 
 describe("normalizeProject", () => {
-  it("maps 1.8.1 payloads to erotic + schemaVersion 2 + deterministic volume", () => {
+  it("maps old payloads to general + schemaVersion 2 + deterministic volume", () => {
     const id = "proj-aaa";
     const raw = {
       id,
-      name: "旧色情书",
+      name: "旧书",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
       characters: [],
@@ -102,24 +95,24 @@ describe("normalizeProject", () => {
 
     const a = normalizeProject(raw);
     const b = normalizeProject(a);
-    expect(a.writingBoard).toBe("erotic");
+    expect(a.writingBoard).toBe("general");
     expect(a.schemaVersion).toBe(2);
     expect(a.volumes?.[0]?.id).toBe("proj-aaa:vol:1");
     expect(a.outline?.chapters[0].volumeId).toBe("proj-aaa:vol:1");
-    expect(a.outline?.chapters[0].eroticNote).toBe("紧张");
+    expect(a.outline?.chapters[0].intensityNote).toBe("紧张");
     expect(b.volumes?.[0]?.id).toBe(a.volumes?.[0]?.id);
     expect(a.settings.learnedStyleId).toBe("");
     expect(a.settings.eroticLevel).toBe(4);
   });
 
-  it("does not overwrite writingBoard=general", () => {
-    const p = normalizeProject(createEmptyProject("g", "general"));
+  it("keeps writingBoard=general", () => {
+    const p = normalizeProject(createEmptyProject("g"));
     expect(p.writingBoard).toBe("general");
     expect(p.contentRating).toBe("unrated");
   });
 
   it("defaults missing original/canon without breaking old books", () => {
-    const p = normalizeProject(createEmptyProject("g", "general"));
+    const p = normalizeProject(createEmptyProject("g"));
     expect(p.original).toBeNull();
     expect(p.canon).toEqual([]);
   });
@@ -130,16 +123,10 @@ describe("assertWritingBoardImmutable", () => {
     const p = createEmptyProject("a");
     expect(() => assertWritingBoardImmutable(p, { ...p, name: "b" })).not.toThrow();
   });
-
-  it("throws WRITING_BOARD_LOCKED on silent board change", () => {
-    const prev = createEmptyProject("a", "erotic");
-    const next = { ...prev, writingBoard: "general" as const };
-    expect(() => assertWritingBoardImmutable(prev, next)).toThrow("WRITING_BOARD_LOCKED");
-  });
 });
 
 describe("normalizeLearnedStyle", () => {
-  it("defaults missing board to erotic", () => {
+  it("defaults missing board to general", () => {
     const s = normalizeLearnedStyle({
       id: "s1",
       name: "旧",
@@ -158,7 +145,7 @@ describe("normalizeLearnedStyle", () => {
       styleGuide: "",
       fingerprints: [],
     } as unknown as LearnedStyle);
-    expect(s.writingBoard).toBe("erotic");
+    expect(s.writingBoard).toBe("general");
   });
 });
 
@@ -166,7 +153,7 @@ describe("legacyProject helper sanity", () => {
   it("createEmptyProject still works without second arg (home page)", () => {
     const p = createEmptyProject();
     expect(p.name).toBe("未命名小说");
-    expect(p.writingBoard).toBe("erotic");
+    expect(p.writingBoard).toBe("general");
   });
 });
 

@@ -90,15 +90,8 @@ export async function GET() {
   return NextResponse.json({ ok: true, env: getEnvDiagnostics() });
 }
 
-function parseWritingBoard(body: Body): WritingBoard {
-  if (body.writingBoard !== "general" && body.writingBoard !== "erotic") {
-    throw new AssembleError(
-      "WRITING_BOARD_REQUIRED",
-      "WRITING_BOARD_REQUIRED",
-      400
-    );
-  }
-  return body.writingBoard;
+function parseWritingBoard(_body: Body): WritingBoard {
+  return "general";
 }
 
 export async function POST(req: NextRequest) {
@@ -431,16 +424,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.mode === "polish_chapter_outline") {
-      const tags = [
-        ...(body.projectTags || []),
-        ...(body.chapter?.tags || []),
-      ].filter(Boolean);
-      if (writingBoard === "erotic" && !tags.length) {
-        return NextResponse.json(
-          { error: "请先为本单章或全书选择至少一个标签，再优化大纲" },
-          { status: 400 }
-        );
-      }
       const { system, user } = assemble(
         "polish_chapter_outline",
         writingBoard,

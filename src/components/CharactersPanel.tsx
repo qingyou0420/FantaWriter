@@ -17,7 +17,7 @@ import {
 export function CharactersPanel({
   characters,
   background,
-  writingBoard = "erotic",
+  writingBoard = "general",
   original,
   canon,
   onChange,
