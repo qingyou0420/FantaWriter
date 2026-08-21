@@ -4,7 +4,11 @@ const desktopBridge = {
   isDesktop: true,
   platform: process.platform,
   getAppInfo: () => ipcRenderer.invoke("app:getInfo"),
+  getUpdateSettings: () => ipcRenderer.invoke("app:getUpdateSettings"),
+  setGithubUpdateToken: (token) =>
+    ipcRenderer.invoke("app:setGithubUpdateToken", token),
   checkUpdate: () => ipcRenderer.invoke("app:checkUpdate"),
+  downloadUpdate: (opts) => ipcRenderer.invoke("app:downloadUpdate", opts),
   installUpdate: (installerPath) =>
     ipcRenderer.invoke("app:installUpdate", installerPath),
   pickInstaller: () => ipcRenderer.invoke("app:pickInstaller"),

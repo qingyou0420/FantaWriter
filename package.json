@@ -15,6 +15,7 @@
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "publish:update": "node scripts/publish-update.mjs",
     "dist:win": "npm run build && npm run prepare:standalone && electron-builder --win nsis && npm run publish:update",
+    "dist:win:ci": "npm run build && npm run prepare:standalone && electron-builder --win nsis --publish never",
     "dist:dir": "npm run build && npm run prepare:standalone && electron-builder --win dir"
   },
   "dependencies": {

@@ -10,6 +10,19 @@ const { spawn } = require("child_process");
 const PORT = Number(process.env.ENS_PORT || 17831);
 const HOST = "127.0.0.1";
 const { versionFromSetupName } = require("./setup-artifact.cjs");
+const {
+  DEFAULT_GITHUB_REPO,
+  githubLatestApiUrl,
+  githubApiHeaders,
+  githubAssetHeaders,
+  isGithubApiHost,
+  isAllowedDownloadUrl,
+  parseGithubLatestRelease,
+  setupFileNameFromUrl,
+  githubCheckErrorMessage,
+} = require("./github-release.cjs");
+
+const GITHUB_UPDATE_TOKEN_KEY = "GITHUB_UPDATE_TOKEN";
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -361,6 +374,77 @@ function ensureDir(dir) {
   }
 }
 
+function readConfigMap(filePath) {
+  /** @type {Map<string, string>} */
+  const map = new Map();
+  if (!filePath || !fs.existsSync(filePath)) return map;
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      map.set(trimmed.slice(0, eq).trim(), trimmed.slice(eq + 1).trim());
+    }
+  } catch {
+    /* ignore */
+  }
+  return map;
+}
+
+function writeConfigMap(filePath, map) {
+  const dir = path.dirname(filePath);
+  ensureDir(dir);
+  const lines = [
+    "# Fantasy Writer · 本机配置（由应用写入，请勿分享）",
+    ...[...map.entries()].map(([k, v]) => `${k}=${v}`),
+    "",
+  ];
+  fs.writeFileSync(filePath, lines.join("\n"), "utf8");
+}
+
+function getGithubUpdateToken() {
+  applyConfigFile(getConfigPath());
+  return (
+    process.env.GITHUB_UPDATE_TOKEN ||
+    process.env.UPDATE_GITHUB_TOKEN ||
+    ""
+  ).trim();
+}
+
+function setGithubUpdateToken(token) {
+  const filePath = getConfigPath();
+  const map = readConfigMap(filePath);
+  const t = String(token || "").trim();
+  if (t) {
+    map.set(GITHUB_UPDATE_TOKEN_KEY, t);
+    process.env.GITHUB_UPDATE_TOKEN = t;
+  } else {
+    map.delete(GITHUB_UPDATE_TOKEN_KEY);
+    delete process.env.GITHUB_UPDATE_TOKEN;
+  }
+  writeConfigMap(filePath, map);
+}
+
+function getGithubUpdateRepo() {
+  applyConfigFile(getConfigPath());
+  return (process.env.UPDATE_GITHUB_REPO || DEFAULT_GITHUB_REPO).trim();
+}
+
+function isAllowedFeedDownloadUrl(url) {
+  if (isAllowedDownloadUrl(url)) return true;
+  const feed = process.env.UPDATE_FEED_URL?.trim();
+  if (!feed) return false;
+  try {
+    const feedHost = new URL(feed).hostname.toLowerCase();
+    const u = new URL(String(url || ""));
+    return u.protocol === "https:" && u.hostname.toLowerCase() === feedHost;
+  } catch {
+    return false;
+  }
+}
+
 function registerIpc() {
   ipcMain.handle("app:getInfo", () => {
     applyConfigFile(getConfigPath());
@@ -372,6 +456,27 @@ function registerIpc() {
       updateDir: getPrimaryUpdateDir(),
       exeDir: path.dirname(app.getPath("exe")),
     };
+  });
+
+  ipcMain.handle("app:getUpdateSettings", () => {
+    applyConfigFile(getConfigPath());
+    const token = getGithubUpdateToken();
+    return {
+      hasGithubToken: Boolean(token),
+      tokenPrefix: token ? token.slice(0, 4) : "",
+      repo: getGithubUpdateRepo(),
+    };
+  });
+
+  ipcMain.handle("app:setGithubUpdateToken", (_e, token) => {
+    const t = String(token || "").trim();
+    setGithubUpdateToken(t);
+    appendLog(
+      t
+        ? "已保存更新用 GitHub 令牌（本机 config.env）"
+        : "已清除更新用 GitHub 令牌"
+    );
+    return { ok: true, hasGithubToken: Boolean(t) };
   });
 
   ipcMain.handle("app:checkUpdate", async () => {
@@ -404,14 +509,27 @@ function registerIpc() {
       }
     }
 
+    // 默认：GitHub Releases latest
+    let githubHint = "";
+    try {
+      const remote = await checkGithubLatest(current);
+      return remote;
+    } catch (e) {
+      appendLog("GitHub latest 失败: " + e);
+      githubHint = githubCheckErrorMessage(e);
+    }
+
     const { candidates, searchedDirs, allCount } = findLatestInstaller(current);
+    const hint = githubHint ? `${githubHint}。已回退本地目录。` : "";
     if (!candidates.length) {
       return {
         ok: true,
         current,
         latest: null,
         hasUpdate: false,
-        message: `未找到安装包。请将 Fantasy-Writer-Setup-x.y.z.exe 或 H-NoveList-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
+        message:
+          (hint ? hint + " " : "") +
+          `未找到安装包。请将 Fantasy-Writer-Setup-x.y.z.exe 或 H-NoveList-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
         searchedDirs,
       };
     }
@@ -425,12 +543,58 @@ function registerIpc() {
       installerPath: best.path,
       source: best.source,
       message: hasUpdate
-        ? `发现新版本 ${best.version}（当前 ${current}），可一键安装`
+        ? `${hint}发现新版本 ${best.version}（当前 ${current}），可一键安装`
         : allCount
-          ? `本地最新安装包为 ${best.version}，不高于当前 ${current}`
-          : "未发现可用更新",
+          ? `${hint}本地最新安装包为 ${best.version}，不高于当前 ${current}`
+          : `${hint}未发现可用更新`,
       searchedDirs,
     };
+  });
+
+  ipcMain.handle("app:downloadUpdate", async (_e, payload) => {
+    applyConfigFile(getConfigPath());
+    const opts =
+      payload && typeof payload === "object" ? payload : { downloadUrl: payload };
+    const token = getGithubUpdateToken();
+    const assetApiUrl = String(opts.assetApiUrl || "").trim();
+    const downloadUrl = String(opts.downloadUrl || "").trim();
+    const preferApi = Boolean(token && assetApiUrl);
+    const url = preferApi ? assetApiUrl : downloadUrl;
+    if (!url) {
+      return { ok: false, message: "没有可下载的安装包地址" };
+    }
+    if (!isAllowedFeedDownloadUrl(url)) {
+      return { ok: false, message: "拒绝从非 GitHub 地址下载安装包" };
+    }
+    const fileName =
+      setupFileNameFromUrl(downloadUrl) ||
+      setupFileNameFromUrl(url) ||
+      (opts.version && parseSemver(String(opts.version))
+        ? `Fantasy-Writer-Setup-${String(opts.version).replace(/^v/i, "")}.exe`
+        : null);
+    if (!fileName || !versionFromSetupName(fileName)) {
+      return { ok: false, message: "安装包文件名不符合 Fantasy-Writer-Setup-x.y.z.exe" };
+    }
+    const destDir = path.join(app.getPath("temp"), "Fantasy-Writer-Updates");
+    ensureDir(destDir);
+    const dest = path.join(destDir, fileName);
+    try {
+      appendLog(`下载安装包: ${preferApi ? "GitHub asset API" : "browser_download_url"} → ${fileName}`);
+      await downloadFile(url, dest, githubAssetHeaders(token));
+      if (!fs.existsSync(dest)) {
+        return { ok: false, message: "下载完成但文件不存在" };
+      }
+      return {
+        ok: true,
+        path: dest,
+        version: versionFromSetupName(fileName) || undefined,
+        message: `已下载到 ${dest}`,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      appendLog("下载安装包失败: " + msg);
+      return { ok: false, message: `下载失败：${msg}` };
+    }
   });
 
   ipcMain.handle("app:installUpdate", async (_e, installerPath) => {
@@ -569,17 +733,67 @@ function registerIpc() {
   });
 }
 
-function fetchJson(url) {
+function stripAuthIfLeavingGithub(headers, hostname) {
+  /** @type {Record<string, string>} */
+  const next = { ...headers };
+  if (!isGithubApiHost(hostname)) {
+    delete next.Authorization;
+    delete next.authorization;
+  }
+  return next;
+}
+
+/**
+ * GET，跟随重定向；离开 GitHub 时去掉 Authorization，避免把令牌带到 CDN。
+ * @returns {Promise<import('http').IncomingMessage>}
+ */
+function httpGet(url, options = {}) {
+  const headers = options.headers || {};
+  const timeout = options.timeout || 20000;
+  const maxRedirects = options.maxRedirects ?? 5;
   return new Promise((resolve, reject) => {
-    try {
-      const u = new URL(url);
+    const go = (current, left) => {
+      let u;
+      try {
+        u = new URL(current);
+      } catch (e) {
+        reject(e);
+        return;
+      }
       const lib = u.protocol === "https:" ? require("https") : http;
-      const req = lib.get(url, { timeout: 15000 }, (res) => {
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}`));
+      const reqHeaders = stripAuthIfLeavingGithub(headers, u.hostname);
+      const req = lib.get(current, { headers: reqHeaders, timeout }, (res) => {
+        const code = res.statusCode || 0;
+        if (code >= 300 && code < 400 && res.headers.location) {
           res.resume();
+          if (left <= 0) {
+            reject(new Error("重定向过多"));
+            return;
+          }
+          go(new URL(res.headers.location, current).toString(), left - 1);
           return;
         }
+        if (code >= 400) {
+          res.resume();
+          reject(new Error(`HTTP ${code}`));
+          return;
+        }
+        resolve(res);
+      });
+      req.on("error", reject);
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("请求超时"));
+      });
+    };
+    go(String(url), maxRedirects);
+  });
+}
+
+function fetchJson(url, headers) {
+  return httpGet(url, { headers: headers || {}, timeout: 15000 }).then(
+    (res) =>
+      new Promise((resolve, reject) => {
         const chunks = [];
         res.on("data", (c) => chunks.push(c));
         res.on("end", () => {
@@ -589,16 +803,62 @@ function fetchJson(url) {
             reject(e);
           }
         });
-      });
-      req.on("error", reject);
-      req.on("timeout", () => {
-        req.destroy();
-        reject(new Error("请求超时"));
-      });
-    } catch (e) {
-      reject(e);
-    }
-  });
+        res.on("error", reject);
+      })
+  );
+}
+
+function downloadFile(url, dest, headers) {
+  return httpGet(url, { headers: headers || {}, timeout: 60000 }).then(
+    (res) =>
+      new Promise((resolve, reject) => {
+        const tmp = dest + ".part";
+        try {
+          if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+        } catch {
+          /* ignore */
+        }
+        const ws = fs.createWriteStream(tmp);
+        res.pipe(ws);
+        ws.on("finish", () => {
+          try {
+            fs.renameSync(tmp, dest);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+        ws.on("error", reject);
+        res.on("error", reject);
+      })
+  );
+}
+
+async function checkGithubLatest(current) {
+  const repo = getGithubUpdateRepo();
+  const token = getGithubUpdateToken();
+  const url = githubLatestApiUrl(repo);
+  appendLog(
+    `检查 GitHub latest: ${repo} token=${token ? "yes" : "no"}`
+  );
+  const data = await fetchJson(url, githubApiHeaders(token));
+  const parsed = parseGithubLatestRelease(data);
+  if (!parsed) {
+    throw new Error("latest release 没有 Fantasy-Writer-Setup / H-NoveList-Setup 安装包");
+  }
+  const hasUpdate = compareVersions(parsed.version, current) > 0;
+  return {
+    ok: true,
+    current,
+    latest: parsed.version,
+    hasUpdate,
+    downloadUrl: parsed.downloadUrl || undefined,
+    assetApiUrl: parsed.assetApiUrl || undefined,
+    source: `github:${repo}`,
+    message: hasUpdate
+      ? `GitHub 发现新版本 ${parsed.version}（当前 ${current}）`
+      : `已是最新（GitHub ${parsed.version}）`,
+  };
 }
 
 const gotLock = app.requestSingleInstanceLock();
