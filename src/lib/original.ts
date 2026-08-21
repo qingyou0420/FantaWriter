@@ -13,7 +13,7 @@ export const ORIGINAL_GROUNDING_HEADING = "原作摘录（须忠实）";
 export const LOCKED_CANON_HEADING = "锁定设定（原作焕新，硬性）";
 export const ORIGINAL_SYSTEM_RULE = `你正在「原作焕新」：扩写/润色旧稿，不是从零编造。
 必须遵守「锁定设定」：不得改写身份、物种、性别、从属关系。锁定条目优先于常识推断。
-例如锁定「清溪是战马 / 不是人 / 不是女性」时，禁止把清溪写成女人或人类角色。`;
+生成内容不得与作者写下的锁定说明冲突。`;
 
 const CANON_KIND_LABEL: Record<CanonKind, string> = {
   character: "人物",
@@ -22,12 +22,6 @@ const CANON_KIND_LABEL: Record<CanonKind, string> = {
   place: "地点",
   fact: "事实",
 };
-
-const NON_PERSON_RE =
-  /不是人|非人|战马|坐骑|马匹|一匹|畜生|动物|不是女性|不是女人/;
-const FEMALE_PERSON_RE =
-  /女[性人主配角孩]|女子|女人|姑娘|少女|美人|她是|女性角色/;
-const HUMAN_ROLE_RE = /女主|男主|配角|人类|女配|男配|主角/;
 
 export function hasOriginalText(
   original?: OriginalManuscript | null
@@ -280,12 +274,36 @@ export function injectOriginalGrounding(
   };
 }
 
-export function factForbidsPersonhood(statement: string): boolean {
-  return NON_PERSON_RE.test(statement || "");
+const CLAIM_TRAIL_RE = /[。．.！!？?）)】\]]+$/;
+
+/** 从用户锁定说明里抽出否定禁区，供通用违规检测。 */
+export function forbiddenClaimsFromStatement(statement: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const re =
+    /不是([^，。；、/\s]{1,16})|非(?!常|得|法)([^，。；、/\s]{1,8})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(statement || "")) !== null) {
+    const raw = (m[1] || m[2] || "").replace(CLAIM_TRAIL_RE, "").trim();
+    if (raw && !seen.has(raw)) {
+      seen.add(raw);
+      out.push(raw);
+    }
+  }
+  return out;
 }
 
-export function factForbidsFemale(statement: string): boolean {
-  return /不是女|非女/.test(statement || "") || factForbidsPersonhood(statement);
+function claimMatchesText(claim: string, text: string): boolean {
+  if (!claim || !text) return false;
+  if (text.includes(claim)) return true;
+  if (
+    claim.length >= 2 &&
+    claim.endsWith("性") &&
+    text.includes(claim.slice(0, -1))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function factMatchesName(
@@ -298,21 +316,10 @@ function factMatchesName(
   return (fact.aliases || []).some((a) => a === n);
 }
 
-function characterLooksFemale(c: Partial<Character>): boolean {
-  const blob = [c.gender, c.role, c.appearance, c.personality, c.notes]
+function characterCanonBlob(c: Partial<Character>): string {
+  return [c.gender, c.role, c.appearance, c.personality, c.notes]
     .filter(Boolean)
     .join("\n");
-  return FEMALE_PERSON_RE.test(blob) || /女/.test(c.gender || "");
-}
-
-function characterLooksHuman(c: Partial<Character>): boolean {
-  const blob = [c.gender, c.role, c.appearance, c.notes].filter(Boolean).join("\n");
-  return (
-    characterLooksFemale(c) ||
-    HUMAN_ROLE_RE.test(c.role || "") ||
-    /男|女|人/.test(c.gender || "") ||
-    FEMALE_PERSON_RE.test(blob)
-  );
 }
 
 export function detectCharacterCanonViolations(
@@ -322,18 +329,16 @@ export function detectCharacterCanonViolations(
   const locked = lockedCanonFacts(facts);
   const name = String(character.name || "").trim();
   if (!name) return [];
+  const blob = characterCanonBlob(character);
   const hits: string[] = [];
   for (const f of locked) {
     if (!factMatchesName(f, name)) continue;
-    if (factForbidsPersonhood(f.statement) && characterLooksHuman(character)) {
-      hits.push(
-        `「${name}」已锁定为非人（${f.statement}），不能写成人类角色`
-      );
-    }
-    if (factForbidsFemale(f.statement) && characterLooksFemale(character)) {
-      hits.push(
-        `「${name}」已锁定「不是女性」（${f.statement}），不能写成女人`
-      );
+    for (const claim of forbiddenClaimsFromStatement(f.statement)) {
+      if (claimMatchesText(claim, blob)) {
+        hits.push(
+          `「${name}」已锁定「不是${claim}」（${f.statement}），不能写成与此冲突的内容`
+        );
+      }
     }
   }
   return [...new Set(hits)];
@@ -349,20 +354,19 @@ export function detectCanonViolations(
   for (const f of locked) {
     const names = [f.name, ...(f.aliases || [])].filter(Boolean);
     if (!names.length) continue;
-    if (!factForbidsPersonhood(f.statement) && !factForbidsFemale(f.statement)) {
-      continue;
-    }
+    const claims = forbiddenClaimsFromStatement(f.statement);
+    if (!claims.length) continue;
     for (const name of names) {
       if (!raw.includes(name)) continue;
       const around = windowsAround(raw, name, 36, 8)
         .map((w) => raw.slice(w.start, w.end))
         .join("\n");
-      if (factForbidsPersonhood(f.statement) && FEMALE_PERSON_RE.test(around)) {
-        hits.push(
-          `「${name}」锁定为非人（${f.statement}），正文却写成女性/人类`
-        );
-      } else if (factForbidsFemale(f.statement) && FEMALE_PERSON_RE.test(around)) {
-        hits.push(`「${name}」锁定不是女性，正文却写成女人`);
+      for (const claim of claims) {
+        if (claimMatchesText(claim, around)) {
+          hits.push(
+            `「${name}」已锁定「不是${claim}」（${f.statement}），正文与锁定冲突`
+          );
+        }
       }
     }
   }
@@ -406,7 +410,7 @@ export function buildExtractCanonUserPrompt(opts: {
 }): string {
   return `请从下列原作正文中抽取「不可改写」的设定条目，供后续焕新/扩写时锁定。
 只抽取原文已经写明的身份、物种、从属、地名、明确事实；不要编造，不要补全原文没说的事。
-若某人名其实是马/器物/地名，必须写明「不是人」，并禁止写成女性或人类。
+名称在原文里若指地点、器物或其他非角色存在，须在 statement 写明原文身份，避免后续被当成角色。
 
 ## 原作标题提示
 ${opts.titleHint || "（未命名）"}
@@ -418,9 +422,9 @@ ${opts.sampleText}
 {
   "facts": [
     {
-      "name": "名称，如清溪",
+      "name": "名称，如霜桥",
       "kind": "character|identity|relationship|place|fact 之一",
-      "statement": "一句锁定说明，如：流渊的白色战马，不是人，不是女性",
+      "statement": "一句锁定说明，如：北城城门，地点而非角色",
       "aliases": ["可选别名"]
     }
   ]

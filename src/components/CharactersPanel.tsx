@@ -191,7 +191,7 @@ export function CharactersPanel({
     <div className="space-y-4">
       {hasOriginalGrounding({ original, canon }) ? (
         <div className="card !py-3 text-sm text-[var(--text-muted)]">
-          本书挂了原作底稿。扩写人物会读原文与锁定设定；已锁定的非人存在（如战马「清溪」）不能被写成女人。
+          本书挂了原作底稿。扩写人物会读原文与锁定设定；已锁定的事实在生成时必须遵守。
         </div>
       ) : null}
       <div className="card">
