@@ -347,7 +347,7 @@ export default function HomePage() {
               {createMode === "renew" ? (
                 <p className="text-sm text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
                   贴入旧稿后扩写、润色；人设与情节以原文为准，<strong>不是从零遍构</strong>。
-                  创建后请先锁定身份（例如：清溪 = 流渊的白色战马，不是人，不是女性）。
+                  创建后请先锁一条原作里不能被改的事实（名称 + 一句话），生成时必须遵守。
                 </p>
               ) : (
                 <p className="text-sm text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
@@ -376,7 +376,7 @@ export default function HomePage() {
               {createMode === "renew" ? (
                 <div className="mt-3 space-y-3">
                   <input
-                    placeholder="原作标题（如：醉词）"
+                    placeholder="原作标题"
                     value={origTitle}
                     onChange={(e) => setOrigTitle(e.target.value)}
                   />

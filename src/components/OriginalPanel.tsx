@@ -97,7 +97,7 @@ export function OriginalPanel({
       const merged = mergeCanonFacts(canon, incoming);
       onCanonChange(merged);
       setHint(
-        `已抽出 ${incoming.length} 条设定（已锁定）。请核对：马、器物、地名不要被当成人物。`
+        `已抽出 ${incoming.length} 条设定（已锁定）。请核对名称与事实是否与原文一致。`
       );
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -111,8 +111,7 @@ export function OriginalPanel({
       <div className="card">
         <h2 className="card-title">原作焕新</h2>
         <p className="text-sm text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
-          这是<strong>焕新 / 扩写旧稿</strong>，不是从零遍构。贴入原作后锁定身份与事实，之后的人物扩写、大纲和正文都会读原文与锁定条目。
-          例如：<code>清溪 = 流渊的白色战马，不是人，不是女性。</code>
+          这是<strong>焕新 / 扩写旧稿</strong>，不是从零遍构。贴入原作后，锁一条原作里不能被改的事实，之后的人物扩写、大纲和正文都会读原文与锁定条目。
         </p>
         {hint ? (
           <p className="text-xs text-[#a0d8b0] mt-0 mb-3">{hint}</p>
@@ -123,7 +122,7 @@ export function OriginalPanel({
             <input
               value={draft.title}
               onChange={(e) => patchOriginal({ title: e.target.value })}
-              placeholder="如：醉词"
+              placeholder="原作标题"
             />
           </Field>
           <Field label="来源说明">
@@ -213,7 +212,7 @@ export function OriginalPanel({
           <div>
             <h2 className="card-title m-0">锁定设定</h2>
             <p className="text-sm text-[var(--text-muted)] mt-1 mb-0">
-              勾选锁定后，人物扩写若把「清溪」写成女人会被拦截；大纲与正文提示里也会写入这些硬事实。
+              勾选锁定后，生成人设、大纲与正文时必须遵守这些事实；违规检测按你写下的锁定说明判断。
             </p>
           </div>
           <button
@@ -228,7 +227,7 @@ export function OriginalPanel({
 
       {!canon.length ? (
         <div className="card empty">
-          尚无锁定。可点「从原文抽取设定」，或手工加一条：清溪 = 流渊的白色战马，不是人，不是女性。
+          尚无锁定。可点「从原文抽取设定」，或手工加一条：名称 + 一句不能被改的事实。
         </div>
       ) : (
         <ul className="list-none p-0 m-0 space-y-3">
@@ -259,7 +258,7 @@ export function OriginalPanel({
                   <input
                     value={f.name}
                     onChange={(e) => patchFact(f.id, { name: e.target.value })}
-                    placeholder="清溪"
+                    placeholder="名称"
                   />
                 </Field>
                 <Field label="种类">
@@ -279,7 +278,7 @@ export function OriginalPanel({
               </div>
               <Field
                 label="锁定说明"
-                hint="写清身份与禁区。例：流渊的白色战马，不是人，不是女性。"
+                hint="写清这条不能被改的事实。例如：身份、物种、从属关系。"
               >
                 <textarea
                   value={f.statement}

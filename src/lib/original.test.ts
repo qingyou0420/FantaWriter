@@ -223,7 +223,8 @@ describe("horse-not-person contradiction", () => {
     );
     expect(grounded.user).toContain("不是人");
     expect(grounded.user).toContain("不是女性");
-    expect(grounded.system).toContain("禁止把清溪写成女人");
+    expect(grounded.system).toContain("必须遵守");
+    expect(grounded.system).not.toContain("清溪");
   });
 
   it("detects generated woman-清溪 as a violation", () => {
@@ -251,6 +252,11 @@ describe("horse-not-person contradiction", () => {
     expect(detectCharacterCanonViolations(horse, [QINGXI_LOCK])).toEqual([]);
     expect(
       detectCanonViolations("清溪四蹄踏雪，载着流渊出帐。", [QINGXI_LOCK])
+    ).toEqual([]);
+    expect(
+      detectCharacterCanonViolations(woman, [
+        { ...QINGXI_LOCK, statement: "流渊的白色战马。" },
+      ])
     ).toEqual([]);
   });
 

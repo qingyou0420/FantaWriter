@@ -54,7 +54,7 @@ export interface LockedCanonFact {
   id: string;
   name: string;
   kind: CanonKind;
-  /** 如：流渊的白色战马，不是人，不是女性 */
+  /** 一句不能被改写的原作事实 */
   statement: string;
   locked: boolean;
   aliases?: string[];
