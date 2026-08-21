@@ -32,20 +32,9 @@ const REWRITE_OPTIONS: { id: RewriteMode; label: string }[] = [
   { id: "polish", label: "润色" },
   { id: "expand", label: "扩写" },
   { id: "shorten", label: "精简" },
-  { id: "more_erotic", label: "加强描写" },
-  { id: "less_erotic", label: "降低尺度" },
   { id: "dialogue", label: "对话" },
   { id: "custom", label: "自定义" },
 ];
-
-function rewriteOptionsFor(board: NovelProject["writingBoard"]) {
-  if (board === "general") {
-    return REWRITE_OPTIONS.filter(
-      (o) => o.id !== "more_erotic" && o.id !== "less_erotic"
-    );
-  }
-  return REWRITE_OPTIONS;
-}
 
 function clampFont(n: number) {
   return Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(n)));
@@ -111,14 +100,6 @@ export function ChaptersReader({
     setPrefs(loadReaderPrefs());
   }, []);
 
-  useEffect(() => {
-    if (
-      project.writingBoard === "general" &&
-      (rewriteMode === "more_erotic" || rewriteMode === "less_erotic")
-    ) {
-      setRewriteMode("polish");
-    }
-  }, [project.writingBoard, rewriteMode]);
 
   const persistPrefs = useCallback((next: ReaderPrefs) => {
     setPrefs(next);
@@ -1003,7 +984,7 @@ export function ChaptersReader({
                     }
                     disabled={!!busy}
                   >
-                    {rewriteOptionsFor(project.writingBoard).map((o) => (
+                    {REWRITE_OPTIONS.map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.label}
                       </option>

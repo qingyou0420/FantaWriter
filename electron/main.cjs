@@ -7,6 +7,10 @@ const fs = require("fs");
 const http = require("http");
 const { spawn } = require("child_process");
 
+/** 公开常规版独立数据目录。 */
+app.setName("fantasy-writer");
+app.setPath("userData", path.join(app.getPath("appData"), "fantasy-writer"));
+
 const PORT = Number(process.env.ENS_PORT || 17831);
 const HOST = "127.0.0.1";
 const { versionFromSetupName } = require("./setup-artifact.cjs");
@@ -284,7 +288,6 @@ function getUpdateSearchDirs() {
   push(path.join(app.getPath("userData"), "updates"));
   // 桌面固定文件夹（publish-update 脚本会写这里）
   try {
-    push(path.join(app.getPath("desktop"), "H-NoveList-Updates"));
     push(path.join(app.getPath("desktop"), "Fantasy-Writer-Updates"));
   } catch {
     /* ignore */
@@ -529,7 +532,7 @@ function registerIpc() {
         hasUpdate: false,
         message:
           (hint ? hint + " " : "") +
-          `未找到安装包。请将 Fantasy-Writer-Setup-x.y.z.exe 或 H-NoveList-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
+          `未找到安装包。请将 Fantasy-Writer-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
         searchedDirs,
       };
     }
@@ -844,7 +847,7 @@ async function checkGithubLatest(current) {
   const data = await fetchJson(url, githubApiHeaders(token));
   const parsed = parseGithubLatestRelease(data);
   if (!parsed) {
-    throw new Error("latest release 没有 Fantasy-Writer-Setup / H-NoveList-Setup 安装包");
+    throw new Error("latest release 没有 Fantasy-Writer-Setup-x.y.z.exe 安装包");
   }
   const hasUpdate = compareVersions(parsed.version, current) > 0;
   return {

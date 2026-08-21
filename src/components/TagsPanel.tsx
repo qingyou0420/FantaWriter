@@ -8,7 +8,7 @@ import type { WritingBoard } from "@/lib/types";
 export function TagsPanel({
   projectTags,
   library,
-  writingBoard = "erotic",
+  writingBoard = "general",
   onProjectTagsChange,
 }: {
   projectTags: string[];

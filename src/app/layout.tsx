@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: APP_TITLE,
-  description: "常规与 18+ 双写作台 · 本地优先",
+  description: "常规长篇小说 · 本地优先",
 };
 
 export default function RootLayout({

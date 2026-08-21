@@ -1,10 +1,5 @@
 import type { WritingBoard } from "../types";
 import { deniesMinorSexualContent } from "../policy/minors";
-import {
-  ADULT_SYSTEM,
-  LEARN_STYLE_SYSTEM_EROTIC,
-  SETTING_SYSTEM,
-} from "./erotic-systems";
 import { CRAFT_SYSTEM } from "./craft";
 import {
   GENERAL_CHAPTER_SYSTEM,
@@ -23,20 +18,7 @@ import {
   generalRewriteUser,
 } from "./general";
 import {
-  buildChapterSystemPrompt,
-  buildChapterUserPrompt,
   buildContinueUserPrompt,
-  buildExpandBackgroundUserPrompt,
-  buildExpandCastUserPrompt,
-  buildExpandCharacterUserPrompt,
-  buildLearnStyleUserPrompt,
-  buildOptimizeBackgroundUserPrompt,
-  buildOptimizeCharacterUserPrompt,
-  buildOptimizeSettingsUserPrompt,
-  buildOutlineSystemPrompt,
-  buildOutlineUserPrompt,
-  buildPolishChapterOutlineUserPrompt,
-  buildRewriteUserPrompt,
   buildSceneChapterUserPrompt,
   buildScenePlanUserPrompt,
 } from "../prompts";
@@ -95,7 +77,7 @@ export class AssembleError extends Error {
   }
 }
 
-function scanFreeText(board: WritingBoard, texts: (string | undefined)[]) {
+function scanFreeText(texts: (string | undefined)[]) {
   const blob = texts.filter(Boolean).join("\n");
   if (!blob) return;
   if (deniesMinorSexualContent(blob)) {
@@ -107,14 +89,16 @@ function scanFreeText(board: WritingBoard, texts: (string | undefined)[]) {
   }
 }
 
+function resolveBoard(_writingBoard?: WritingBoard | string): WritingBoard {
+  return "general";
+}
+
 export function assemble(
   task: GenerateTaskMode,
-  writingBoard: WritingBoard,
+  writingBoard: WritingBoard | string,
   payload: Record<string, unknown>
 ): { system: string; user: string } {
-  if (writingBoard !== "general" && writingBoard !== "erotic") {
-    throw new AssembleError("WRITING_BOARD_REQUIRED", "WRITING_BOARD_REQUIRED");
-  }
+  resolveBoard(writingBoard);
 
   const extra = String(
     (payload.settings as { extraInstructions?: string } | undefined)
@@ -125,7 +109,7 @@ export function assemble(
       payload.extraRules ||
       ""
   );
-  scanFreeText(writingBoard, [
+  scanFreeText([
     extra,
     extraRulesRaw,
     payload.instruction as string | undefined,
@@ -133,7 +117,6 @@ export function assemble(
   ]);
 
   if (
-    writingBoard === "general" &&
     task === "rewrite" &&
     (payload.rewriteMode === "more_erotic" ||
       payload.rewriteMode === "less_erotic")
@@ -144,10 +127,7 @@ export function assemble(
     );
   }
 
-  const assembled =
-    writingBoard === "erotic"
-      ? assembleErotic(task, payload)
-      : assembleGeneral(task, payload);
+  const assembled = assembleGeneral(task, payload);
   const grounded = injectOriginalGrounding(assembled, task, payload);
   return {
     system: appendExtraRules(grounded.system, extraRulesRaw),
@@ -168,113 +148,8 @@ export function appendExtraRules(system: string, raw: unknown): string {
   return `${system}\n\n## 用户附加规则\n${rules.map((r) => `- ${r}`).join("\n")}`;
 }
 
-export function previewBuiltInSystem(board: WritingBoard): string {
-  if (board === "general") return `${CRAFT_SYSTEM}\n\n${GENERAL_CHAPTER_SYSTEM}`;
-  return ADULT_SYSTEM;
-}
-
-function assembleErotic(
-  task: GenerateTaskMode,
-  payload: Record<string, unknown>
-): { system: string; user: string } {
-  switch (task) {
-    case "outline":
-      return {
-        system: buildOutlineSystemPrompt(),
-        user: buildOutlineUserPrompt(
-          payload.characters as never,
-          payload.background as never,
-          payload.settings as never,
-          payload.projectTags as string[] | undefined
-        ),
-      };
-    case "chapter":
-      return {
-        system: buildChapterSystemPrompt(),
-        user: buildChapterUserPrompt(
-          payload.characters as never,
-          payload.background as never,
-          payload.settings as never,
-          payload.outline as never,
-          payload.chapter as never,
-          payload.previousChapterSnippet as string | undefined,
-          payload.projectTags as string[] | undefined
-        ),
-      };
-    case "rewrite":
-      return {
-        system: buildChapterSystemPrompt(),
-        user: buildRewriteUserPrompt({
-          ...(payload as object as Record<string, unknown>),
-          mode: (payload.rewriteMode || "polish") as never,
-        } as never),
-      };
-    case "continue":
-      return {
-        system: buildChapterSystemPrompt(),
-        user: buildContinueUserPrompt(payload as never),
-      };
-    case "scene_plan":
-      return {
-        system: buildOutlineSystemPrompt(),
-        user: buildScenePlanUserPrompt(payload as never),
-      };
-    case "scene_chapter":
-      return {
-        system: buildChapterSystemPrompt(),
-        user: buildSceneChapterUserPrompt(payload as never),
-      };
-    case "expand_character":
-      return {
-        system: SETTING_SYSTEM,
-        user: buildExpandCharacterUserPrompt(payload as never),
-      };
-    case "optimize_character":
-      return {
-        system: SETTING_SYSTEM,
-        user: buildOptimizeCharacterUserPrompt(payload as never),
-      };
-    case "expand_background":
-      return {
-        system: SETTING_SYSTEM,
-        user: buildExpandBackgroundUserPrompt(payload as never),
-      };
-    case "optimize_background":
-      return {
-        system: SETTING_SYSTEM,
-        user: buildOptimizeBackgroundUserPrompt(payload as never),
-      };
-    case "expand_cast":
-      return {
-        system: SETTING_SYSTEM,
-        user: buildExpandCastUserPrompt(payload as never),
-      };
-    case "optimize_settings":
-      return {
-        system: SETTING_SYSTEM,
-        user: buildOptimizeSettingsUserPrompt(payload as never),
-      };
-    case "learn_style":
-      return {
-        system: LEARN_STYLE_SYSTEM_EROTIC,
-        user: buildLearnStyleUserPrompt(payload as never),
-      };
-    case "polish_chapter_outline":
-      return {
-        system: buildOutlineSystemPrompt(),
-        user: buildPolishChapterOutlineUserPrompt(payload as never),
-      };
-    case "extract_canon":
-      return {
-        system: SETTING_SYSTEM,
-        user: buildExtractCanonUserPrompt({
-          sampleText: String(payload.sampleText || payload.originalText || ""),
-          titleHint: String(payload.titleHint || payload.nameHint || ""),
-        }),
-      };
-    default:
-      return { system: ADULT_SYSTEM, user: "" };
-  }
+export function previewBuiltInSystem(_board?: WritingBoard): string {
+  return `${CRAFT_SYSTEM}\n\n${GENERAL_CHAPTER_SYSTEM}`;
 }
 
 function assembleGeneral(

@@ -42,7 +42,7 @@ function projectWith(
     status: NovelProject["chapters"][number]["status"];
   }[]
 ): NovelProject {
-  const p = createEmptyProject(board === "general" ? "常规书" : "色情书", board);
+  const p = createEmptyProject("常规书");
   p.id = "proj-export-1";
   p.background.title = "测试长篇";
   p.outline = { premise: "", endingNote: "", chapters: outline };
@@ -118,7 +118,7 @@ describe("chapter / book file names", () => {
   });
 
   it("falls back when book title is empty or unsafe", () => {
-    const p = createEmptyProject("未命名小说", "erotic");
+    const p = createEmptyProject("未命名小说");
     p.id = "abcdef12-xxxx";
     p.background.title = '<>:"/\\|?*';
     expect(bookExportFolderName(p)).toBe("book-abcdef12");
@@ -134,7 +134,7 @@ describe("selectChaptersForRepoExport", () => {
     chapter("b", 2, "二"),
     chapter("c", 3, "三"),
   ];
-  const p = projectWith("erotic", outline, [
+  const p = projectWith("general", outline, [
     { id: "a", content: "完成的一", status: "done" },
     { id: "b", content: "草稿二", status: "idle" },
     { id: "c", content: "", status: "done" },
@@ -167,17 +167,12 @@ describe("selectChaptersForRepoExport", () => {
     expect(() => selectChaptersForRepoExport(empty, "done")).toThrow(/没有已完成/);
   });
 
-  it("works on both writing boards", () => {
+  it("exports finished chapters from a conventional project", () => {
     const g = projectWith("general", [chapter("g1", 1, "章")], [
       { id: "g1", content: "常规正文", status: "done" },
     ]);
-    const e = projectWith("erotic", [chapter("e1", 1, "章")], [
-      { id: "e1", content: "色情正文", status: "done" },
-    ]);
     expect(selectChaptersForRepoExport(g, "done")).toHaveLength(1);
-    expect(selectChaptersForRepoExport(e, "done")).toHaveLength(1);
     expect(g.writingBoard).toBe("general");
-    expect(e.writingBoard).toBe("erotic");
   });
 });
 
@@ -216,7 +211,7 @@ describe("chapter markdown payload", () => {
 
   it("builds one file per selected chapter under the configured subdir", () => {
     const p = projectWith(
-      "erotic",
+      "general",
       [chapter("a", 1, "一"), chapter("b", 2, "二")],
       [
         { id: "a", content: "甲", status: "done" },

@@ -36,58 +36,29 @@ const {
 };
 
 describe("github latest release parsing", () => {
-  it("defaults to the private fantasy-writer repo", () => {
-    expect(DEFAULT_GITHUB_REPO).toBe("qingyou0420/fantasy-writer");
+  it("defaults to the public huanxiang-zuojia repo", () => {
+    expect(DEFAULT_GITHUB_REPO).toBe("qingyou0420/huanxiang-zuojia");
     expect(githubLatestApiUrl()).toBe(
-      "https://api.github.com/repos/qingyou0420/fantasy-writer/releases/latest"
+      "https://api.github.com/repos/qingyou0420/huanxiang-zuojia/releases/latest"
     );
   });
 
-  it("prefers Fantasy-Writer-Setup over the dual-publish sibling", () => {
+  it("picks Fantasy-Writer-Setup and ignores other assets", () => {
     const picked = pickSetupAsset([
       {
-        name: "H-NoveList-Setup-2.1.0.exe",
+        name: "Fantasy-Writer-Setup-1.0.0.exe",
         browser_download_url:
-          "https://github.com/qingyou0420/fantasy-writer/releases/download/v2.1.0/H-NoveList-Setup-2.1.0.exe",
-        url: "https://api.github.com/repos/qingyou0420/fantasy-writer/releases/assets/1",
-      },
-      {
-        name: "Fantasy-Writer-Setup-2.1.0.exe",
-        browser_download_url:
-          "https://github.com/qingyou0420/fantasy-writer/releases/download/v2.1.0/Fantasy-Writer-Setup-2.1.0.exe",
-        url: "https://api.github.com/repos/qingyou0420/fantasy-writer/releases/assets/2",
+          "https://github.com/qingyou0420/huanxiang-zuojia/releases/download/v1.0.0/Fantasy-Writer-Setup-1.0.0.exe",
+        url: "https://api.github.com/repos/qingyou0420/huanxiang-zuojia/releases/assets/2",
       },
       {
         name: "latest.yml",
         browser_download_url:
-          "https://github.com/qingyou0420/fantasy-writer/releases/download/v2.1.0/latest.yml",
+          "https://github.com/qingyou0420/huanxiang-zuojia/releases/download/v1.0.0/latest.yml",
       },
     ]);
-    expect(picked?.name).toBe("Fantasy-Writer-Setup-2.1.0.exe");
-    expect(picked?.version).toBe("2.1.0");
-  });
-
-  it("accepts only the old sibling when that is the only Setup.exe", () => {
-    const parsed = parseGithubLatestRelease({
-      tag_name: "v2.0.2",
-      assets: [
-        {
-          name: "H-NoveList-Setup-2.0.2.exe",
-          browser_download_url:
-            "https://github.com/qingyou0420/fantasy-writer/releases/download/v2.0.2/H-NoveList-Setup-2.0.2.exe",
-          url: "https://api.github.com/repos/qingyou0420/fantasy-writer/releases/assets/9",
-        },
-      ],
-    });
-    expect(parsed).toEqual({
-      version: "2.0.2",
-      downloadUrl:
-        "https://github.com/qingyou0420/fantasy-writer/releases/download/v2.0.2/H-NoveList-Setup-2.0.2.exe",
-      assetApiUrl:
-        "https://api.github.com/repos/qingyou0420/fantasy-writer/releases/assets/9",
-      assetName: "H-NoveList-Setup-2.0.2.exe",
-      tagName: "v2.0.2",
-    });
+    expect(picked?.name).toBe("Fantasy-Writer-Setup-1.0.0.exe");
+    expect(picked?.version).toBe("1.0.0");
   });
 
   it("returns null when latest has no recognized Setup.exe", () => {
@@ -104,11 +75,11 @@ describe("github latest release parsing", () => {
   it("extracts Setup filename from a GitHub download URL", () => {
     expect(
       setupFileNameFromUrl(
-        "https://github.com/qingyou0420/fantasy-writer/releases/download/v2.1.0/Fantasy-Writer-Setup-2.1.0.exe"
+        "https://github.com/qingyou0420/huanxiang-zuojia/releases/download/v1.0.0/Fantasy-Writer-Setup-1.0.0.exe"
       )
-    ).toBe("Fantasy-Writer-Setup-2.1.0.exe");
+    ).toBe("Fantasy-Writer-Setup-1.0.0.exe");
     expect(
-      setupFileNameFromUrl("https://github.com/qingyou0420/fantasy-writer/releases/download/v2.1.0/notes.md")
+      setupFileNameFromUrl("https://github.com/qingyou0420/huanxiang-zuojia/releases/download/v1.0.0/notes.md")
     ).toBeNull();
   });
 });
@@ -117,12 +88,12 @@ describe("github download guards", () => {
   it("allows GitHub / objects hosts and rejects others", () => {
     expect(
       isAllowedDownloadUrl(
-        "https://github.com/qingyou0420/fantasy-writer/releases/download/v2.1.0/Fantasy-Writer-Setup-2.1.0.exe"
+        "https://github.com/qingyou0420/huanxiang-zuojia/releases/download/v1.0.0/Fantasy-Writer-Setup-1.0.0.exe"
       )
     ).toBe(true);
     expect(
       isAllowedDownloadUrl(
-        "https://api.github.com/repos/qingyou0420/fantasy-writer/releases/assets/2"
+        "https://api.github.com/repos/qingyou0420/huanxiang-zuojia/releases/assets/2"
       )
     ).toBe(true);
     expect(
@@ -131,7 +102,7 @@ describe("github download guards", () => {
       )
     ).toBe(true);
     expect(isAllowedDownloadUrl("http://github.com/foo")).toBe(false);
-    expect(isAllowedDownloadUrl("https://evil.example/Fantasy-Writer-Setup-2.1.0.exe")).toBe(
+    expect(isAllowedDownloadUrl("https://evil.example/Fantasy-Writer-Setup-1.0.0.exe")).toBe(
       false
     );
   });
@@ -142,8 +113,8 @@ describe("github download guards", () => {
     expect(githubAssetHeaders("ghp_test").Accept).toBe("application/octet-stream");
   });
 
-  it("maps private-repo HTTP errors to setup hints", () => {
-    expect(githubCheckErrorMessage(new Error("HTTP 404"))).toMatch(/私有仓/);
-    expect(githubCheckErrorMessage(new Error("HTTP 401"))).toMatch(/令牌/);
+  it("maps HTTP errors to public-repo hints", () => {
+    expect(githubCheckErrorMessage(new Error("HTTP 404"))).toMatch(/公开/);
+    expect(githubCheckErrorMessage(new Error("HTTP 401"))).toMatch(/拒绝/);
   });
 });

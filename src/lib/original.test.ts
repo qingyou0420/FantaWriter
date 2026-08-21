@@ -101,7 +101,7 @@ describe("empty original keeps old projects", () => {
   });
 
   it("assemble outline/character/chapter without original has no grounding headings", () => {
-    const p = createEmptyProject("旧", "erotic");
+    const p = createEmptyProject("旧");
     const chapter = {
       id: "c1",
       order: 1,
@@ -112,7 +112,7 @@ describe("empty original keeps old projects", () => {
       tags: [] as string[],
     };
     for (const task of ["outline", "expand_character", "chapter"] as const) {
-      const { user, system } = assemble(task, "erotic", {
+      const { user, system } = assemble(task, "general", {
         characters: p.characters,
         background: p.background,
         settings: p.settings,

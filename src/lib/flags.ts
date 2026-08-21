@@ -1,7 +1,7 @@
 import type { AppPrefs } from "./theme";
 
 const MILESTONE_DEFAULTS: Record<string, boolean> = {
-  dualBoard: true,
+  dualBoard: false,
   modeScopedPrompts: true,
   libraryNamespaces: true,
   volumesUi: true,

@@ -390,7 +390,7 @@ export function AppSettingsMenu({
                   <input
                     type="password"
                     autoComplete="off"
-                    placeholder={ghTokenSaved ? "留空再保存即清除" : "私有仓 PAT"}
+                    placeholder={ghTokenSaved ? "留空再保存即清除" : "可选"}
                     value={ghToken}
                     onChange={(e) => setGhToken(e.target.value)}
                   />
@@ -404,8 +404,7 @@ export function AppSettingsMenu({
                   {ghTokenSaving ? "保存令牌…" : "保存更新令牌"}
                 </button>
                 <div className="menu-footer-hint">
-                  默认读 GitHub Releases（qingyou0420/fantasy-writer）。私有仓需
-                  Contents: Read 的 PAT，只存本机，不进 git。
+                  默认读本仓公开 GitHub Releases（qingyou0420/huanxiang-zuojia），无需令牌。令牌仅在需要时可选，只存本机，不进 git。
                 </div>
                 {update?.hasUpdate ? (
                   <button

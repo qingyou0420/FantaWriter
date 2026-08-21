@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ADULT_SYSTEM } from "./erotic-systems";
+import { CRAFT_SYSTEM } from "./craft";
+import { GENERAL_CHAPTER_SYSTEM } from "./general";
 import {
   assemble,
   AssembleError,
@@ -9,26 +10,22 @@ import {
 import { buildChapterSystemPrompt, buildOutlineSystemPrompt } from "../prompts";
 import { createEmptyProject } from "../types";
 
-describe("PR4 byte-identical adult systems", () => {
-  it("buildChapterSystemPrompt matches 1.8.1 ADULT_SYSTEM exactly", () => {
-    expect(buildChapterSystemPrompt()).toBe(ADULT_SYSTEM);
-  });
-
-  it("buildOutlineSystemPrompt is the same ADULT_SYSTEM", () => {
-    expect(buildOutlineSystemPrompt()).toBe(ADULT_SYSTEM);
+describe("built-in systems", () => {
+  it("chapter/outline system prompts stay on the conventional craft stack", () => {
+    expect(buildChapterSystemPrompt()).toBe(CRAFT_SYSTEM);
+    expect(buildOutlineSystemPrompt()).toBe(CRAFT_SYSTEM);
   });
 });
 
 describe("assemble isolation", () => {
-  const erotic = createEmptyProject("色", "erotic");
-  const general = createEmptyProject("常", "general");
+  const general = createEmptyProject("常");
   const chapter = {
     id: "c1",
     order: 1,
     title: "一",
     summary: "摘要",
     keyPoints: "点",
-    eroticNote: "无",
+    intensityNote: "",
     tags: [] as string[],
   };
   const outline = {
@@ -37,7 +34,7 @@ describe("assemble isolation", () => {
     chapters: [chapter],
   };
 
-  it("general chapter/outline/setting/learn_style have no banned substrings", () => {
+  it("chapter/outline/setting/learn_style have no banned substrings", () => {
     const tasks = [
       "outline",
       "chapter",
@@ -69,24 +66,18 @@ describe("assemble isolation", () => {
       expect(hits, `${task} leaked ${hits.join(",")}`).toEqual([]);
     }
     expect(GENERAL_BANNED_SUBSTRINGS.length).toBeGreaterThan(5);
-  });
-
-  it("erotic chapter system is ADULT_SYSTEM and user has 色情尺度", () => {
-    const { system, user } = assemble("chapter", "erotic", {
-      characters: erotic.characters,
-      background: erotic.background,
-      settings: { ...erotic.settings, eroticLevel: 5 },
+    const { system } = assemble("chapter", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
       outline,
-      chapter: { ...chapter, tags: ["口交"] },
-      projectTags: ["口交"],
+      chapter,
+      projectTags: [],
     });
-    expect(system).toBe(ADULT_SYSTEM);
-    expect(user).toContain("色情尺度：5/5");
-    expect(user).toContain("全书强制标签");
-    expect(system).toContain("18+");
+    expect(system).toContain(GENERAL_CHAPTER_SYSTEM.slice(0, 20));
   });
 
-  it("rejects more_erotic on general", () => {
+  it("rejects scale-rewrite modes that are not part of this edition", () => {
     expect(() =>
       assemble("rewrite", "general", {
         rewriteMode: "more_erotic",
@@ -98,14 +89,17 @@ describe("assemble isolation", () => {
     ).toThrow(AssembleError);
   });
 
-  it("rejects invalid writingBoard", () => {
-    expect(() =>
-      assemble("outline", "literary" as never, {
-        characters: [],
-        background: general.background,
-        settings: general.settings,
-      })
-    ).toThrow(/WRITING_BOARD_REQUIRED/);
+  it("always assembles as conventional even if a stale board is sent", () => {
+    const { user } = assemble("chapter", "literary" as never, {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      outline,
+      chapter,
+      projectTags: ["悬疑"],
+    });
+    expect(user).toContain("类型标签");
+    expect(user).not.toContain("色情尺度");
   });
 
   it("appends extraRules at the end of system; empty restores built-in", () => {
@@ -149,10 +143,10 @@ describe("assemble isolation", () => {
     expect(cont.user).toContain("世界观设定（关键词命中）");
     expect(cont.user).toContain("灰港");
 
-    const scene = assemble("scene_chapter", "erotic", {
-      characters: erotic.characters,
-      background: erotic.background,
-      settings: erotic.settings,
+    const scene = assemble("scene_chapter", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
       chapter,
       scene: { order: 1, title: "码头", summary: "靠岸" },
       lore,

@@ -5,21 +5,15 @@ import { useRouter } from "next/navigation";
 import { TagLibraryManager } from "@/components/TagEditor";
 import { StyleLearnPanel } from "@/components/StyleLearnPanel";
 import { AppSettingsMenu } from "@/components/AppSettingsMenu";
-import { AgeGate, FirstBoardChooser } from "@/components/AgeGate";
-import { BoardSwitcher } from "@/components/BoardSwitcher";
-import { ModeBadge } from "@/components/ModeBadge";
-import { filterProjectsByBoard, shouldShowAgeGate } from "@/lib/board";
-import { boardCopy } from "@/lib/copy";
-import { resolveFlag } from "@/lib/flags";
+import { APP_COPY } from "@/lib/copy";
 import {
   createEmptyOriginalManuscript,
   createEmptyProject,
   type LearnedStyle,
   type NovelProject,
-  type WritingBoard,
 } from "@/lib/types";
 import { hasOriginalText } from "@/lib/original";
-import { loadAppPrefs, saveAppPrefs } from "@/lib/theme";
+import { saveAppPrefs, loadAppPrefs } from "@/lib/theme";
 import {
   deleteProject,
   exportProjectJson,
@@ -57,31 +51,17 @@ export default function HomePage() {
   const [styleLibrary, setStyleLibrary] = useState<LearnedStyle[]>([]);
   const [libError, setLibError] = useState("");
   const [usageHint, setUsageHint] = useState("");
-  const [board, setBoard] = useState<WritingBoard>("general");
-  const [showAgeGate, setShowAgeGate] = useState(false);
-  const [showFirstPick, setShowFirstPick] = useState(false);
-  const dualBoard = resolveFlag("dualBoard", loadAppPrefs());
-
-  function applyBoard(next: WritingBoard) {
-    setBoard(next);
-    setTagLibrary(loadTagLibraryFor(next));
-    setStyleLibrary(loadStyleLibraryFor(next));
-  }
 
   useEffect(() => {
     (async () => {
       await initStorage();
       setProjects(loadProjects());
       const prefs = loadAppPrefs();
-      if (!prefs.defaultBoard) {
-        setShowFirstPick(true);
-        applyBoard("general");
-      } else if (shouldShowAgeGate(prefs)) {
-        setShowAgeGate(true);
-        applyBoard("general");
-      } else {
-        applyBoard(prefs.defaultBoard);
+      if (prefs.defaultBoard !== "general") {
+        saveAppPrefs({ ...prefs, defaultBoard: "general" });
       }
+      setTagLibrary(loadTagLibraryFor("general"));
+      setStyleLibrary(loadStyleLibraryFor("general"));
       const u = loadUsageStats();
       if (u.totalRequests > 0) {
         setUsageHint(
@@ -93,37 +73,8 @@ export default function HomePage() {
     })();
   }, []);
 
-  function persistBoard(next: WritingBoard, extra?: Partial<ReturnType<typeof loadAppPrefs>>) {
-    const prefs = loadAppPrefs();
-    saveAppPrefs({ ...prefs, defaultBoard: next, ...extra });
-    applyBoard(next);
-  }
-
-  function requestBoard(next: WritingBoard) {
-    if (next === board) return;
-    const prefs = loadAppPrefs();
-    if (next === "erotic" && !prefs.adultConfirmedAt) {
-      setShowAgeGate(true);
-      return;
-    }
-    persistBoard(next);
-  }
-
-  function confirmAgeGate() {
-    persistBoard("erotic", {
-      adultConfirmedAt: new Date().toISOString(),
-    });
-    setShowAgeGate(false);
-    setShowFirstPick(false);
-  }
-
-  function refuseAgeGate() {
-    setShowAgeGate(false);
-    applyBoard("general");
-  }
-
   function updateTagLibrary(next: string[]) {
-    saveTagLibraryFor(board, next);
+    saveTagLibraryFor("general", next);
     setTagLibrary(next);
   }
 
@@ -145,16 +96,14 @@ export default function HomePage() {
   }
 
   function handleCreate() {
-    const copy = boardCopy(board);
     const confirmMsg =
       createMode === "renew"
-        ? `这是「原作焕新」：依据旧稿扩写，而不是从零遍构。${copy.createConfirm}`
-        : copy.createConfirm;
+        ? `这是「原作焕新」：依据旧稿扩写，而不是从零遍构。${APP_COPY.createConfirm}`
+        : APP_COPY.createConfirm;
     if (!confirm(confirmMsg)) return;
     const titleHint = origTitle.trim() || newName.trim();
     const project = createEmptyProject(
-      newName.trim() || titleHint || "未命名小说",
-      board
+      newName.trim() || titleHint || "未命名小说"
     );
     if (titleHint) {
       project.background.title = titleHint;
@@ -233,10 +182,8 @@ export default function HomePage() {
     }
   }
 
-  const visibleProjects = dualBoard
-    ? filterProjectsByBoard(projects, board)
-    : projects;
-  const copy = boardCopy(board);
+  const visibleProjects = projects;
+  const copy = APP_COPY;
 
   const navItems: { id: HomeTab; label: string; badge?: string }[] = [
     { id: "projects", label: "我的项目", badge: String(visibleProjects.length) },
@@ -257,9 +204,6 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {dualBoard ? (
-              <BoardSwitcher value={board} onChange={requestBoard} />
-            ) : null}
             <input
               ref={fileRef}
               type="file"
@@ -453,7 +397,6 @@ export default function HomePage() {
                             {p.name || "未命名"}
                           </h3>
                           <div className="flex items-center gap-1 shrink-0">
-                          <ModeBadge board={p.writingBoard} />
                           {hasOriginalText(p.original) ? (
                             <span className="badge shrink-0">原作焕新</span>
                           ) : null}
@@ -518,7 +461,7 @@ export default function HomePage() {
                 className="btn btn-ghost btn-sm"
                 onClick={() => {
                   if (confirm(copy.resetTagsConfirm)) {
-                    updateTagLibrary(resetTagLibraryToDefaultFor(board));
+                    updateTagLibrary(resetTagLibraryToDefaultFor("general"));
                   }
                 }}
               >
@@ -535,7 +478,7 @@ export default function HomePage() {
         {homeTab === "styles" && (
           <StyleLearnPanel
             homeMode
-            writingBoard={board}
+            writingBoard="general"
             styles={styleLibrary}
             onStylesChange={setStyleLibrary}
             onError={setLibError}
@@ -546,21 +489,6 @@ export default function HomePage() {
       <footer className="text-center text-[0.7rem] text-[var(--text-muted)] py-6 border-t border-[var(--border-soft)]">
         {copy.footer}
       </footer>
-      {showFirstPick ? (
-        <FirstBoardChooser
-          onGeneral={() => {
-            persistBoard("general");
-            setShowFirstPick(false);
-          }}
-          onErotic={() => {
-            setShowFirstPick(false);
-            setShowAgeGate(true);
-          }}
-        />
-      ) : null}
-      {showAgeGate ? (
-        <AgeGate onConfirm={confirmAgeGate} onRefuse={refuseAgeGate} />
-      ) : null}
     </main>
   );
 }

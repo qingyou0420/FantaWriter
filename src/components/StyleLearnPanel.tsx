@@ -22,7 +22,7 @@ export function StyleLearnPanel({
   styles,
   onStylesChange,
   onError,
-  writingBoard = "erotic",
+  writingBoard = "general",
   homeMode = false,
   activeId = "",
   activeName = "",
@@ -91,7 +91,7 @@ export function StyleLearnPanel({
         rhythm: fields.rhythm || "",
         narrative: fields.narrative || "",
         dialogue: fields.dialogue || "",
-        erotic: fields.erotic || "",
+        extras: fields.extras || "",
         sensory: fields.sensory || "",
         structure: fields.structure || "",
         avoid: fields.avoid || "",
@@ -311,9 +311,6 @@ export function StyleLearnPanel({
                   ["节奏", selected.rhythm],
                   ["叙事", selected.narrative],
                   ["对话", selected.dialogue],
-                  ...(writingBoard === "erotic"
-                    ? [["情色写法", selected.erotic || ""]]
-                    : []),
                   ["感官", selected.sensory],
                   ["结构", selected.structure],
                   ["避免", selected.avoid],

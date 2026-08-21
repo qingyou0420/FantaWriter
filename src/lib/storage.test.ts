@@ -78,21 +78,20 @@ describe("storage dual-write", () => {
     const loaded = loadProjects();
     expect(loaded).toHaveLength(1);
     expect(loaded[0].id).toBe(p.id);
-    expect(loaded[0].writingBoard).toBe("erotic");
+    expect(loaded[0].writingBoard).toBe("general");
     await flushStorage();
     const newDb = await openKv("fantasy-writer");
     const fromNew = await idbGet<typeof p[]>(newDb, "kv", "projects");
     expect(fromNew?.map((x) => x.id)).toEqual([p.id]);
   });
 
-  it("upsertProject refuses silent writingBoard changes", async () => {
+  it("normalize imported projects onto the conventional board", async () => {
     await initStorage();
-    const p = createEmptyProject("锁", "erotic");
+    const p = createEmptyProject("锁");
     saveProjects([p]);
     await flushStorage();
-    expect(() =>
-      upsertProject({ ...p, writingBoard: "general" })
-    ).toThrow("WRITING_BOARD_LOCKED");
+    upsertProject({ ...p, name: "锁改" });
+    expect(loadProjects()[0].writingBoard).toBe("general");
   });
 
   it("export/import project JSON keeps original manuscript and locked canon", async () => {

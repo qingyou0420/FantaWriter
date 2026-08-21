@@ -19,12 +19,7 @@ import { LorePanel } from "@/components/LorePanel";
 import { OriginalPanel } from "@/components/OriginalPanel";
 import { attachOriginalContext } from "@/lib/original";
 import { useProjectStore } from "@/hooks/useProjectStore";
-import { BoardSwitcher } from "@/components/BoardSwitcher";
-import { ConvertModeWizard } from "@/components/ConvertModeWizard";
-import { ModeBadge } from "@/components/ModeBadge";
-import { boardCopy } from "@/lib/copy";
-import { resolveFlag } from "@/lib/flags";
-import { loadAppPrefs, saveAppPrefs } from "@/lib/theme";
+import { loadAppPrefs } from "@/lib/theme";
 import { readProjectTab, writeProjectTab } from "@/lib/storage";
 import {
   buildPreviousContext,
@@ -131,7 +126,6 @@ export default function ProjectPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
-  const [convertOpen, setConvertOpen] = useState(false);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
     null
   );
@@ -838,26 +832,6 @@ export default function ProjectPage() {
               placeholder="项目名称"
             />
           </div>
-          <ModeBadge board={project.writingBoard} />
-          {resolveFlag("dualBoard", loadAppPrefs()) ? (
-            <BoardSwitcher
-              value={project.writingBoard}
-              onChange={(next) => {
-                if (next === project.writingBoard) return;
-                const other = boardCopy(next).label;
-                if (
-                  !confirm(
-                    `当前书是${boardCopy(project.writingBoard).label}写作台作品。切换看板将返回首页「${other}」列表，不会修改本书。`
-                  )
-                ) {
-                  return;
-                }
-                const prefs = loadAppPrefs();
-                saveAppPrefs({ ...prefs, defaultBoard: next });
-                window.location.href = "/";
-              }}
-            />
-          ) : null}
           <span
             className={`status-pill ${saveHint ? "status-pill-saving" : ""}`}
             title={busy || saveHint || ""}
@@ -947,16 +921,6 @@ export default function ProjectPage() {
                     强制全量重写
                   </button>
                   <div className="menu-sep" />
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      setConvertOpen(true);
-                    }}
-                  >
-                    转换写作台…
-                  </button>
                   <button
                     type="button"
                     className="menu-item"
@@ -1367,20 +1331,6 @@ export default function ProjectPage() {
           />
         )}
       </div>
-      {convertOpen ? (
-        <ConvertModeWizard
-          project={project}
-          onClose={() => setConvertOpen(false)}
-          onConverted={(next, inPlace) => {
-            setConvertOpen(false);
-            if (inPlace) {
-              window.location.href = `/project/${next.id}`;
-              return;
-            }
-            router.push(`/project/${next.id}`);
-          }}
-        />
-      ) : null}
     </main>
   );
 }

@@ -15,7 +15,7 @@ import type {
 export function BackgroundPanel({
   background,
   characters,
-  writingBoard = "erotic",
+  writingBoard = "general",
   original,
   canon,
   onChange,

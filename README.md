@@ -2,28 +2,24 @@
 
 本地优先的 Web / 桌面 **AI 长篇写作**应用。设定人物与世界 → AI 生成大纲 → 你改大纲 → 一键生成正文。
 
-两个一等写作台，看板一键切换，互不污染：
-
-- **常规**：类型 / 文学 / 网文长篇
-- **色情**：成年情色虚构（18+），1.8.1 能力完整保留
+这是公开仓的**常规独立版**：只写正统常规小说（类型 / 文学 / 网文长篇）。
 
 AI 默认使用 **DeepSeek**（OpenAI 兼容接口，可改 Base URL / 模型）。
 
-当前版本：**2.0.1**
+当前版本：**1.0.0**
 
 ## 功能
 
 | 模块 | 说明 |
 |------|------|
-| 双写作台 | 首页看板切换；项目徽章与 `writingBoard` 绑定；转换向导默认另存 |
-| 项目 | 多项目、**IndexedDB 主存** + 旧键只读回退、JSON 导入导出、完整备份 |
+| 项目 | 多项目、**IndexedDB 主存**、JSON 导入导出、完整备份 |
 | **原作焕新** | 粘贴/导入旧稿，锁定身份与事实；人物/大纲/正文生成必须读原文 + 锁定设定 |
 | 人物设定 | 复数角色 + AI 扩写/优化；可选别名与说话风格 |
 | 故事背景 | 标题、梗概等 + AI 扩写 / 优化 |
 | 世界观 | 地点/组织/物品/规则；关键词命中后注入生成提示（最多 8 条 / 2000 字） |
 | 分卷 | 作品 → 卷 → 章；按卷生成队列；导出与目录预览按卷分组 |
-| 生成参数 | 文风/人称/篇幅；色情台另有尺度 1–5；附加系统规则写入 prompt 末尾 |
-| 标签 | 常规=类型标签；色情=行为标签。库按台分桶 |
+| 生成参数 | 文风 / 人称 / 篇幅；附加系统规则写入 prompt 末尾 |
+| 标签 | 类型 / 题材标签 |
 | 文风学习 | 主页学习与维护文风库；项目「生成参数」中选用 |
 | 大纲 | AI 生成 JSON 大纲；可编辑/增删/排序章节 |
 | 正文 | 流式生成/可取消；润色选中、续写；版本历史；分场景生成；查找替换 |
@@ -36,13 +32,13 @@ AI 默认使用 **DeepSeek**（OpenAI 兼容接口，可改 Base URL / 模型）
 
 ## 环境要求
 
-- Node.js 18+
+- Node.js 18 及以上
 - DeepSeek API Key：[platform.deepseek.com](https://platform.deepseek.com/api_keys)
 
 ## 快速开始
 
 ```bash
-cd h-novelist   # 或你的项目目录
+cd huanxiang-zuojia   # 或你的项目目录
 cp .env.example .env.local
 # 编辑 .env.local，填入 DEEPSEEK_API_KEY=...
 
@@ -52,7 +48,7 @@ npm run dev
 
 浏览器打开 [http://localhost:3000](http://localhost:3000)。
 
-桌面安装包：`Fantasy-Writer-Setup-2.0.1.exe`。库存 1.8.1 客户端请用字节相同的 `H-NoveList-Setup-2.0.1.exe`（同一二进制，更新器只认旧文件名）。
+桌面安装包：`Fantasy-Writer-Setup-1.0.0.exe`。
 
 ## 桌面端更新（GitHub Release）
 
@@ -60,18 +56,18 @@ npm run dev
 
 1. 把 `package.json` 的 `version` 改成要发的 `X.Y.Z`，合进 GitHub  
 2. 打标签并推送：`git tag vX.Y.Z && git push origin vX.Y.Z`（也可在 Actions 里 `workflow_dispatch`，标签须与 `version` 一致）  
-3. `release-win` workflow 在 `windows-latest` 打 NSIS 包，用 `GITHUB_TOKEN` 上传到该 tag 的 Release；主资源为 `Fantasy-Writer-Setup-x.y.z.exe`（并附兼容名 `H-NoveList-Setup-x.y.z.exe`）。CI 无证书时跳过签名，不阻断发版。`.env.local` / 密钥不会打进包  
+3. `release-win` workflow 在 `windows-latest` 打 NSIS 包，用 `GITHUB_TOKEN` 上传到该 tag 的 Release；主资源为 `Fantasy-Writer-Setup-x.y.z.exe`。CI 无证书时跳过签名，不阻断发版。`.env.local` / 密钥不会打进包  
 4. 已装客户端：设置 → **检查更新**。有新版本可 **一键安装**（先下载到临时目录，再走原安装流程）
 
-仓 `qingyou0420/fantasy-writer` 是**私有**的，未登录拉不到 Release。请在本机「设置 → 更新用 GitHub 令牌」填写具有 **Contents: Read** 的 PAT（classic 也可用 `repo`）。令牌只写入 `%APPDATA%\h-novelist\config.env`，**不要**提交到 git，也不要写进 `.env.local`。没令牌时仍会试无鉴权，失败再回退本地目录扫描。
+仓 `qingyou0420/huanxiang-zuojia` 是**公开**的，检查更新不需要填写令牌。令牌仅在你自己覆盖私有源时可选，只写入本机 `%APPDATA%\fantasy-writer\config.env`，**不要**提交到 git，也不要写进 `.env.local`。
 
 ## 推荐工作流
 
-1. **新建项目**，选择常规或色情写作台；旧稿用「原作焕新」粘贴原文，不要从零遍构  
+1. **新建项目**，从零开写；旧稿用「原作焕新」粘贴原文，不要从零遍构  
 2. **原作焕新**（若有旧稿）：锁一条原作里不能被改的事实（名称 + 一句话），生成时必须遵守  
 3. **人物设定**：至少主角 + 关键配角；有原作时扩写会读锁定设定  
 4. **故事背景 / 世界观**：梗概、场景与关键词设定写清楚  
-5. **生成参数**：文风 / 人称 / 建议章节数（色情台再选尺度）  
+5. **生成参数**：文风 / 人称 / 建议章节数  
 6. 点 **AI 生成大纲**，在大纲页逐章微调；需要时添加分卷  
 7. **生成本章**，或 **一键生成全部正文** / **仅生成本卷**  
 8. 长书中途可 **暂停**，之后 **续跑**；失败章可 **重试**  
@@ -81,8 +77,7 @@ npm run dev
 ## 数据存储
 
 - 项目数据优先写入浏览器 **IndexedDB**（库名 `fantasy-writer`）  
-- 2.0 起停止写入旧键 `erotic-novel-studio:*` / `h-novelist:*`，读仍回退一轮  
-- 旧完整备份（`ens-backup-*.json`）可在首页设置里 `importFullBackup` 一次  
+- 桌面端 Electron `appId` 为 `com.fantasywriter.app`，userData 为 `%APPDATA%\fantasy-writer`，与其它同名产品隔离  
 - API Key 仅在服务端 `.env.local` 或桌面端用户目录 `config.env`，不会进前端包  
 
 详见 `docs/迁移说明.md`。
@@ -95,6 +90,5 @@ npm run dev
 
 ## 注意
 
-- 色情写作台仅用于 **成年角色（18+）** 的虚构创作；两台均禁止未成年人色情  
-- 生成会产生 API 费用，全书一键生成前请确认章节数  
+- 本版只写常规虚构长篇；生成会产生 API 费用，全书一键生成前请确认章节数  
 - 生产部署请自行做好访问控制，勿把 Key 提交到 Git

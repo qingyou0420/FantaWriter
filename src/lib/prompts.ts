@@ -7,15 +7,16 @@ import type {
   WritingBoard,
 } from "./types";
 import {
-  EROTIC_LEVEL_LABELS,
   LENGTH_LABELS,
   PERSON_LABELS,
   STYLE_LABELS,
   mergeTags,
 } from "./types";
-import { ADULT_SYSTEM, SETTING_SYSTEM } from "./prompts/erotic-systems";
+import { GENERAL_SETTING_SYSTEM } from "./prompts/general";
+import { CRAFT_SYSTEM } from "./prompts/craft";
 
-export { ADULT_SYSTEM, SETTING_SYSTEM } from "./prompts/erotic-systems";
+export const SETTING_SYSTEM = GENERAL_SETTING_SYSTEM;
+export const ADULT_SYSTEM = CRAFT_SYSTEM;
 
 export function formatCharacters(characters: Character[]): string {
   if (!characters.length) return "（暂无人物）";
@@ -55,7 +56,7 @@ export function formatBackground(bg: StoryBackground): string {
 
 export function formatSettings(
   s: GenerationSettings,
-  writingBoard: WritingBoard = "erotic"
+  _writingBoard: WritingBoard = "general"
 ): string {
   let styleLine: string;
   if (s.writingStyle === "learned" && s.learnedStyleGuide?.trim()) {
@@ -67,11 +68,6 @@ export function formatSettings(
   }
 
   const lines: string[] = [];
-  if (writingBoard === "erotic") {
-    lines.push(
-      `色情尺度：${s.eroticLevel}/5 — ${EROTIC_LEVEL_LABELS[s.eroticLevel]}`
-    );
-  }
   lines.push(
     styleLine,
     `叙述人称：${PERSON_LABELS[s.person]}`,
@@ -82,9 +78,7 @@ export function formatSettings(
 
   if (s.writingStyle === "learned" && s.learnedStyleGuide?.trim()) {
     const exec =
-      writingBoard === "general"
-        ? "执行：句式、用词、节奏、对话尽量贴合上述指南；不要退化成通用网文腔。"
-        : "执行：句式、用词、节奏、对话与情色写法尽量贴合上述指南；不要退化成通用网文腔。";
+      "执行：句式、用词、节奏、对话尽量贴合上述指南；不要退化成通用网文腔。";
     lines.push(
       "",
       "## 固定学习文风指南（硬性，优先于默认文风习惯）",
@@ -100,40 +94,19 @@ export function formatTagBlock(
   projectTags?: string[],
   chapterTags?: string[],
   scope: "outline" | "chapter" = "outline",
-  writingBoard: WritingBoard = "erotic"
+  _writingBoard: WritingBoard = "general"
 ): string {
   const project = (projectTags || []).filter(Boolean);
   const chapter = (chapterTags || []).filter(Boolean);
   const effective =
     scope === "chapter" ? mergeTags(project, chapter) : project;
 
-  if (writingBoard === "general") {
-    if (!project.length && !chapter.length) return "";
-    return `类型标签（可作题材/桥段参考，不是必须写到的性行为）：${effective.join("、")}`;
-  }
-
-  if (!project.length && !chapter.length) {
-    return "（无强制行为标签）";
-  }
-
-  const lines: string[] = [];
-  if (project.length) {
-    lines.push(`全书强制标签（必须在整部小说中体现，可分散到不同章节）：${project.join("、")}`);
-  }
-  if (scope === "chapter" && chapter.length) {
-    lines.push(`本章强制标签（本章正文必须写出，不可跳过）：${chapter.join("、")}`);
-  }
-  if (scope === "chapter" && effective.length) {
-    lines.push(`本章合计须体现：${effective.join("、")}`);
-  }
-  lines.push(
-    "执行要求：标签是硬性写作任务，须写成可感知的情节与感官描写（符合当前色情尺度），禁止只在旁白中点名而不展开。"
-  );
-  return lines.join("\n");
+  if (!project.length && !chapter.length) return "";
+  return `类型标签（可作题材/桥段参考）：${effective.join("、")}`;
 }
 
 export function buildOutlineSystemPrompt(): string {
-  return ADULT_SYSTEM;
+  return `${CRAFT_SYSTEM}`;
 }
 
 export function buildOutlineUserPrompt(
@@ -151,13 +124,9 @@ ${formatCharacters(characters)}
 ${formatBackground(background)}
 
 ## 生成参数
-${formatSettings(settings)}
+${formatSettings(settings, "general")}
 建议章节数：约 ${settings.chapterCount} 章（可按故事需要 ±2）
-
-## 行为标签（硬性）
-${formatTagBlock(projectTags, undefined, "outline")}
-请在大纲的各章 summary / keyPoints / eroticNote 中规划如何落实上述标签，保证全书标签最终都能被写到。
-
+${formatTagBlock(projectTags, undefined, "outline", "general") ? `\n## 类型标签\n${formatTagBlock(projectTags, undefined, "outline", "general")}\n` : ""}
 ## 输出要求
 请严格输出如下 JSON（不要 markdown 代码块，不要其它说明文字）：
 {
@@ -167,16 +136,16 @@ ${formatTagBlock(projectTags, undefined, "outline")}
     {
       "order": 1,
       "title": "章节标题",
-      "summary": "本章剧情摘要（3–6句，若本章承载某标签请写明）",
+      "summary": "本章剧情摘要（3–6句）",
       "keyPoints": "关键情节点/冲突/转折，分号分隔",
-      "eroticNote": "本章情色戏份与对应标签说明（无则写「无」）"
+      "intensityNote": "可选：节奏/冲突/情绪强度备注；无则空字符串"
     }
   ]
 }`;
 }
 
 export function buildChapterSystemPrompt(): string {
-  return ADULT_SYSTEM;
+  return `${CRAFT_SYSTEM}`;
 }
 
 export function buildChapterUserPrompt(
@@ -191,7 +160,7 @@ export function buildChapterUserPrompt(
   const allChapters = outline.chapters
     .map(
       (c) =>
-        `${c.order}. 《${c.title}》— ${c.summary}${c.eroticNote && c.eroticNote !== "无" ? ` [情色：${c.eroticNote}]` : ""}${(c.tags || []).length ? ` [章标签：${(c.tags || []).join("、")}]` : ""}`
+        `${c.order}. 《${c.title}》— ${c.summary}${(c.intensityNote || c.eroticNote) && (c.intensityNote || c.eroticNote) !== "无" ? ` [节奏：${c.intensityNote || c.eroticNote}]` : ""}${(c.tags || []).length ? ` [章标签：${(c.tags || []).join("、")}]` : ""}`
     )
     .join("\n");
 
@@ -206,8 +175,8 @@ ${formatBackground(background)}
 ## 写作参数
 ${formatSettings(settings)}
 
-## 行为标签（硬性，必须写入正文）
-${formatTagBlock(projectTags, chapter.tags, "chapter")}
+## 类型标签
+${formatTagBlock(projectTags, chapter.tags, "chapter", "general")}
 
 ## 整体前提
 ${outline.premise}
@@ -221,17 +190,16 @@ ${allChapters}
 标题：${chapter.title}
 摘要：${chapter.summary}
 关键点：${chapter.keyPoints}
-情色说明：${chapter.eroticNote || "无"}
+节奏备注：${chapter.intensityNote || chapter.eroticNote || "无"}
 本章标签：${(chapter.tags || []).length ? chapter.tags.join("、") : "无"}
 
 ${previousChapterSnippet ? `## 上一章结尾片段（衔接用）\n${previousChapterSnippet}\n` : ""}
 ## 正文要求
 1. 只写本章正文，不要写「第X章」以外的元说明。
 2. 开头可保留一行标题：# ${chapter.title}
-3. 严格按色情尺度与文风；人物口吻与设定一致。
+3. 严格按文风与人称；人物口吻与设定一致。
 4. 情节完整、有起承转合，与前后章可衔接。
-5. 本章强制标签对应的行为必须在正文中展开描写（符合尺度），不可遗漏。
-6. 直接输出小说正文。`;
+5. 直接输出小说正文。`;
 }
 
 export function extractJsonObject(text: string): string {
@@ -324,7 +292,7 @@ ${opts.instruction ? `\n## 额外要求\n${opts.instruction}\n` : ""}
   "personality": "性格、说话方式、情绪模式，80–150字",
   "background": "出身、职业、重要过往，80–150字",
   "relationships": "与故事中他人的关系与张力",
-  "notes": "口癖、癖好倾向、禁忌、写作注意点（成人向可写，但点到为止）"
+  "notes": "口癖、癖好倾向、写作注意点"
 }`;
 }
 
@@ -408,7 +376,7 @@ export function buildExpandCastUserPrompt(opts: {
 }): string {
   const n = Math.min(8, Math.max(1, opts.characterCount ?? 2));
   return `用户只用一句话/一小段描述了故事灵感。请一次性生成：故事背景 + ${n} 个核心人物设定（均为成年人）。
-人物之间要有关系与张力，适合成人情感/情色向虚构小说。
+人物之间要有关系与张力，服务于类型/文学向虚构小说。
 
 ## 用户灵感
 ${opts.seed}
@@ -454,8 +422,7 @@ ${formatSettings(opts.settings)}
 ${opts.instruction ? `\n## 用户要求\n${opts.instruction}\n` : ""}
 ## 输出 JSON
 {
-  "eroticLevel": 1到5的整数,
-  "writingStyle": "literary|plain|poetic|passionate|restrained|dark|humorous|custom 之一",
+  "writingStyle": "literary|plain|poetic|dark|humorous|custom 之一",
   "customStyle": "若 writingStyle 为 custom 则填写文风描述，否则空字符串",
   "person": "first|second|third 之一",
   "length": "short|medium|long 之一",
@@ -592,7 +559,7 @@ export function buildLearnStyleUserPrompt(opts: {
   return `你是资深文学风格分析师。请阅读用户导入的小说范文（可能是头/中/尾采样），提炼可复用的**固定写作风格档案**，用于之后让 AI 用同一文风写新故事。
 
 要求：
-1. 分析文风、文笔、写法（句式节奏、用词、叙事、对话、感官、情色描写手法、结构习惯）。
+1. 分析文风、文笔、写法（句式节奏、用词、叙事、对话、感官、结构习惯）。
 2. 输出要具体、可执行，避免空泛形容词堆砌。
 3. styleGuide 必须是一份完整的「写作守则」，可直接当作 system 风格指令使用（300–600 字）。
 4. fingerprints 给出 3–5 句「像范文」的短句模板（可改写自原文气质，勿大段照抄）。
@@ -612,7 +579,6 @@ ${opts.sampleText}
   "rhythm": "句式长短、节奏、标点习惯",
   "narrative": "视角推进、时间线、信息释放方式",
   "dialogue": "对话密度与口吻",
-  "erotic": "情色/亲密场面写法特点（若范文无则写通用延伸建议）",
   "sensory": "感官侧重（视觉/触觉/气味等）",
   "structure": "段落与场面组织方式",
   "avoid": "应避免的写法（与范文气质冲突的）",
@@ -633,13 +599,13 @@ export function parseLearnedStyleFields(
     : [];
   return {
     name: String(data.name || "未命名文风"),
-    writingBoard: data.writingBoard === "general" ? "general" : "erotic",
+    writingBoard: "general",
     overall: String(data.overall || ""),
     vocabulary: String(data.vocabulary || ""),
     rhythm: String(data.rhythm || ""),
     narrative: String(data.narrative || ""),
     dialogue: String(data.dialogue || ""),
-    erotic: String(data.erotic || ""),
+    extras: String(data.extras || data.erotic || ""),
     sensory: String(data.sensory || ""),
     structure: String(data.structure || ""),
     avoid: String(data.avoid || ""),
@@ -692,22 +658,22 @@ ${others || "（无）"}
 标题：${opts.chapter.title}
 摘要：${opts.chapter.summary}
 关键点：${opts.chapter.keyPoints}
-情色说明：${opts.chapter.eroticNote}
+节奏备注：${opts.chapter.intensityNote || opts.chapter.eroticNote || ""}
 本章标签：${chTags.length ? chTags.join("、") : "无"}
 全书标签：${bookTags.length ? bookTags.join("、") : "无"}
 
 ## 硬性要求
-1. 必须把标签对应的行为/玩法**规划进本章摘要与关键点**，写清如何发生，不可只列标签名。
-2. eroticNote 写明本章如何落实标签、尺度与重点。
+1. 把类型标签对应的题材/桥段规划进本章摘要与关键点。
+2. intensityNote 写明本章节奏与冲突强度。
 3. 保持人物性格与前后章可衔接，不推翻全书前提。
 4. 输出更具体、可写正文的大纲，不要空话。
 
 ## 输出 JSON（不要 markdown）
 {
   "title": "润色后的章节标题",
-  "summary": "3–8句剧情摘要，须体现标签相关情节",
-  "keyPoints": "关键点，分号分隔，须含标签对应桥段",
-  "eroticNote": "情色戏份与标签落实说明"
+  "summary": "3–8句剧情摘要",
+  "keyPoints": "关键点，分号分隔",
+  "intensityNote": "节奏/冲突/情绪强度备注"
 }`;
 }
 
@@ -722,7 +688,7 @@ export function parsePolishedChapterOutline(text: string): {
     title: String(data.title || ""),
     summary: String(data.summary || ""),
     keyPoints: String(data.keyPoints || ""),
-    eroticNote: String(data.eroticNote || ""),
+    eroticNote: String(data.intensityNote || data.eroticNote || ""),
   };
 }
 
@@ -730,8 +696,6 @@ export type RewriteMode =
   | "polish"
   | "expand"
   | "shorten"
-  | "more_erotic"
-  | "less_erotic"
   | "dialogue"
   | "custom";
 
@@ -739,8 +703,6 @@ const REWRITE_LABELS: Record<RewriteMode, string> = {
   polish: "润色文笔（保持情节与信息不变）",
   expand: "扩写细节与氛围（加长但不跑题）",
   shorten: "精简压缩（保留关键信息）",
-  more_erotic: "加强情欲/感官描写（符合既定尺度上限）",
-  less_erotic: "降低尺度，更含蓄",
   dialogue: "强化对话自然度与人物口吻",
   custom: "按用户自定义指令改写",
 };
@@ -776,7 +738,7 @@ ${opts.selectedText}
 ## 输出要求
 1. 只输出改写后的正文片段，不要解释。
 2. 保持人称、时态与前后可衔接。
-3. 所有角色为成年人。`;
+3. 保持人物口吻与既定设定一致。`;
 }
 
 export function buildContinueUserPrompt(opts: {
@@ -802,7 +764,7 @@ ${formatCharacters(opts.characters)}
 ${formatBackground(opts.background)}
 
 ## 写作参数
-${formatSettings(opts.settings, opts.writingBoard || "erotic")}
+${formatSettings(opts.settings, "general")}
 
 ${opts.characterStateCard ? `## 角色状态卡\n${opts.characterStateCard}\n` : ""}
 ${opts.chapter ? `## 本章目标\n标题：${opts.chapter.title}\n摘要：${opts.chapter.summary}\n关键点：${opts.chapter.keyPoints}\n` : ""}
@@ -914,7 +876,7 @@ export function buildOutlineVsContentUserPrompt(opts: {
 标题：${opts.chapter.title}
 摘要：${opts.chapter.summary}
 关键点：${opts.chapter.keyPoints}
-情色说明：${opts.chapter.eroticNote}
+节奏备注：${opts.chapter.intensityNote || opts.chapter.eroticNote || "无"}
 标签：${tags.length ? tags.join("、") : "无"}
 
 ## 正文
@@ -957,11 +919,8 @@ export function buildScenePlanUserPrompt(opts: {
   projectTags?: string[];
   writingBoard?: WritingBoard;
 }): string {
-  const board = opts.writingBoard || "erotic";
-  const intensity =
-    board === "general"
-      ? `节奏：${opts.chapter.intensityNote || opts.chapter.eroticNote || "无"}`
-      : `情色：${opts.chapter.eroticNote}`;
+  const board: WritingBoard = "general";
+  const intensity = `节奏：${opts.chapter.intensityNote || opts.chapter.eroticNote || "无"}`;
   return `把本章拆成 3–6 个可连续写作的场景，便于分场景生成正文。
 
 ## 人物
@@ -1025,7 +984,7 @@ ${formatCharacters(opts.characters)}
 ${formatBackground(opts.background)}
 
 ## 参数
-${formatSettings(opts.settings, opts.writingBoard || "erotic")}
+${formatSettings(opts.settings, "general")}
 
 ## 本章
 ${opts.chapter.order}. ${opts.chapter.title}
