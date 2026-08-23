@@ -2,6 +2,7 @@
   "name": "fantasy-writer",
   "version": "1.4.0",
   "private": true,
+  "license": "MIT",
   "description": "Fantasy Writer / 幻想作家 — 常规小说 AI 长篇编辑器",
   "author": "Fantasy Writer",
   "main": "electron/main.cjs",

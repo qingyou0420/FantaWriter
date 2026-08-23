@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 公开仓补上用户向 README（下载 exe、首次配置 API、未签名安装包的 SmartScreen 说明）与 MIT 许可证（根目录 `LICENSE`，`package.json` 的 `license` 为 MIT）。不升版本号。
+
 ## 1.4.0
 
 原作焕新改为抽骨架、按拍扩写、暗线不泄漏。已安装的 1.3.0 桌面端可从本仓 GitHub Release 检查到此版本。安装包 `Fantasy-Writer-Setup-1.4.0.exe`。
