@@ -4,7 +4,7 @@
  */
 const { versionFromSetupName } = require("./setup-artifact.cjs");
 
-const DEFAULT_GITHUB_REPO = "qingyou0420/huanxiang-zuojia";
+const DEFAULT_GITHUB_REPO = "qingyou0420/FantaWriter";
 const USER_AGENT = "Fantasy-Writer";
 
 const ALLOWED_DOWNLOAD_HOSTS = new Set([

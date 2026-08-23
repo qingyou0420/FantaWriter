@@ -43,7 +43,7 @@
 
 ## 1.0.0 — 常规独立版
 
-这是公开仓 `qingyou0420/huanxiang-zuojia` 的**第一版常规独立发行**。产品只写正统常规小说（Fantasy Writer / 幻想作家），不再包含双写作台或其它写作台切换。
+这是公开仓 `qingyou0420/FantaWriter` 的**第一版常规独立发行**。产品只写正统常规小说（Fantasy Writer / 幻想作家），不再包含双写作台或其它写作台切换。
 
 - 品牌：Fantasy Writer / 幻想作家。安装包 `Fantasy-Writer-Setup-1.0.0.exe`。
 - Electron `appId`：`com.fantasywriter.app`。userData 使用 `%APPDATA%\fantasy-writer`，不与其它产品共用项目目录。

@@ -412,7 +412,7 @@ export function AppSettingsMenu({
                   {ghTokenSaving ? "保存令牌…" : "保存更新令牌"}
                 </button>
                 <div className="menu-footer-hint">
-                  默认读本仓公开 GitHub Releases（qingyou0420/huanxiang-zuojia），无需令牌。令牌仅在需要时可选，只存本机，不进 git。
+                  默认读本仓公开 GitHub Releases（qingyou0420/FantaWriter），无需令牌。令牌仅在需要时可选，只存本机，不进 git。
                 </div>
                 {update?.hasUpdate ? (
                   <button
