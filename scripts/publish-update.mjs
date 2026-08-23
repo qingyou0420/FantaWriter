@@ -1,5 +1,5 @@
 /**
- * 打包完成后，把最新 Fantasy-Writer-Setup 复制到可扫描目录：
+ * 打包完成后，把最新 FantaWriter-Setup（或旧名 Fantasy-Writer-Setup）复制到可扫描目录：
  * 1. 桌面/Fantasy-Writer-Updates
  * 2. %APPDATA%/fantasy-writer/updates（Electron userData）
  */
@@ -65,7 +65,7 @@ function findLatestSetup() {
     })
     .filter(Boolean);
   if (!files.length) {
-    console.error("[publish-update] 未找到 Fantasy-Writer-Setup-*.exe");
+    console.error("[publish-update] 未找到 FantaWriter-Setup-*.exe");
     process.exit(1);
   }
   files.sort((a, b) => {

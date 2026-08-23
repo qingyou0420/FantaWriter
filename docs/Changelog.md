@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- 用户向文档的英文产品名改为 **FantaWriter**（中文仍为「幻想作家」）。安装包文件名仍是 `Fantasy-Writer-Setup-*.exe`，IndexedDB / `%APPDATA%\fantasy-writer` 路径不变。不升版本号。
+- 安装包文件名改为 `FantaWriter-Setup-*.exe`。检查更新仍识别已发布的 `Fantasy-Writer-Setup-*.exe`（含 1.4.0）。不升版本号。
+- 用户向文档的英文产品名改为 **FantaWriter**（中文仍为「幻想作家」）。IndexedDB / `%APPDATA%\fantasy-writer` 路径不变。不升版本号。
 - 公开仓补上用户向 README（下载 exe、首次配置 API、未签名安装包的 SmartScreen 说明）与 MIT 许可证（根目录 `LICENSE`，`package.json` 的 `license` 为 MIT）。不升版本号。
 
 ## 1.4.0
