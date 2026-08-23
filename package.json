@@ -73,7 +73,7 @@
           ]
         }
       ],
-      "artifactName": "Fantasy-Writer-Setup-${version}.${ext}"
+      "artifactName": "FantaWriter-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

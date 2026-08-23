@@ -17,7 +17,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 
 **https://github.com/qingyou0420/FantaWriter/releases/latest**
 
-文件名形如 **`Fantasy-Writer-Setup-*.exe`**（例如 `Fantasy-Writer-Setup-1.4.0.exe`）。
+文件名形如 **`FantaWriter-Setup-*.exe`**。1.4.0 已发布为 `Fantasy-Writer-Setup-1.4.0.exe`。
 
 ## Windows 提示「已保护你的电脑」
 

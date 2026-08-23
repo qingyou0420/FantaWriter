@@ -51,7 +51,7 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$PKG" >> "$GITHUB_OUTPUT"
-          echo "asset=Fantasy-Writer-Setup-${PKG}.exe" >> "$GITHUB_OUTPUT"
+          echo "asset=FantaWriter-Setup-${PKG}.exe" >> "$GITHUB_OUTPUT"
 
       - run: npm ci
 
@@ -108,7 +108,7 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            dist-installer/Fantasy-Writer-Setup-*.exe
-            dist-installer/Fantasy-Writer-Setup-*.exe.sha256
+            dist-installer/FantaWriter-Setup-*.exe
+            dist-installer/FantaWriter-Setup-*.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

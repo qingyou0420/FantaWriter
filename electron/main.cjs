@@ -16,7 +16,7 @@ app.setPath("userData", path.join(app.getPath("appData"), "fantasy-writer"));
 const DEFAULT_PORT = Number(process.env.ENS_PORT || 17831);
 const HOST = "127.0.0.1";
 const LOG_MAX_BYTES = 512 * 1024;
-const { versionFromSetupName } = require("./setup-artifact.cjs");
+const { versionFromSetupName, setupFileNameForVersion } = require("./setup-artifact.cjs");
 const {
   DEFAULT_GITHUB_REPO,
   githubLatestApiUrl,
@@ -695,7 +695,7 @@ function registerIpc() {
         hasUpdate: false,
         message:
           (hint ? hint + " " : "") +
-          `未找到安装包。请将 Fantasy-Writer-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
+          `未找到安装包。请将 FantaWriter-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
         searchedDirs,
       };
     }
@@ -736,10 +736,10 @@ function registerIpc() {
       setupFileNameFromUrl(downloadUrl) ||
       setupFileNameFromUrl(url) ||
       (opts.version && parseSemver(String(opts.version))
-        ? `Fantasy-Writer-Setup-${String(opts.version).replace(/^v/i, "")}.exe`
+        ? setupFileNameForVersion(opts.version)
         : null);
     if (!fileName || !versionFromSetupName(fileName)) {
-      return { ok: false, message: "安装包文件名不符合 Fantasy-Writer-Setup-x.y.z.exe" };
+      return { ok: false, message: "安装包文件名不符合 FantaWriter-Setup-x.y.z.exe" };
     }
     const destDir = path.join(app.getPath("temp"), "Fantasy-Writer-Updates");
     ensureDir(destDir);
@@ -1077,7 +1077,7 @@ async function checkGithubLatest(current) {
   const data = await fetchJson(url, githubApiHeaders(token));
   const parsed = parseGithubLatestRelease(data);
   if (!parsed) {
-    throw new Error("latest release 没有 Fantasy-Writer-Setup-x.y.z.exe 安装包");
+    throw new Error("latest release 没有 FantaWriter-Setup-x.y.z.exe 安装包");
   }
   const hasUpdate = compareVersions(parsed.version, current) > 0;
   return {
