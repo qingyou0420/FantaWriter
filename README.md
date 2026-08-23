@@ -15,7 +15,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 
 到 GitHub 最新发行页下载安装包：
 
-**https://github.com/qingyou0420/huanxiang-zuojia/releases/latest**
+**https://github.com/qingyou0420/FantaWriter/releases/latest**
 
 文件名形如 **`Fantasy-Writer-Setup-*.exe`**（例如 `Fantasy-Writer-Setup-1.4.0.exe`）。
 
@@ -45,7 +45,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 - **正文**：按章流式生成，可润色、续写；支持全书或本卷队列。
 - **原作焕新**：粘贴或导入旧稿，先锁定不能改的事实，再**抽取故事骨架**；确认写入后，在章拍工作台**按拍扩写**（先预览，接受后才进正文）。
 - **本地备份**：右上角设置可「下载完整备份」「导入完整备份」；项目「工具」页可查看 / 恢复自动备份。桌面端还会在用户目录落盘备份。
-- **应用内更新**：桌面端 **设置 → 检查更新**，从本仓 [GitHub Releases](https://github.com/qingyou0420/huanxiang-zuojia/releases/latest) 下载并安装。公开仓无需填写更新令牌。
+- **应用内更新**：桌面端 **设置 → 检查更新**，从本仓 [GitHub Releases](https://github.com/qingyou0420/FantaWriter/releases/latest) 下载并安装。公开仓无需填写更新令牌。
 
 数据优先存在本机 IndexedDB（库名 `fantasy-writer`）。桌面端用户目录是 `%APPDATA%\fantasy-writer`。
 
@@ -58,8 +58,8 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 需要 Node.js 18 及以上。多数读者直接下 exe 即可，不必走这里。
 
 ```bash
-git clone https://github.com/qingyou0420/huanxiang-zuojia.git
-cd huanxiang-zuojia
+git clone https://github.com/qingyou0420/FantaWriter.git
+cd FantaWriter
 cp .env.example .env.local   # 也可不改文件，启动后在「设置 → API 设置」填写
 npm install
 npm run dev
