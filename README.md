@@ -1,4 +1,4 @@
-# 幻想作家 / Fantasy Writer
+# 幻想作家 / FantaWriter
 
 本地 AI 长篇小说编辑器。面向类型 / 文学 / 网文等**常规虚构长篇**。基于 Next.js + Electron。稿件、设定与 API 密钥都留在你自己的电脑上。
 
@@ -27,7 +27,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 
 ## 第一次打开
 
-1. 安装并启动「Fantasy Writer」。
+1. 安装并启动「FantaWriter」。
 2. 若首页提示「尚未配置 API Key」，打开右上角 **设置 → API 设置**。
 3. 填写三项后点 **保存**：
    - **API Key**：你的密钥
@@ -51,7 +51,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 
 ## 许可证
 
-[MIT](LICENSE)。Copyright © 2026 Fantasy Writer / 幻想作家。
+[MIT](LICENSE)。Copyright © 2026 FantaWriter / 幻想作家。
 
 ## 从源码运行（可选）
 
