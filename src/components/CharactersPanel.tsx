@@ -1,10 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AiBox } from "@/components/AiBox";
 import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
+import {
+  applyCharacterEditorSave,
+  canManuallyEditCharacters,
+  closeCharacterEditor,
+  openCharacterEditor,
+  type CharacterEditorState,
+} from "@/lib/character-editor";
 import { assertCharactersRespectCanon, hasOriginalGrounding } from "@/lib/original";
 import {
   createEmptyCharacter,
@@ -21,6 +28,7 @@ export function CharactersPanel({
   writingBoard = "general",
   original,
   canon,
+  openEditorRequest = 0,
   onChange,
   onCastGenerated,
   onError,
@@ -30,49 +38,92 @@ export function CharactersPanel({
   writingBoard?: WritingBoard;
   original?: OriginalManuscript | null;
   canon?: LockedCanonFact[];
+  /** Increment to open the edit dialog (e.g. onboarding「写人物」). */
+  openEditorRequest?: number;
   onChange: (c: Character[] | ((prev: Character[]) => Character[])) => void;
   onCastGenerated: (c: Character[], b: StoryBackground) => void;
   onError: (msg: string) => void;
 }) {
-  const [active, setActive] = useState(characters[0]?.id || "");
+  const list = Array.isArray(characters) ? characters : [];
+  const [active, setActive] = useState(list[0]?.id || "");
   const [seed, setSeed] = useState("");
   const [castSeed, setCastSeed] = useState("");
   const [castCount, setCastCount] = useState(2);
   const [busy, setBusy] = useState(false);
+  const [editor, setEditor] = useState<CharacterEditorState>({ open: false });
+  const [seenEditorRequest, setSeenEditorRequest] = useState(0);
 
-  const effectiveActive = characters.some((c) => c.id === active)
+  const effectiveActive = list.some((c) => c.id === active)
     ? active
-    : characters[0]?.id || "";
-  const current = characters.find((c) => c.id === effectiveActive);
+    : list[0]?.id || "";
+  const current = list.find((c) => c.id === effectiveActive);
+  const draft = editor.open ? editor.draft : null;
+  const allowManualEdit = canManuallyEditCharacters({ original, canon });
 
-  function patch(partial: Partial<Character>) {
-    const id = effectiveActive;
-    onChange((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...partial } : c))
+  if (openEditorRequest > seenEditorRequest && allowManualEdit) {
+    setSeenEditorRequest(openEditorRequest);
+    setEditor(openCharacterEditor(list, effectiveActive || null));
+  }
+
+  useEffect(() => {
+    if (!editor.open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) setEditor(closeCharacterEditor());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editor.open, busy]);
+
+  function persist(next: Character[] | ((prev: Character[]) => Character[])) {
+    onChange((prev) => {
+      const base = Array.isArray(prev) ? prev : [];
+      return typeof next === "function" ? next(base) : next;
+    });
+  }
+
+  function patchDraft(partial: Partial<Character>) {
+    setEditor((prev) =>
+      prev.open ? { ...prev, draft: { ...prev.draft, ...partial } } : prev
     );
   }
 
+  function openEdit(id?: string | null, create = false) {
+    if (!allowManualEdit) return;
+    setEditor(openCharacterEditor(list, id, { create }));
+  }
+
+  function saveEditor() {
+    if (!editor.open) return;
+    const draftToSave = editor.draft;
+    persist((prev) => applyCharacterEditorSave(prev, draftToSave));
+    setActive(draftToSave.id);
+    setEditor(closeCharacterEditor());
+  }
+
+  function cancelEditor() {
+    setEditor(closeCharacterEditor());
+  }
+
   function add() {
-    const c = createEmptyCharacter();
-    c.role = characters.length ? "配角" : "主角";
-    onChange((prev) => [...prev, c]);
-    setActive(c.id);
+    openEdit(null, true);
   }
 
   function remove(id: string) {
-    if (characters.length <= 1) {
+    if (list.length <= 1) {
       alert("至少保留一个人物");
       return;
     }
     if (!confirm("删除此人物？")) return;
-    onChange((prev) => prev.filter((c) => c.id !== id));
+    persist((prev) => prev.filter((c) => c.id !== id));
+    if (editor.open && editor.draft.id === id) setEditor(closeCharacterEditor());
   }
 
-  async function expandCurrent() {
-    if (!current) return;
+  async function expandDraft() {
+    if (!editor.open) return;
+    const person = editor.draft;
     const idea =
       seed.trim() ||
-      [current.name, current.role, current.personality, current.background]
+      [person.name, person.role, person.personality, person.background]
         .filter(Boolean)
         .join("，");
     if (!idea) {
@@ -86,18 +137,15 @@ export function CharactersPanel({
         mode: "expand_character",
         writingBoard,
         seed: idea,
-        character: current,
-        otherCharacters: characters.filter((c) => c.id !== current.id),
+        character: person,
+        otherCharacters: list.filter((c) => c.id !== person.id),
         background,
         original,
         canon,
       });
       const fields = data.character as Omit<Character, "id">;
       assertCharactersRespectCanon([fields], canon);
-      const targetId = current.id;
-      onChange((prev) =>
-        prev.map((c) => (c.id === targetId ? { ...c, ...fields } : c))
-      );
+      patchDraft(fields);
       setSeed("");
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -106,9 +154,10 @@ export function CharactersPanel({
     }
   }
 
-  async function optimizeCurrent() {
-    if (!current) return;
-    const hasAny = Object.entries(current).some(
+  async function optimizeDraft() {
+    if (!editor.open) return;
+    const person = editor.draft;
+    const hasAny = Object.entries(person).some(
       ([k, v]) => k !== "id" && String(v || "").trim()
     );
     if (!hasAny && !seed.trim()) {
@@ -122,8 +171,8 @@ export function CharactersPanel({
         mode: hasAny ? "optimize_character" : "expand_character",
         writingBoard,
         seed: seed.trim(),
-        character: current,
-        otherCharacters: characters.filter((c) => c.id !== current.id),
+        character: person,
+        otherCharacters: list.filter((c) => c.id !== person.id),
         background,
         instruction: seed.trim() || undefined,
         original,
@@ -131,10 +180,7 @@ export function CharactersPanel({
       });
       const fields = data.character as Omit<Character, "id">;
       assertCharactersRespectCanon([fields], canon);
-      const targetId = current.id;
-      onChange((prev) =>
-        prev.map((c) => (c.id === targetId ? { ...c, ...fields } : c))
-      );
+      patchDraft(fields);
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -148,7 +194,7 @@ export function CharactersPanel({
       return;
     }
     if (
-      characters.some((c) => c.name || c.appearance || c.personality) ||
+      list.some((c) => c.name || c.appearance || c.personality) ||
       background.synopsis ||
       background.title
     ) {
@@ -171,16 +217,17 @@ export function CharactersPanel({
         original,
         canon,
       });
-      const list = (data.characters as Omit<Character, "id">[]).map((f) => ({
+      const next = (data.characters as Omit<Character, "id">[]).map((f) => ({
         ...createEmptyCharacter(),
         ...f,
         id: crypto.randomUUID(),
       }));
-      assertCharactersRespectCanon(list, canon);
+      assertCharactersRespectCanon(next, canon);
       const bg = data.background as StoryBackground;
-      onCastGenerated(list.length ? list : [createEmptyCharacter()], bg);
-      if (list[0]) setActive(list[0].id);
+      onCastGenerated(next.length ? next : [createEmptyCharacter()], bg);
+      if (next[0]) setActive(next[0].id);
       setCastSeed("");
+      setEditor(closeCharacterEditor());
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -238,13 +285,13 @@ export function CharactersPanel({
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={add}
-              disabled={busy}
+              disabled={busy || !allowManualEdit}
             >
               + 添加
             </button>
           </div>
           <ul className="list-none p-0 m-0 space-y-0.5">
-            {characters.map((c) => {
+            {list.map((c) => {
               const fields = [
                 c.name,
                 c.role,
@@ -266,7 +313,10 @@ export function CharactersPanel({
                         ? "bg-[var(--bg-hover)] text-[var(--text)]"
                         : "bg-transparent text-[var(--text-muted)] hover:bg-[var(--bg)]"
                     }`}
-                    onClick={() => setActive(c.id)}
+                    onClick={() => {
+                      setActive(c.id);
+                      openEdit(c.id);
+                    }}
                   >
                     <div className="font-medium truncate">
                       {c.name || "未命名人物"}
@@ -291,116 +341,37 @@ export function CharactersPanel({
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold m-0">
-                {current.name || "编辑人物"}
+                {current.name || "未命名人物"}
               </h2>
-              <button
-                type="button"
-                className="btn btn-danger btn-sm"
-                onClick={() => remove(current.id)}
-                disabled={busy}
-              >
-                删除人物
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => openEdit(current.id)}
+                  disabled={busy || !allowManualEdit}
+                >
+                  编辑设定
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => remove(current.id)}
+                  disabled={busy}
+                >
+                  删除人物
+                </button>
+              </div>
             </div>
-
-            <AiBox
-              title="扩写 / 优化此人设"
-              hint="写一句简单描述即可扩写；若已有草稿，可点「AI 优化」在现有基础上润色加深。结果填入下方表单，你仍可继续改。"
-              seed={seed}
-              onSeedChange={setSeed}
-              busy={busy}
-              primaryLabel="AI 扩写此人设"
-              onPrimary={expandCurrent}
-              secondaryLabel="AI 优化当前草稿"
-              onSecondary={optimizeCurrent}
-            />
-
-            <div className="grid sm:grid-cols-2 gap-x-4">
-              <Field label="姓名">
-                <input
-                  value={current.name}
-                  onChange={(e) => patch({ name: e.target.value })}
-                />
-              </Field>
-              <Field label="定位">
-                <input
-                  value={current.role}
-                  onChange={(e) => patch({ role: e.target.value })}
-                />
-              </Field>
-              <Field label="性别">
-                <input
-                  value={current.gender}
-                  onChange={(e) => patch({ gender: e.target.value })}
-                />
-              </Field>
-              <Field label="年龄">
-                <input
-                  value={current.age}
-                  onChange={(e) => patch({ age: e.target.value })}
-                />
-              </Field>
-            </div>
-            <Field label="外貌">
-              <textarea
-                value={current.appearance}
-                onChange={(e) => patch({ appearance: e.target.value })}
-                rows={3}
-              />
-            </Field>
-            <Field label="性格">
-              <textarea
-                value={current.personality}
-                onChange={(e) => patch({ personality: e.target.value })}
-                rows={3}
-              />
-            </Field>
-            <Field label="背景经历">
-              <textarea
-                value={current.background}
-                onChange={(e) => patch({ background: e.target.value })}
-                rows={3}
-              />
-            </Field>
-            <Field label="人物关系">
-              <textarea
-                value={current.relationships}
-                onChange={(e) => patch({ relationships: e.target.value })}
-                rows={2}
-              />
-            </Field>
-            <Field
-              label="别名"
-              hint="逗号分隔。生成时与姓名一并注入，避免称呼漂移。"
-            >
-              <input
-                value={(current.aliases || []).join("，")}
-                onChange={(e) =>
-                  patch({
-                    aliases: e.target.value
-                      .split(/[,，、/|\n]+/)
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  })
-                }
-                placeholder="例如：阿宁，宁宁"
-              />
-            </Field>
-            <Field label="说话风格">
-              <textarea
-                value={current.speechStyle || ""}
-                onChange={(e) => patch({ speechStyle: e.target.value })}
-                rows={2}
-                placeholder="例如：短句、少修饰、爱用反问"
-              />
-            </Field>
-            <Field label="备注（癖好 / 禁忌 / 口癖等）">
-              <textarea
-                value={current.notes}
-                onChange={(e) => patch({ notes: e.target.value })}
-                rows={2}
-              />
-            </Field>
+            <p className="text-sm text-[var(--text-muted)] mt-0 mb-0 leading-relaxed">
+              {current.role || "未设定位"}
+              {current.gender ? ` · ${current.gender}` : ""}
+              {current.age ? ` · ${current.age}` : ""}
+            </p>
+            <p className="text-sm text-[var(--text-muted)] mt-2 mb-0 leading-relaxed">
+              {current.personality?.trim() ||
+                current.appearance?.trim() ||
+                "点「编辑设定」填写姓名、性格与经历。从零开写不必先抽原作骨架。"}
+            </p>
           </div>
         ) : (
           <EmptyState
@@ -414,6 +385,156 @@ export function CharactersPanel({
           />
         )}
       </div>
+
+      {editor.open && draft ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="character-editor-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !busy) cancelEditor();
+          }}
+        >
+          <div className="modal-card modal-card-wide">
+            <div className="flex items-center justify-between mb-3">
+              <h2
+                id="character-editor-title"
+                className="text-base font-semibold m-0"
+              >
+                {draft.name || (editor.isNew ? "添加人物" : "编辑人物")}
+              </h2>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={cancelEditor}
+                disabled={busy}
+              >
+                关闭
+              </button>
+            </div>
+
+            <AiBox
+              title="扩写 / 优化此人设"
+              hint="写一句简单描述即可扩写；若已有草稿，可点「AI 优化」在现有基础上润色加深。结果填入下方表单，保存后才会写入项目。"
+              seed={seed}
+              onSeedChange={setSeed}
+              busy={busy}
+              primaryLabel="AI 扩写此人设"
+              onPrimary={expandDraft}
+              secondaryLabel="AI 优化当前草稿"
+              onSecondary={optimizeDraft}
+            />
+
+            <div className="grid sm:grid-cols-2 gap-x-4">
+              <Field label="姓名">
+                <input
+                  autoFocus
+                  value={draft.name}
+                  onChange={(e) => patchDraft({ name: e.target.value })}
+                />
+              </Field>
+              <Field label="定位">
+                <input
+                  value={draft.role}
+                  onChange={(e) => patchDraft({ role: e.target.value })}
+                />
+              </Field>
+              <Field label="性别">
+                <input
+                  value={draft.gender}
+                  onChange={(e) => patchDraft({ gender: e.target.value })}
+                />
+              </Field>
+              <Field label="年龄">
+                <input
+                  value={draft.age}
+                  onChange={(e) => patchDraft({ age: e.target.value })}
+                />
+              </Field>
+            </div>
+            <Field label="外貌">
+              <textarea
+                value={draft.appearance}
+                onChange={(e) => patchDraft({ appearance: e.target.value })}
+                rows={3}
+              />
+            </Field>
+            <Field label="性格">
+              <textarea
+                value={draft.personality}
+                onChange={(e) => patchDraft({ personality: e.target.value })}
+                rows={3}
+              />
+            </Field>
+            <Field label="背景经历">
+              <textarea
+                value={draft.background}
+                onChange={(e) => patchDraft({ background: e.target.value })}
+                rows={3}
+              />
+            </Field>
+            <Field label="人物关系">
+              <textarea
+                value={draft.relationships}
+                onChange={(e) => patchDraft({ relationships: e.target.value })}
+                rows={2}
+              />
+            </Field>
+            <Field
+              label="别名"
+              hint="逗号分隔。生成时与姓名一并注入，避免称呼漂移。"
+            >
+              <input
+                value={(draft.aliases || []).join("，")}
+                onChange={(e) =>
+                  patchDraft({
+                    aliases: e.target.value
+                      .split(/[,，、/|\n]+/)
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  })
+                }
+                placeholder="例如：阿宁，宁宁"
+              />
+            </Field>
+            <Field label="说话风格">
+              <textarea
+                value={draft.speechStyle || ""}
+                onChange={(e) => patchDraft({ speechStyle: e.target.value })}
+                rows={2}
+                placeholder="例如：短句、少修饰、爱用反问"
+              />
+            </Field>
+            <Field label="备注（癖好 / 禁忌 / 口癖等）">
+              <textarea
+                value={draft.notes}
+                onChange={(e) => patchDraft({ notes: e.target.value })}
+                rows={2}
+              />
+            </Field>
+
+            <div className="flex flex-wrap justify-end gap-2 mt-3">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={cancelEditor}
+                disabled={busy}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={saveEditor}
+                disabled={busy}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

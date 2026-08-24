@@ -643,6 +643,7 @@ export function normalizeProject(p: NovelProject): NovelProject {
     writingBoard,
     contentRating: p.contentRating || defaultContentRating(writingBoard),
     volumes,
+    characters: normalizeCharacters(p.characters),
     lore: Array.isArray(p.lore) ? p.lore : [],
     original: normalizeOriginalManuscript(p.original),
     canon: normalizeLockedCanon(p.canon),
@@ -793,6 +794,37 @@ export function createEmptyCharacter(): Character {
     aliases: [],
     speechStyle: "",
   };
+}
+
+export function normalizeCharacter(
+  raw: Partial<Character> | null | undefined
+): Character {
+  const base = createEmptyCharacter();
+  if (!raw || typeof raw !== "object") return base;
+  return {
+    ...base,
+    id: String(raw.id || base.id),
+    name: String(raw.name || ""),
+    gender: String(raw.gender || ""),
+    age: String(raw.age || ""),
+    appearance: String(raw.appearance || ""),
+    personality: String(raw.personality || ""),
+    background: String(raw.background || ""),
+    relationships: String(raw.relationships || ""),
+    role: String(raw.role || base.role),
+    notes: String(raw.notes || ""),
+    aliases: Array.isArray(raw.aliases)
+      ? raw.aliases.map((a) => String(a).trim()).filter(Boolean)
+      : [],
+    speechStyle: String(raw.speechStyle || ""),
+  };
+}
+
+export function normalizeCharacters(raw: unknown): Character[] {
+  if (!Array.isArray(raw)) return [createEmptyCharacter()];
+  return raw
+    .filter((c): c is Partial<Character> => Boolean(c && typeof c === "object"))
+    .map(normalizeCharacter);
 }
 
 export function createDefaultBackground(): StoryBackground {
