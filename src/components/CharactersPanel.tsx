@@ -51,6 +51,7 @@ export function CharactersPanel({
   const [castCount, setCastCount] = useState(2);
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<CharacterEditorState>({ open: false });
+  const [seenEditorRequest, setSeenEditorRequest] = useState(0);
 
   const effectiveActive = list.some((c) => c.id === active)
     ? active
@@ -59,12 +60,10 @@ export function CharactersPanel({
   const draft = editor.open ? editor.draft : null;
   const allowManualEdit = canManuallyEditCharacters({ original, canon });
 
-  useEffect(() => {
-    if (!openEditorRequest || !allowManualEdit) return;
+  if (openEditorRequest > seenEditorRequest && allowManualEdit) {
+    setSeenEditorRequest(openEditorRequest);
     setEditor(openCharacterEditor(list, effectiveActive || null));
-    // Only react to the parent increment, not list identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openEditorRequest]);
+  }
 
   useEffect(() => {
     if (!editor.open) return;
