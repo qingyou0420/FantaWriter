@@ -133,6 +133,7 @@ export default function ProjectPage() {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
     null
   );
+  const [characterEditorRequest, setCharacterEditorRequest] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const [streamPreview, setStreamPreview] = useState("");
   /** 全书队列：暂停/跳过标志 */
@@ -1346,14 +1347,19 @@ export default function ProjectPage() {
 
       <div
         className={`flex-1 ${shellMax} mx-auto w-full min-h-0 flex flex-col ${
-          visibleTab === "chapters" ? "px-3 py-3" : "px-4 py-5"
+          visibleTab === "chapters" ? "px-3 py-3" : "px-4 py-5 overflow-y-auto"
         }`}
       >
         {showGuide ? (
           <div className="mb-4">
             <OnboardingCard
               project={project}
-              onGo={(step) => goTab(step)}
+              onGo={(step) => {
+                goTab(step);
+                if (step === "characters") {
+                  setCharacterEditorRequest((n) => n + 1);
+                }
+              }}
               onDismiss={() => {
                 dismissOnboarding(id);
                 setGuideOpen(false);
@@ -1399,6 +1405,7 @@ export default function ProjectPage() {
             writingBoard={project.writingBoard}
             original={project.original}
             canon={project.canon}
+            openEditorRequest={characterEditorRequest}
             onChange={(charactersOrFn) =>
               update((p) => ({
                 ...p,

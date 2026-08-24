@@ -353,6 +353,12 @@ label.field-label {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
 }
 
+.modal-card-wide {
+  width: min(42rem, 100%);
+  max-height: min(90vh, 52rem);
+  overflow-y: auto;
+}
+
 /* Novel body text */
 .prose-novel {
   white-space: pre-wrap;

@@ -6,6 +6,7 @@ import {
   assertWritingBoardImmutable,
   createEmptyProject,
   defaultVolumeId,
+  normalizeCharacter,
   mergeTags,
   normalizeLearnedStyle,
   normalizeProject,
@@ -133,6 +134,25 @@ describe("normalizeProject", () => {
     const p = normalizeProject(createEmptyProject("g"));
     expect(p.original).toBeNull();
     expect(p.canon).toEqual([]);
+  });
+
+  it("fills missing character fields and seeds a card when the list is absent", () => {
+    const n = normalizeProject({
+      id: "no-cast",
+      name: "从零",
+      createdAt: "",
+      updatedAt: "",
+    } as unknown as NovelProject);
+    expect(n.characters).toHaveLength(1);
+    expect(n.characters[0].id).toBeTruthy();
+    expect(n.characters[0].name).toBe("");
+    expect(n.characters[0].role).toBe("主角");
+
+    const partial = normalizeCharacter({ name: "甲" });
+    expect(partial.id).toBeTruthy();
+    expect(partial.name).toBe("甲");
+    expect(partial.gender).toBe("");
+    expect(partial.aliases).toEqual([]);
   });
 
   it("normalizes plot thread visibility and beat scenes", () => {

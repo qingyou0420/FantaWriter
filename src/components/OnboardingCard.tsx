@@ -23,8 +23,8 @@ export function dismissOnboarding(projectId: string) {
 }
 
 export function shouldShowOnboarding(project: NovelProject): boolean {
-  const named = project.characters.some((c) => (c.name || "").trim());
-  const synopsis = Boolean((project.background.synopsis || "").trim());
+  const named = (project.characters || []).some((c) => (c.name || "").trim());
+  const synopsis = Boolean((project.background?.synopsis || "").trim());
   const outline = Boolean(project.outline?.chapters.length);
   return !named && !synopsis && !outline;
 }
@@ -38,7 +38,7 @@ export function OnboardingCard({
   onGo: (step: "characters" | "background" | "outline" | "chapters") => void;
   onDismiss: () => void;
 }) {
-  const named = project.characters.some((c) => (c.name || "").trim());
+  const named = (project.characters || []).some((c) => (c.name || "").trim());
   const synopsis = Boolean((project.background.synopsis || "").trim());
   const outline = Boolean(project.outline?.chapters.length);
   const firstDone = Boolean(
