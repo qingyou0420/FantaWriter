@@ -6,6 +6,7 @@ import { TagLibraryManager } from "@/components/TagEditor";
 import { StyleLearnPanel } from "@/components/StyleLearnPanel";
 import { AppSettingsMenu } from "@/components/AppSettingsMenu";
 import { APP_COPY } from "@/lib/copy";
+import { APP_DISPLAY_NAME, APP_DISPLAY_NAME_ZH } from "@/lib/brand";
 import {
   createEmptyOriginalManuscript,
   createEmptyProject,
@@ -207,7 +208,7 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight m-0">
-              幻想作家 / Fantasy Writer
+              {APP_DISPLAY_NAME_ZH} / {APP_DISPLAY_NAME}
             </h1>
             <p className="text-xs text-[var(--text-muted)] m-0 mt-0.5">
               {copy.audience}

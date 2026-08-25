@@ -6,11 +6,11 @@ export type AppTheme = "dark" | "light";
 /** 旧键：M0–M3 双读双写 */
 export const THEME_STORAGE_KEY = "h-novelist:theme";
 export const APP_PREFS_KEY = "h-novelist:app-prefs";
-export const THEME_STORAGE_KEY_NEW = "fantasy-writer:theme";
-export const APP_PREFS_KEY_NEW = "fantasy-writer:app-prefs";
+export const THEME_STORAGE_KEY_NEW = "fantawriter:theme";
+export const APP_PREFS_KEY_NEW = "fantawriter:app-prefs";
 
 export const THEME_EVENT_OLD = "h-novelist-theme-change";
-export const THEME_EVENT_NEW = "fantasy-writer-theme-change";
+export const THEME_EVENT_NEW = "fantawriter-theme-change";
 
 export interface AppPrefs {
   theme: AppTheme;

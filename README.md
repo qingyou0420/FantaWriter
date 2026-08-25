@@ -33,7 +33,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
    - **API Key**：你的密钥
    - **Base URL**：接口地址（界面默认 `https://api.deepseek.com`，可改成你使用的兼容服务）
    - **模型**：模型名（界面默认 `deepseek-v4-pro`，按你账号实际可用的名称填写）
-4. 密钥写在本机（桌面端在 `%APPDATA%\fantasy-writer`），不会进这个公开仓库。
+4. 密钥写在本机（桌面端在 `%APPDATA%\fantawriter`），不会进这个公开仓库。
 
 生成正文会按你选用的接口计费。全书一键生成前，先确认章节数量。
 
@@ -47,7 +47,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 - **本地备份**：右上角设置可「下载完整备份」「导入完整备份」；项目「工具」页可查看 / 恢复自动备份。桌面端还会在用户目录落盘备份。
 - **应用内更新**：桌面端 **设置 → 检查更新**，从本仓 [GitHub Releases](https://github.com/qingyou0420/FantaWriter/releases/latest) 下载并安装。公开仓无需填写更新令牌。
 
-数据优先存在本机 IndexedDB（库名 `fantasy-writer`）。桌面端用户目录是 `%APPDATA%\fantasy-writer`。
+数据优先存在本机 IndexedDB（库名 `fantawriter`）。桌面端用户目录是 `%APPDATA%\fantawriter`。
 
 ## 许可证
 

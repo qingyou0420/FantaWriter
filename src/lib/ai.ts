@@ -3,6 +3,7 @@ import path from "path";
 import { execFile } from "child_process";
 import OpenAI from "openai";
 import { UserFacingError } from "./user-error";
+import { CONFIG_FILE_HEADER } from "./brand";
 
 function parseEnvText(text: string, forceDeepseek = false) {
   for (const line of text.split(/\r?\n/)) {
@@ -147,7 +148,7 @@ export function saveApiConfig(opts: {
   }
 
   const lines = [
-    "# Fantasy Writer · API 配置（由应用写入，请勿分享）",
+    CONFIG_FILE_HEADER,
     ...[...map.entries()].map(([k, v]) => `${k}=${v}`),
     "",
   ];

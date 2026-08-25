@@ -3,7 +3,7 @@
 import { EmptyState } from "@/components/EmptyState";
 import type { NovelProject } from "@/lib/types";
 
-const DISMISS_PREFIX = "fantasy-writer:onboarding-dismissed:";
+const DISMISS_PREFIX = "fantawriter:onboarding-dismissed:";
 
 export function isOnboardingDismissed(projectId: string): boolean {
   if (typeof window === "undefined") return true;

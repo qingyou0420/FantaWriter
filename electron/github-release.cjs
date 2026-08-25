@@ -5,7 +5,7 @@
 const { versionFromSetupName, preferSetupRank } = require("./setup-artifact.cjs");
 
 const DEFAULT_GITHUB_REPO = "qingyou0420/FantaWriter";
-const USER_AGENT = "Fantasy-Writer";
+const USER_AGENT = "FantaWriter";
 
 const ALLOWED_DOWNLOAD_HOSTS = new Set([
   "github.com",

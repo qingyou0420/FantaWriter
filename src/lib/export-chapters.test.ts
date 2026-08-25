@@ -189,7 +189,7 @@ describe("chapter markdown payload", () => {
     p.outline!.chapters[0].volumeId = "vol-custom";
 
     const md = buildChapterMarkdown(p, p.outline!.chapters[0], "2026-08-20T12:00:00.000Z");
-    expect(md).toContain("format: fantasy-writer-chapter");
+    expect(md).toContain("format: fantawriter-chapter");
     expect(md).toContain("chapterId: \"ch-42\"");
     expect(md).toContain("bookTitle: \"测试长篇\"");
     expect(md).toContain("order: 2");

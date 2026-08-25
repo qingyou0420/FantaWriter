@@ -65,7 +65,7 @@ describe("storage dual-write", () => {
     saveProjects([a, b]);
     await flushStorage();
 
-    const newDb = await openKv("fantasy-writer");
+    const newDb = await openKv("fantawriter");
     const ids = await idbGet<string[]>(newDb, "kv", "project-ids");
     expect(ids?.sort()).toEqual([a.id, b.id].sort());
     const fromA = await idbGet<typeof a>(newDb, "kv", projectIdbKey(a.id));
@@ -73,7 +73,7 @@ describe("storage dual-write", () => {
     expect(fromA?.id).toBe(a.id);
     expect(fromB?.id).toBe(b.id);
     const names = (await indexedDB.databases()).map((d) => d.name);
-    expect(names).toContain("fantasy-writer");
+    expect(names).toContain("fantawriter");
     expect(names).not.toContain("erotic-novel-studio");
   });
 
@@ -96,7 +96,7 @@ describe("storage dual-write", () => {
     const loaded = loadProjects();
     expect(loaded.map((x) => x.id)).toContain(p.id);
     await flushStorage();
-    const newDb = await openKv("fantasy-writer");
+    const newDb = await openKv("fantawriter");
     const fromNew = await idbGet<typeof p>(newDb, "kv", projectIdbKey(p.id));
     expect(fromNew?.id).toBe(p.id);
   });
@@ -113,7 +113,7 @@ describe("storage dual-write", () => {
     expect(loaded[0].id).toBe(p.id);
     expect(loaded[0].writingBoard).toBe("general");
     await flushStorage();
-    const newDb = await openKv("fantasy-writer");
+    const newDb = await openKv("fantawriter");
     const fromNew = await idbGet<typeof p>(newDb, "kv", projectIdbKey(p.id));
     expect(fromNew?.id).toBe(p.id);
   });
@@ -183,7 +183,7 @@ describe("storage dual-write", () => {
 
   it("migrates legacy single-key projects to per-project keys", async () => {
     const p = createEmptyProject("旧单键");
-    const db = await openKv("fantasy-writer");
+    const db = await openKv("fantawriter");
     await idbSet(db, "kv", [p], "projects");
     await initStorage();
     expect(loadProjects().map((x) => x.id)).toContain(p.id);
@@ -217,7 +217,7 @@ describe("storage dual-write", () => {
     const p = createEmptyProject("元数据");
     saveProjects([p]);
     await flushStorage();
-    const raw = localStorage.getItem("fantasy-writer:projects");
+    const raw = localStorage.getItem("fantawriter:projects");
     const parsed = JSON.parse(String(raw));
     expect(parsed.at).toBeTruthy();
     expect(parsed.projects[0]).toMatchObject({
@@ -240,7 +240,7 @@ describe("storage dual-write", () => {
     const next = createEmptyProject("备份里的书");
     saveProjects([old]);
     await flushStorage();
-    const db = await openKv("fantasy-writer");
+    const db = await openKv("fantawriter");
     await idbSet(db, "kv", { at: "2026-08-01T00:00:00.000Z", projects: [next] }, "auto-backup");
     const r = await restoreFromAutoBackup();
     expect(r.restored).toBe(1);

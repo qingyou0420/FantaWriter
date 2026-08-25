@@ -1,7 +1,7 @@
 /**
  * 打包完成后，把最新 FantaWriter-Setup（或旧名 Fantasy-Writer-Setup）复制到可扫描目录：
- * 1. 桌面/Fantasy-Writer-Updates
- * 2. %APPDATA%/fantasy-writer/updates（Electron userData）
+ * 1. 桌面/FantaWriter-Updates
+ * 2. %APPDATA%/fantawriter/updates（Electron userData）
  */
 import fs from "fs";
 import path from "path";
@@ -80,10 +80,10 @@ const latest = findLatestSetup();
 const names = setupNamesForVersion(latest.version);
 
 const desktop = path.join(os.homedir(), "Desktop");
-const desktopUpdatesNew = path.join(desktop, "Fantasy-Writer-Updates");
+const desktopUpdatesNew = path.join(desktop, "FantaWriter-Updates");
 const appDataUpdates = path.join(
   process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
-  "fantasy-writer",
+  "fantawriter",
   "updates"
 );
 

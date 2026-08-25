@@ -53,7 +53,7 @@ describe("library namespaces", () => {
 
   it("reads old tag/style libraries once into the new key", async () => {
     resetStorageState();
-    localStorage.removeItem("fantasy-writer:libraries");
+    localStorage.removeItem("fantawriter:libraries");
     localStorage.setItem(
       "erotic-novel-studio:tag-library",
       JSON.stringify(["悬疑", "旧标签"])
@@ -84,6 +84,6 @@ describe("library namespaces", () => {
     const tags = loadTagLibraryFor("general");
     expect(tags).toEqual(["悬疑", "旧标签"]);
     expect(loadStyleLibrary()[0]?.name).toBe("旧风");
-    expect(localStorage.getItem("fantasy-writer:libraries")).toBeTruthy();
+    expect(localStorage.getItem("fantawriter:libraries")).toBeTruthy();
   });
 });
