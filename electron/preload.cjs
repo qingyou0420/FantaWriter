@@ -7,7 +7,7 @@ const desktopBridge = {
   getUpdateSettings: () => ipcRenderer.invoke("app:getUpdateSettings"),
   setGithubUpdateToken: (token) =>
     ipcRenderer.invoke("app:setGithubUpdateToken", token),
-  checkUpdate: () => ipcRenderer.invoke("app:checkUpdate"),
+  checkUpdate: (opts) => ipcRenderer.invoke("app:checkUpdate", opts),
   downloadUpdate: (opts) => ipcRenderer.invoke("app:downloadUpdate", opts),
   installUpdate: (installerPath) =>
     ipcRenderer.invoke("app:installUpdate", installerPath),
