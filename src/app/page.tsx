@@ -13,6 +13,7 @@ import {
   type LearnedStyle,
   type NovelProject,
 } from "@/lib/types";
+import { shouldDisableHomeCreateFields } from "@/lib/home-boot";
 import { hasOriginalText } from "@/lib/original";
 import { saveAppPrefs, loadAppPrefs } from "@/lib/theme";
 import {
@@ -45,6 +46,8 @@ export default function HomePage() {
   const [origSource, setOrigSource] = useState("粘贴导入");
   const fileRef = useRef<HTMLInputElement>(null);
   const origFileRef = useRef<HTMLInputElement>(null);
+  const newNameRef = useRef<HTMLInputElement>(null);
+  const createFieldsLocked = shouldDisableHomeCreateFields(ready);
 
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [keyPrefix, setKeyPrefix] = useState("");
@@ -57,6 +60,10 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       await initStorage();
+      // Give the create-form input a frame before we normalize the project list
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
       setProjects(loadProjects());
       const prefs = loadAppPrefs();
       if (prefs.defaultBoard !== "general") {
@@ -97,15 +104,17 @@ export default function HomePage() {
     setProjects(loadProjects());
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     const confirmMsg =
       createMode === "renew"
         ? `这是「原作焕新」：依据旧稿扩写，而不是从零遍构。${APP_COPY.createConfirm}`
         : APP_COPY.createConfirm;
     if (!confirm(confirmMsg)) return;
-    const titleHint = origTitle.trim() || newName.trim();
+    await initStorage();
+    const typedName = (newNameRef.current?.value ?? newName).trim();
+    const titleHint = origTitle.trim() || typedName;
     const project = createEmptyProject(
-      newName.trim() || titleHint || "未命名小说"
+      typedName || titleHint || "未命名小说"
     );
     if (titleHint) {
       project.background.title = titleHint;
@@ -134,8 +143,10 @@ export default function HomePage() {
       if (!origTitle.trim()) {
         setOrigTitle(file.name.replace(/\.[^.]+$/, ""));
       }
-      if (!newName.trim()) {
-        setNewName(file.name.replace(/\.[^.]+$/, ""));
+      const inferred = file.name.replace(/\.[^.]+$/, "");
+      if (!(newNameRef.current?.value ?? newName).trim()) {
+        if (newNameRef.current) newNameRef.current.value = inferred;
+        setNewName(inferred);
       }
     };
     reader.readAsText(file, "UTF-8");
@@ -310,14 +321,22 @@ export default function HomePage() {
                   {copy.emptyProjects}
                 </p>
               )}
+              {/* Uncontrolled so the field accepts typing before hydration / initStorage. */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
+                  ref={newNameRef}
+                  name="project-name"
                   placeholder="项目名称"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && createMode === "scratch" && handleCreate()
-                  }
+                  defaultValue=""
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={createFieldsLocked}
+                  onInput={(e) => setNewName(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && createMode === "scratch") {
+                      void handleCreate();
+                    }
+                  }}
                 />
                 {createMode === "scratch" ? (
                   <button
@@ -332,15 +351,19 @@ export default function HomePage() {
               {createMode === "renew" ? (
                 <div className="mt-3 space-y-3">
                   <input
+                    name="original-title"
                     placeholder="原作标题"
                     value={origTitle}
+                    disabled={createFieldsLocked}
                     onChange={(e) => setOrigTitle(e.target.value)}
                   />
                   <textarea
+                    name="original-text"
                     rows={8}
                     className="!font-mono !text-[0.85rem]"
                     placeholder="把旧稿全文贴在这里…"
                     value={origText}
+                    disabled={createFieldsLocked}
                     onChange={(e) => {
                       setOrigText(e.target.value);
                       if (origSource === "粘贴导入" || !origSource) {

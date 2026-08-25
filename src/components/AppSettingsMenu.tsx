@@ -16,6 +16,7 @@ import {
   saveAppPrefs,
   type AppTheme,
 } from "@/lib/theme";
+import { scheduleIdleWork } from "@/lib/schedule-idle";
 import { downloadFullBackup, importFullBackup } from "@/lib/storage";
 
 type Panel = "none" | "api" | "menu";
@@ -67,7 +68,7 @@ export function AppSettingsMenu({
     try {
       const info = await bridge.getAppInfo();
       setAppInfo(info);
-      const r = await bridge.checkUpdate();
+      const r = await bridge.checkUpdate({ silent: true });
       setUpdate(r);
     } catch {
       /* ignore silent */
@@ -75,9 +76,10 @@ export function AppSettingsMenu({
   }, []);
 
   useEffect(() => {
-    // 桌面端启动后拉一次更新状态，来自 Electron IPC，不是派生 state
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC 一次性拉取
-    void silentCheck();
+    // 等首屏能点输入框之后再查更新，避免主进程扫盘卡住打字
+    return scheduleIdleWork(() => {
+      void silentCheck();
+    });
   }, [silentCheck]);
 
   useEffect(() => {

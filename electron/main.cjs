@@ -31,6 +31,10 @@ const {
   setupFileNameFromUrl,
   githubCheckErrorMessage,
 } = require("./github-release.cjs");
+const {
+  collectUpdateSearchDirs,
+  parseCheckUpdateRequest,
+} = require("./update-search.cjs");
 
 const GITHUB_UPDATE_TOKEN_KEY = "GITHUB_UPDATE_TOKEN";
 
@@ -331,6 +335,7 @@ function createWindow(appUrl) {
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
+    mainWindow?.focus();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -391,62 +396,49 @@ function getPrimaryUpdateDir() {
   return path.join(path.dirname(app.getPath("exe")), "updates");
 }
 
-function getUpdateSearchDirs() {
-  const dirs = [];
-  const push = (d) => {
-    if (d && !dirs.includes(d)) dirs.push(d);
-  };
-  push(process.env.UPDATE_DIR?.trim());
-  // 安装目录旁 updates（优先）
-  push(path.join(path.dirname(app.getPath("exe")), "updates"));
-  // Electron userData/updates（publish-update 脚本会写这里）
-  push(path.join(app.getPath("userData"), "updates"));
-  // 桌面固定文件夹（publish-update 脚本会写这里）
+function tryAppPath(name) {
   try {
-    push(path.join(app.getPath("desktop"), "FantaWriter-Updates"));
-    push(path.join(app.getPath("desktop"), "Fantasy-Writer-Updates"));
+    return app.getPath(name);
   } catch {
-    /* ignore */
+    return "";
   }
-  // 桌面根目录（用户直接把 Setup 扔桌面）
-  try {
-    push(app.getPath("desktop"));
-  } catch {
-    /* ignore */
-  }
-  try {
-    push(app.getPath("downloads"));
-  } catch {
-    /* ignore */
-  }
-  try {
-    push(app.getPath("documents"));
-  } catch {
-    /* ignore */
-  }
-  // 开发态 / 本机源码旁的打包输出（仅未打包时 cwd 才是项目目录）
-  if (!app.isPackaged) {
-    push(path.join(process.cwd(), "dist-installer"));
-  }
-  // 安装包旁（有人把 Setup 与 exe 放同级）
-  push(path.dirname(app.getPath("exe")));
-  return dirs.filter(Boolean);
 }
 
-function scanInstallersInDir(dir) {
+/** @param {"silent" | "manual"} kind */
+function getUpdateSearchDirs(kind) {
+  const desktop = tryAppPath("desktop");
+  return collectUpdateSearchDirs(kind, {
+    env: process.env.UPDATE_DIR?.trim() || "",
+    exeUpdates: path.join(path.dirname(app.getPath("exe")), "updates"),
+    userDataUpdates: path.join(app.getPath("userData"), "updates"),
+    desktopUpdatesFolder: desktop
+      ? [
+          path.join(desktop, "FantaWriter-Updates"),
+          path.join(desktop, "Fantasy-Writer-Updates"),
+        ]
+      : [],
+    desktop,
+    downloads: tryAppPath("downloads"),
+    documents: tryAppPath("documents"),
+    exeDir: path.dirname(app.getPath("exe")),
+    devDist: !app.isPackaged ? path.join(process.cwd(), "dist-installer") : "",
+  });
+}
+
+async function scanInstallersInDir(dir) {
   /** @type {{ path: string, version: string, mtime: number }[]} */
   const found = [];
-  if (!dir || !fs.existsSync(dir)) return found;
+  if (!dir) return found;
   let st;
   try {
-    st = fs.statSync(dir);
+    st = await fs.promises.stat(dir);
   } catch {
     return found;
   }
   if (!st.isDirectory()) return found;
   let names;
   try {
-    names = fs.readdirSync(dir);
+    names = await fs.promises.readdir(dir);
   } catch {
     return found;
   }
@@ -455,7 +447,7 @@ function scanInstallersInDir(dir) {
     if (!ver) continue;
     const full = path.join(dir, name);
     try {
-      const s = fs.statSync(full);
+      const s = await fs.promises.stat(full);
       if (!s.isFile()) continue;
       found.push({ path: full, version: ver, mtime: s.mtimeMs });
     } catch {
@@ -465,12 +457,13 @@ function scanInstallersInDir(dir) {
   return found;
 }
 
-function findLatestInstaller(currentVersion) {
-  const searched = getUpdateSearchDirs();
+/** @param {"silent" | "manual"} [kind] */
+async function findLatestInstaller(currentVersion, kind = "manual") {
+  const searched = getUpdateSearchDirs(kind);
   /** @type {{ path: string, version: string, mtime: number, source: string }[]} */
   const all = [];
   for (const dir of searched) {
-    for (const item of scanInstallersInDir(dir)) {
+    for (const item of await scanInstallersInDir(dir)) {
       all.push({ ...item, source: dir });
     }
   }
@@ -650,7 +643,8 @@ function registerIpc() {
     return { ok: true, hasGithubToken: Boolean(t) };
   });
 
-  ipcMain.handle("app:checkUpdate", async () => {
+  ipcMain.handle("app:checkUpdate", async (_e, payload) => {
+    const { kind } = parseCheckUpdateRequest(payload);
     applyConfigFile(getConfigPath());
     const current = app.getVersion();
 
@@ -690,7 +684,10 @@ function registerIpc() {
       githubHint = githubCheckErrorMessage(e);
     }
 
-    const { candidates, searchedDirs, allCount } = findLatestInstaller(current);
+    const { candidates, searchedDirs, allCount } = await findLatestInstaller(
+      current,
+      kind
+    );
     const hint = githubHint ? `${githubHint}。已回退本地目录。` : "";
     if (!candidates.length) {
       return {

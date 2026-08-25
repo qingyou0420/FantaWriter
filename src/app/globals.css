@@ -125,6 +125,19 @@ select {
   font-size: 0.9rem;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
+  /* Electron: a parent -webkit-app-region:drag swallows clicks unless cancelled */
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  user-select: text;
+}
+
+button,
+.btn,
+.tab,
+a,
+label,
+[contenteditable="true"] {
+  -webkit-app-region: no-drag;
 }
 
 input:focus,

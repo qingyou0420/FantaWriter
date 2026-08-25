@@ -57,7 +57,7 @@ export type DesktopBridge = {
   getAppInfo: () => Promise<DesktopAppInfo>;
   getUpdateSettings?: () => Promise<UpdateSettings>;
   setGithubUpdateToken?: (token: string) => Promise<{ ok: boolean; hasGithubToken: boolean }>;
-  checkUpdate: () => Promise<UpdateCheckResult>;
+  checkUpdate: (opts?: { silent?: boolean }) => Promise<UpdateCheckResult>;
   downloadUpdate?: (
     opts: {
       downloadUrl?: string;
