@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 发版同时上传 `Fantasy-Writer-Setup-*.exe` 与对应 `.sha256`，已安装的 1.4.0 桌面端才能从 GitHub Release 看到 1.4.1+。主文件名仍是 `FantaWriter-Setup-*.exe`。
+
 ## 1.4.1
 
 从零开写可编辑人物；安装包改为 `FantaWriter-Setup-*.exe`。已安装的 1.4.0 桌面端可从本仓 GitHub Release 检查到此版本。安装包 `FantaWriter-Setup-1.4.1.exe`。
