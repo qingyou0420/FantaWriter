@@ -100,6 +100,10 @@ jobs:
           fi
           sha256sum "$asset" | tee "${asset}.sha256"
 
+      - name: Alias installer for 1.4.0 clients
+        shell: bash
+        run: node scripts/alias-legacy-setup.cjs "${{ steps.meta.outputs.version }}" dist-installer
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -110,5 +114,7 @@ jobs:
           files: |
             dist-installer/FantaWriter-Setup-*.exe
             dist-installer/FantaWriter-Setup-*.exe.sha256
+            dist-installer/Fantasy-Writer-Setup-*.exe
+            dist-installer/Fantasy-Writer-Setup-*.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

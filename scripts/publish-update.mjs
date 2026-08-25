@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 
 const require = createRequire(import.meta.url);
 const { SETUP_RE } = require("./setup-artifact.cjs");
+const { setupNamesForVersion } = require("./alias-legacy-setup.cjs");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -37,9 +38,9 @@ function ensureDir(d) {
   fs.mkdirSync(d, { recursive: true });
 }
 
-function copyTo(src, destDir) {
+function copyTo(src, destDir, destName = path.basename(src)) {
   ensureDir(destDir);
-  const dest = path.join(destDir, path.basename(src));
+  const dest = path.join(destDir, destName);
   fs.copyFileSync(src, dest);
   return dest;
 }
@@ -76,6 +77,7 @@ function findLatestSetup() {
 }
 
 const latest = findLatestSetup();
+const names = setupNamesForVersion(latest.version);
 
 const desktop = path.join(os.homedir(), "Desktop");
 const desktopUpdatesNew = path.join(desktop, "Fantasy-Writer-Updates");
@@ -93,6 +95,10 @@ for (const dir of targets) {
   try {
     const dest = copyTo(latest.path, dir);
     console.log(`  ✓ ${dest}`);
+    if (latest.name !== names.legacy) {
+      const legacyDest = copyTo(latest.path, dir, names.legacy);
+      console.log(`  ✓ ${legacyDest}`);
+    }
   } catch (e) {
     console.warn(`  ✗ ${dir}: ${e.message || e}`);
   }
