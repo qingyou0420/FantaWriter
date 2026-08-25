@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.4.2
+
+英文产品名与数据目录改为 FantaWriter；发版补上 `Fantasy-Writer-Setup` 别名。已安装的 1.4.0 / 1.4.1 桌面端可从本仓 GitHub Release 检查到此版本。安装包 `FantaWriter-Setup-1.4.2.exe`。
+
 - 用户可见英文名改为 **FantaWriter**（中文仍为「幻想作家」）。窗口标题、安装包快捷方式、卸载名、关于/顶栏与设置均使用新名。
 - Electron `appId` 改为 `com.fantawriter.app`；`userData` 改为 `%APPDATA%\fantawriter`；IndexedDB / localStorage 现用键改为 `fantawriter`。无旧稿迁移（确认本机尚无作品数据）。
 - 发版同时上传 `Fantasy-Writer-Setup-*.exe` 与对应 `.sha256`，已安装的 1.4.0 桌面端才能从 GitHub Release 看到 1.4.1+。主文件名仍是 `FantaWriter-Setup-*.exe`。
