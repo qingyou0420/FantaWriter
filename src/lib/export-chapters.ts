@@ -10,7 +10,7 @@ import { chaptersGroupedByVolume } from "./volumes";
 import { createZip } from "./zip";
 
 export const DEFAULT_CHAPTER_EXPORT_SUBDIR = "novels";
-export const CHAPTER_MARKDOWN_FORMAT = "fantasy-writer-chapter";
+export const CHAPTER_MARKDOWN_FORMAT = "fantawriter-chapter";
 
 const UNSAFE_SEGMENT = /[<>:"/\\|?*]/g;
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;

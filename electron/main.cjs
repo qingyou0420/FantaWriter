@@ -10,8 +10,11 @@ const crypto = require("crypto");
 const { spawn, execFile } = require("child_process");
 
 /** 公开常规版独立数据目录。 */
-app.setName("fantasy-writer");
-app.setPath("userData", path.join(app.getPath("appData"), "fantasy-writer"));
+app.setName("fantawriter");
+app.setPath("userData", path.join(app.getPath("appData"), "fantawriter"));
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.fantawriter.app");
+}
 
 const DEFAULT_PORT = Number(process.env.ENS_PORT || 17831);
 const HOST = "127.0.0.1";
@@ -317,7 +320,7 @@ function createWindow(appUrl) {
     minHeight: 720,
     show: false,
     autoHideMenuBar: true,
-    title: "Fantasy Writer",
+    title: "FantaWriter",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -400,6 +403,7 @@ function getUpdateSearchDirs() {
   push(path.join(app.getPath("userData"), "updates"));
   // 桌面固定文件夹（publish-update 脚本会写这里）
   try {
+    push(path.join(app.getPath("desktop"), "FantaWriter-Updates"));
     push(path.join(app.getPath("desktop"), "Fantasy-Writer-Updates"));
   } catch {
     /* ignore */
@@ -512,6 +516,7 @@ function isAllowedOpenPath(target) {
     app.getPath("userData"),
     getBackupsDir(),
     getPrimaryUpdateDir(),
+    path.join(app.getPath("temp"), "FantaWriter-Updates"),
     path.join(app.getPath("temp"), "Fantasy-Writer-Updates"),
     path.join(app.getPath("userData"), "updates"),
   ];
@@ -552,7 +557,7 @@ function writeConfigMap(filePath, map) {
   const dir = path.dirname(filePath);
   ensureDir(dir);
   const lines = [
-    "# Fantasy Writer · 本机配置（由应用写入，请勿分享）",
+    "# FantaWriter · 本机配置（由应用写入，请勿分享）",
     ...[...map.entries()].map(([k, v]) => `${k}=${v}`),
     "",
   ];
@@ -741,7 +746,7 @@ function registerIpc() {
     if (!fileName || !versionFromSetupName(fileName)) {
       return { ok: false, message: "安装包文件名不符合 FantaWriter-Setup-x.y.z.exe" };
     }
-    const destDir = path.join(app.getPath("temp"), "Fantasy-Writer-Updates");
+    const destDir = path.join(app.getPath("temp"), "FantaWriter-Updates");
     ensureDir(destDir);
     const dest = path.join(destDir, fileName);
     try {
@@ -822,7 +827,7 @@ function registerIpc() {
   ipcMain.handle("app:pickInstaller", async () => {
     const win = mainWindow || undefined;
     const res = await dialog.showOpenDialog(win, {
-      title: "选择 Fantasy Writer 安装包",
+      title: "选择 FantaWriter 安装包",
       filters: [{ name: "安装程序", extensions: ["exe"] }],
       properties: ["openFile"],
       defaultPath: getPrimaryUpdateDir(),
@@ -861,7 +866,7 @@ function registerIpc() {
     try {
       return {
         ok: true,
-        path: path.join(app.getPath("documents"), "Fantasy Writer"),
+        path: path.join(app.getPath("documents"), "FantaWriter"),
       };
     } catch {
       return { ok: true, path: path.dirname(app.getPath("exe")) };

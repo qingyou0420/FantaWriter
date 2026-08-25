@@ -25,12 +25,12 @@ const OLD_USAGE_STATS_KEY = "erotic-novel-studio:usage-stats";
 const OLD_BACKUP_META_KEY = "erotic-novel-studio:backup-meta";
 const OLD_IDB_NAME = "erotic-novel-studio";
 
-const NEW_PROJECTS_LS = "fantasy-writer:projects";
-const NEW_LIBRARIES_KEY = "fantasy-writer:libraries";
-const NEW_READER_PREFS_KEY = "fantasy-writer:reader-prefs";
-const NEW_USAGE_STATS_KEY = "fantasy-writer:usage-stats";
-const NEW_BACKUP_META_KEY = "fantasy-writer:backup-meta";
-const NEW_IDB_NAME = "fantasy-writer";
+const NEW_PROJECTS_LS = "fantawriter:projects";
+const NEW_LIBRARIES_KEY = "fantawriter:libraries";
+const NEW_READER_PREFS_KEY = "fantawriter:reader-prefs";
+const NEW_USAGE_STATS_KEY = "fantawriter:usage-stats";
+const NEW_BACKUP_META_KEY = "fantawriter:backup-meta";
+const NEW_IDB_NAME = "fantawriter";
 
 const IDB_VERSION = 1;
 const IDB_STORE = "kv";
@@ -927,7 +927,7 @@ export function downloadFullBackup() {
 }
 
 export function projectTabKeyNew(projectId: string): string {
-  return `fantasy-writer:project-tab:${projectId}`;
+  return `fantawriter:project-tab:${projectId}`;
 }
 
 export function readProjectTab(projectId: string): string | null {
