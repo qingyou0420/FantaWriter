@@ -118,4 +118,32 @@ describe("chat request body env combinations", () => {
     expect(body.temperature).toBeUndefined();
     expect(body.model).toBe("deepseek-v4-pro");
   });
+
+  it("thinking=1 + FINE_MODEL: chapter has no thinking and keeps temperature; summary still thinks", () => {
+    setEnv({
+      DEEPSEEK_MODEL: "deepseek-v4-pro",
+      DEEPSEEK_THINKING: "1",
+      FINE_MODEL: "claude-opus-proxy",
+    });
+    expect(thinkingEnabled()).toBe(true);
+    expect(resolveModelSlot("chapter")).toBe("fine");
+    expect(resolveModelSlot("chapter_summary")).toBe("main");
+
+    const chapter = buildChatRequestBody("sys", "user", {
+      mode: "chapter",
+      temperature: 0.7,
+    });
+    expect(chapter.model).toBe("claude-opus-proxy");
+    expect(chapter).not.toHaveProperty("thinking");
+    expect(JSON.stringify(chapter)).not.toContain("thinking");
+    expect(chapter.temperature).toBe(0.7);
+
+    const summary = buildChatRequestBody("sys", "user", {
+      mode: "chapter_summary",
+      temperature: 0.4,
+    });
+    expect(summary.model).toBe("deepseek-v4-pro");
+    expect(summary.thinking).toEqual({ type: "enabled" });
+    expect(summary.temperature).toBeUndefined();
+  });
 });

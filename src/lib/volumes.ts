@@ -99,6 +99,20 @@ export function chaptersGroupedByVolume(project: NovelProject): {
 }
 
 /** 该卷是否已有非空正文（按卷重排大纲前必须确认） */
+/** 已写到最远的那一章所在卷；没有正文则取最后一章所在卷 */
+export function volumeIdForLatestWrittenChapter(project: NovelProject): string {
+  const chapters = project.outline?.chapters
+    ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
+    : [];
+  const written = chapters.filter((ch) => {
+    const row = project.chapters.find((c) => c.chapterId === ch.id);
+    return Boolean(row?.content?.trim());
+  });
+  const pick = written[written.length - 1] || chapters[chapters.length - 1];
+  if (pick) return chapterVolumeId(pick, project);
+  return sortedVolumes(project)[0]?.id || "";
+}
+
 export function volumeHasWrittenChapters(
   project: NovelProject,
   volumeId: string

@@ -48,6 +48,13 @@ export type PickDirectoryResult = {
 export type WriteTextFilesResult = {
   ok: boolean;
   written: string[];
+  removed?: string[];
+  message: string;
+};
+
+export type ListTextFilesResult = {
+  ok: boolean;
+  files: { relativePath: string; content: string }[];
   message: string;
 };
 
@@ -79,7 +86,12 @@ export type DesktopBridge = {
   writeTextFiles?: (payload: {
     root: string;
     files: { relativePath: string; content: string }[];
+    removeRelativePaths?: string[];
   }) => Promise<WriteTextFilesResult>;
+  listTextFiles?: (payload: {
+    root: string;
+    relativeDir: string;
+  }) => Promise<ListTextFilesResult>;
   writeDesktopBackup?: (payload: {
     fileName: string;
     content: string;

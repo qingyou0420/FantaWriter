@@ -287,7 +287,7 @@ export function BeatWorkbench({
           {deltaDraft && previewSceneId === null ? (
             <div className="space-y-2 border-t border-[var(--border-soft)] pt-2">
               <p className="text-xs text-[var(--text-muted)] mt-0 mb-0">
-                建议提交的增量（确认后才改摘要/线索，不会自动改锁定表）：
+                建议提交的增量（确认后才改摘要/线索/时间线，不会自动改锁定表）：
               </p>
               <Field label="本章摘要（可改）">
                 <textarea
@@ -296,6 +296,19 @@ export function BeatWorkbench({
                     setDeltaDraft({ ...deltaDraft, summary: e.target.value })
                   }
                   rows={2}
+                />
+              </Field>
+              <Field label="时间线（可改，留空不写入）">
+                <textarea
+                  value={deltaDraft.timelineNote || ""}
+                  onChange={(e) =>
+                    setDeltaDraft({
+                      ...deltaDraft,
+                      timelineNote: e.target.value,
+                    })
+                  }
+                  rows={2}
+                  placeholder="含时间词的句子；留空则不写入世界观"
                 />
               </Field>
               <div className="flex flex-wrap gap-2">

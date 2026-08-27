@@ -88,7 +88,7 @@ export function selectPlotThreadsForPrompt(
   const sorted = [...open].sort((a, b) => {
     const d = rank(a) - rank(b);
     if (d !== 0) return d;
-    return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+    return (b.createdAt || "").localeCompare(a.createdAt || "");
   });
   const selected = sorted.slice(0, PLOT_THREAD_INJECT_LIMIT);
   return { selected, omitted: Math.max(0, sorted.length - selected.length) };

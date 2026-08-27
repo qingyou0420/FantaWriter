@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+复查遗留：thinking 不再发给精写档；一致性「本卷」跟已写卷并可选手选；拍增量可改时间线；导出清理同章旧文件；设置保存不再误清 FINE_*。
+
 连载长篇能力（按 `docs/1.4后连载长篇迭代方案.md`，不升版本号）：
 
 - **分档模型**：正文四任务可走可选精写档（`FINE_API_KEY` / `FINE_BASE_URL` / `FINE_MODEL`）；`thinking` 只在 `DEEPSEEK_THINKING=1` 时发送。

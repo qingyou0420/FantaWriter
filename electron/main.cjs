@@ -527,6 +527,24 @@ function ensureDir(dir) {
   }
 }
 
+/** 把相对路径钉在 root 内；拒绝绝对路径与 `..` */
+function resolveRelativeUnderRoot(rootAbs, rel) {
+  const normalized = String(rel || "").replace(/\\/g, "/");
+  if (!normalized || normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized)) {
+    return { ok: false, message: "相对路径非法" };
+  }
+  const parts = normalized.split("/").filter(Boolean);
+  if (!parts.length || parts.some((p) => p === ".." || p === ".")) {
+    return { ok: false, message: "相对路径含越界片段" };
+  }
+  const rootPrefix = rootAbs.endsWith(path.sep) ? rootAbs : rootAbs + path.sep;
+  const target = path.resolve(rootAbs, ...parts);
+  if (target !== rootAbs && !target.startsWith(rootPrefix)) {
+    return { ok: false, message: "拒绝访问根目录之外" };
+  }
+  return { ok: true, target, relativePath: parts.join("/") };
+}
+
 function readConfigMap(filePath) {
   /** @type {Map<string, string>} */
   const map = new Map();
@@ -909,9 +927,59 @@ function registerIpc() {
     return { ok: true, path: dir };
   });
 
+  ipcMain.handle("fs:listTextFiles", async (_e, payload) => {
+    const root = String((payload && payload.root) || "").trim();
+    const relativeDir = String((payload && payload.relativeDir) || "").trim();
+    if (!root) return { ok: false, files: [], message: "导出根目录为空" };
+    if (!relativeDir) return { ok: false, files: [], message: "相对目录为空" };
+
+    let rootAbs;
+    try {
+      rootAbs = path.resolve(root);
+    } catch {
+      return { ok: false, files: [], message: "根目录无效" };
+    }
+    const resolved = resolveRelativeUnderRoot(rootAbs, relativeDir);
+    if (!resolved.ok) return { ok: false, files: [], message: resolved.message };
+
+    try {
+      if (!fs.existsSync(resolved.target) || !fs.statSync(resolved.target).isDirectory()) {
+        return { ok: true, files: [], message: "目录不存在" };
+      }
+      const names = await fs.promises.readdir(resolved.target);
+      const files = [];
+      for (const name of names) {
+        if (!name.toLowerCase().endsWith(".md")) continue;
+        const child = resolveRelativeUnderRoot(
+          rootAbs,
+          `${resolved.relativePath}/${name}`
+        );
+        if (!child.ok) continue;
+        let st;
+        try {
+          st = fs.statSync(child.target);
+        } catch {
+          continue;
+        }
+        if (!st.isFile()) continue;
+        files.push({
+          relativePath: child.relativePath,
+          content: fs.readFileSync(child.target, "utf8"),
+        });
+      }
+      return { ok: true, files, message: `已列出 ${files.length} 个文件` };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, files: [], message: msg };
+    }
+  });
+
   ipcMain.handle("fs:writeTextFiles", async (_e, payload) => {
     const root = String((payload && payload.root) || "").trim();
     const files = Array.isArray(payload && payload.files) ? payload.files : [];
+    const removeRel = Array.isArray(payload && payload.removeRelativePaths)
+      ? payload.removeRelativePaths
+      : [];
     if (!root) return { ok: false, written: [], message: "导出根目录为空" };
     if (!files.length) return { ok: false, written: [], message: "没有要写入的文件" };
 
@@ -921,32 +989,47 @@ function registerIpc() {
     } catch {
       return { ok: false, written: [], message: "根目录无效" };
     }
-    const rootPrefix = rootAbs.endsWith(path.sep) ? rootAbs : rootAbs + path.sep;
     const written = [];
+    const writtenAbs = new Set();
+    const removed = [];
 
     try {
       ensureDir(rootAbs);
       for (const item of files) {
-        const rel = String((item && item.relativePath) || "").replace(/\\/g, "/");
-        if (!rel || rel.startsWith("/") || /^[a-zA-Z]:/.test(rel)) {
-          return { ok: false, written, message: "相对路径非法" };
+        const resolved = resolveRelativeUnderRoot(
+          rootAbs,
+          String((item && item.relativePath) || "")
+        );
+        if (!resolved.ok) {
+          return { ok: false, written, message: resolved.message };
         }
-        const parts = rel.split("/").filter(Boolean);
-        if (!parts.length || parts.some((p) => p === ".." || p === ".")) {
-          return { ok: false, written, message: "相对路径含越界片段" };
-        }
-        const target = path.resolve(rootAbs, ...parts);
-        if (target !== rootAbs && !target.startsWith(rootPrefix)) {
-          return { ok: false, written, message: "拒绝写出根目录之外" };
-        }
-        ensureDir(path.dirname(target));
-        fs.writeFileSync(target, String((item && item.content) || ""), "utf8");
-        written.push(target);
+        ensureDir(path.dirname(resolved.target));
+        fs.writeFileSync(resolved.target, String((item && item.content) || ""), "utf8");
+        written.push(resolved.target);
+        writtenAbs.add(resolved.target);
       }
-      return { ok: true, written, message: `已写入 ${written.length} 个文件` };
+      for (const rel of removeRel) {
+        const resolved = resolveRelativeUnderRoot(rootAbs, String(rel || ""));
+        if (!resolved.ok) continue;
+        if (writtenAbs.has(resolved.target)) continue;
+        if (!fs.existsSync(resolved.target)) continue;
+        try {
+          if (!fs.statSync(resolved.target).isFile()) continue;
+          fs.unlinkSync(resolved.target);
+          removed.push(resolved.relativePath);
+        } catch {
+          /* ignore a single stale file */
+        }
+      }
+      return {
+        ok: true,
+        written,
+        removed,
+        message: `已写入 ${written.length} 个文件`,
+      };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      return { ok: false, written, message: msg };
+      return { ok: false, written, removed, message: msg };
     }
   });
 }

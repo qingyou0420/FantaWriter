@@ -348,7 +348,7 @@ export function OutlinePanel({
                   );
                 }}
               >
-                {busy === "outline_next" ? (
+                {busy?.startsWith("outline_next") ? (
                   <>
                     <span className="spinner" /> 续排中…
                   </>

@@ -36,6 +36,10 @@ import {
   toConsistencyReport,
   type ConsistencyScope,
 } from "@/lib/consistency";
+import {
+  sortedVolumes,
+  volumeIdForLatestWrittenChapter,
+} from "@/lib/volumes";
 import { loadAppPrefs, saveAppPrefs } from "@/lib/theme";
 import {
   pushChapterVersion,
@@ -77,6 +81,9 @@ export function ToolsPanel({
   );
   const [consistencyScope, setConsistencyScope] =
     useState<ConsistencyScope>("volume");
+  const [consistencyVolumeId, setConsistencyVolumeId] = useState(() =>
+    volumeIdForLatestWrittenChapter(project)
+  );
   const [fillProgress, setFillProgress] = useState<{
     done: number;
     total: number;
@@ -107,14 +114,18 @@ export function ToolsPanel({
     singleChapterId && chapters.some((c) => c.id === singleChapterId)
       ? singleChapterId
       : chapters[0]?.id || "";
+  const volumes = useMemo(() => sortedVolumes(project), [project]);
+  const fallbackVolumeId = volumeIdForLatestWrittenChapter(project);
+  const resolvedVolumeId =
+    consistencyVolumeId && volumes.some((v) => v.id === consistencyVolumeId)
+      ? consistencyVolumeId
+      : fallbackVolumeId;
 
   async function runConsistency() {
     onError("");
     onBusy("consistency");
     try {
-      const volumeId =
-        project.volumes?.[0]?.id ||
-        chapters.find((c) => c.volumeId)?.volumeId;
+      const volumeId = resolvedVolumeId;
       const rows = buildConsistencyRows(project, {
         scope: consistencyScope,
         volumeId,
@@ -474,8 +485,8 @@ export function ToolsPanel({
         <h2 className="text-base font-semibold m-0 mb-1">导出到文件夹</h2>
         <p className="text-sm text-[var(--text-muted)] mt-0 mb-3">
           把章节正文写成{" "}
-          <code className="text-xs">novels/书名/ch-章节id.md</code>
-          ，方便在磁盘上润色。桌面端写入你选择的目录（同一章节再导出会覆盖）；浏览器会下载 Markdown 或 ZIP，不会假装写入成功。
+          <code className="text-xs">novels/书名/ch-001-标题.md</code>
+          ，方便在磁盘上润色。桌面端写入你选择的目录（同一章节再导出会覆盖，并清理该章因改序/改名留下的旧文件）；浏览器会下载 Markdown 或 ZIP，不会假装写入成功。
         </p>
         {desktop ? (
           <div className="space-y-2 mb-3">
@@ -591,6 +602,20 @@ export function ToolsPanel({
               <option value="sinceLast">自上次以来</option>
               <option value="all">全书</option>
             </select>
+            {consistencyScope === "volume" && volumes.length > 1 ? (
+              <select
+                className="!w-auto !py-1 !px-2 text-sm"
+                value={resolvedVolumeId}
+                onChange={(e) => setConsistencyVolumeId(e.target.value)}
+                aria-label="一致性检查的卷"
+              >
+                {volumes.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.title || `第${v.order}卷`}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <button
               type="button"
               className="btn btn-primary btn-sm"
