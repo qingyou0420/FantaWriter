@@ -91,10 +91,6 @@ export function formatBeatContract(
     .map((id) => byId.get(id))
     .filter((t): t is PlotThread => Boolean(t))
     .map((t) => `- ${t.title}${t.note ? `：${t.note}` : ""}`);
-  const dark = contract.darkThreadIds
-    .map((id) => byId.get(id))
-    .filter((t): t is PlotThread => Boolean(t))
-    .map((t) => `- ${t.title}${t.note ? `：${t.note}` : ""}`);
   const parts = ["## 本拍契约（硬性）"];
   if (contract.mustKeepLocks.length) {
     parts.push("必须遵守的锁定：", ...contract.mustKeepLocks.map((s) => `- ${s}`));
@@ -104,12 +100,6 @@ export function formatBeatContract(
   }
   if (advance.length) {
     parts.push("本章可推进的线索：", ...advance);
-  }
-  if (dark.length) {
-    parts.push(
-      "暗线（仅作者可见，正文不得提前泄漏）：",
-      ...dark
-    );
   }
   if (contract.verbatimAnchors.length) {
     parts.push(

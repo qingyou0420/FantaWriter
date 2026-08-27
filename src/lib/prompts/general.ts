@@ -91,30 +91,39 @@ function volumeOneLiner(volume: Volume, chapters: OutlineChapter[]): string {
   return `《${volume.title}》：${first.title} … ${last.title}`;
 }
 
-/** 本卷详、他卷一行；无分卷或总章数 ≤ 15 时与逐章全量一致 */
+/** 默认只注入本卷；injectFullOutline 恢复旧的全书/分层行为 */
 export function formatBookOutlineForChapter(
   outline: Outline,
   chapter: OutlineChapter,
-  volumes?: Volume[]
+  volumes?: Volume[],
+  opts?: { injectFullOutline?: boolean }
 ): string {
   const chapters = outline.chapters || [];
   const vols = [...(volumes || [])].sort((a, b) => a.order - b.order);
-  if (vols.length <= 1 || chapters.length <= 15) {
+  const currentVolId = chapter.volumeId || vols[0]?.id;
+  const layered = () =>
+    vols
+      .map((vol) => {
+        const inVol = chapters.filter(
+          (c) => (c.volumeId || vols[0]?.id) === vol.id
+        );
+        if (vol.id === currentVolId) {
+          return inVol.map(formatOutlineChapterLine).join("\n");
+        }
+        return volumeOneLiner(vol, inVol);
+      })
+      .filter(Boolean)
+      .join("\n");
+  if (opts?.injectFullOutline) {
+    if (vols.length <= 1 || chapters.length <= 15) {
+      return chapters.map(formatOutlineChapterLine).join("\n");
+    }
+    return layered();
+  }
+  if (vols.length <= 1) {
     return chapters.map(formatOutlineChapterLine).join("\n");
   }
-  const currentVolId = chapter.volumeId || vols[0]?.id;
-  return vols
-    .map((vol) => {
-      const inVol = chapters.filter(
-        (c) => (c.volumeId || vols[0]?.id) === vol.id
-      );
-      if (vol.id === currentVolId) {
-        return inVol.map(formatOutlineChapterLine).join("\n");
-      }
-      return volumeOneLiner(vol, inVol);
-    })
-    .filter(Boolean)
-    .join("\n");
+  return layered();
 }
 
 export function generalChapterUser(
@@ -126,13 +135,31 @@ export function generalChapterUser(
   previousChapterSnippet?: string,
   projectTags?: string[],
   priorBlock?: string,
-  volumes?: Volume[]
+  volumes?: Volume[],
+  extras?: {
+    premise?: string;
+    includeEndingDirection?: boolean;
+    endingDirection?: string;
+    chapterContractBlock?: string;
+    injectFullOutline?: boolean;
+  }
 ): string {
-  const allChapters = formatBookOutlineForChapter(outline, chapter, volumes);
+  const allChapters = formatBookOutlineForChapter(outline, chapter, volumes, {
+    injectFullOutline: extras?.injectFullOutline,
+  });
   const tags = formatTagBlock(projectTags, chapter.tags, "chapter", "general");
   const intensity = chapter.intensityNote || chapter.eroticNote || "无";
   const lengthRule = chapterLengthRequirement(settings.length, settings.customLength);
   const memory = (priorBlock || "").trim();
+  const premise = (extras?.premise ?? outline.premise) || "";
+  const ending =
+    extras?.includeEndingDirection && extras.endingDirection?.trim()
+      ? `\n结局方向（仅本次参考）：${extras.endingDirection.trim()}`
+      : "";
+  const outlineHeading = extras?.injectFullOutline
+    ? "## 全书大纲（供连贯性参考）"
+    : "## 本卷大纲（供连贯性参考）";
+  const contract = extras?.chapterContractBlock?.trim();
   return `请根据完整大纲，撰写**其中一章**的详细正文。
 
 ## 人物设定
@@ -145,10 +172,9 @@ ${formatBackground(background)}
 ${formatSettings(settings, "general")}
 ${tags ? `\n## 类型标签\n${tags}\n` : ""}
 ## 整体前提
-${outline.premise}
-结局走向：${outline.endingNote}
+${premise}${ending}
 
-## 全书大纲（供连贯性参考）
+${outlineHeading}
 ${allChapters}
 ${memory ? `\n${memory}\n` : previousChapterSnippet ? `\n## 上一章结尾片段（衔接用）\n${previousChapterSnippet}\n` : ""}
 ## 当前要写的章节
@@ -157,7 +183,7 @@ ${memory ? `\n${memory}\n` : previousChapterSnippet ? `\n## 上一章结尾片�
 摘要：${chapter.summary}
 关键点：${chapter.keyPoints}
 节奏备注：${intensity}
-
+${chapter.timePlace?.trim() ? `时间与地点：${chapter.timePlace.trim()}\n` : ""}${contract ? `\n${contract}\n` : ""}
 ## 正文要求
 1. 只写本章正文，不要写「第X章」以外的元说明。
 2. 开头可保留一行标题：# ${chapter.title}
@@ -481,6 +507,7 @@ export function generalPolishOutlineUser(opts: {
   outline: Outline;
   chapter: OutlineChapter;
   projectTags?: string[];
+  includeEndingDirection?: boolean;
 }): string {
   const others = opts.outline.chapters
     .filter((c) => c.id !== opts.chapter.id)
@@ -500,7 +527,11 @@ ${formatSettings(opts.settings, "general")}
 
 ## 全书前提
 ${opts.outline.premise}
-结局：${opts.outline.endingNote}
+${
+  opts.includeEndingDirection && opts.outline.endingNote?.trim()
+    ? `结局方向（仅本次参考）：${opts.outline.endingNote.trim()}`
+    : ""
+}
 
 ## 其它章节（勿改，仅供连贯）
 ${others || "（无）"}
@@ -534,9 +565,11 @@ export function generalContinueUser(opts: {
   characterStateCard?: string;
   lore?: string;
   priorBlock?: string;
+  chapterContractBlock?: string;
 }): string {
   const previousSummary = opts.previousSummary || opts.previousSummaries;
   const memory = (opts.priorBlock || "").trim();
+  const contract = (opts.chapterContractBlock || "").trim();
   return `请从给定正文**末尾自然续写**，不要重复已有内容。
 
 ## 人物设定
@@ -548,7 +581,7 @@ ${formatBackground(opts.background)}
 ## 写作参数
 ${formatSettings(opts.settings, "general")}
 ${memory ? `\n${memory}\n` : ""}${!memory && opts.characterStateCard ? `## 角色状态卡\n${opts.characterStateCard}\n` : ""}
-${opts.chapter ? `## 本章目标\n标题：${opts.chapter.title}\n摘要：${opts.chapter.summary}\n关键点：${opts.chapter.keyPoints}\n` : ""}
+${opts.chapter ? `## 本章目标\n标题：${opts.chapter.title}\n摘要：${opts.chapter.summary}\n关键点：${opts.chapter.keyPoints}\n` : ""}${contract ? `${contract}\n` : ""}
 ${opts.outlineContext ? `## 大纲参考\n${opts.outlineContext}\n` : ""}
 ${!memory && previousSummary ? `## 前情摘要\n${previousSummary}\n` : ""}
 ${!memory && opts.plotThreads ? `## 伏笔线索（可推进，勿无故遗忘）\n${opts.plotThreads}\n` : ""}

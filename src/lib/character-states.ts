@@ -96,8 +96,30 @@ export function mergeCharacterStates(
     if (!note) continue;
     const row: CharacterStateNote = { chapterOrder, note };
     const prev = next[name] || [];
-    next[name] = [...prev, row].slice(-keep);
+    const pinned = prev.filter((r) => r.pinned);
+    const unpinned = [...prev.filter((r) => !r.pinned), row].slice(-keep);
+    next[name] = [...pinned, ...unpinned].sort(
+      (a, b) => a.chapterOrder - b.chapterOrder
+    );
   }
+  return next;
+}
+
+export function togglePinnedStateNote(
+  ledger: CharacterStateLedger | undefined,
+  name: string,
+  chapterOrder: number,
+  note: string
+): CharacterStateLedger {
+  const next: CharacterStateLedger = { ...(ledger || {}) };
+  const key = name.trim();
+  const rows = [...(next[key] || [])];
+  const idx = rows.findIndex(
+    (r) => r.chapterOrder === chapterOrder && r.note === note
+  );
+  if (idx < 0) return next;
+  rows[idx] = { ...rows[idx], pinned: rows[idx].pinned ? undefined : true };
+  next[key] = rows;
   return next;
 }
 
@@ -109,9 +131,20 @@ export function formatCharacterStateLedger(
   if (!ledger) return "";
   const lines: string[] = [];
   for (const name of names) {
-    const rows = (ledger[name] || []).slice(-latest);
+    const all = ledger[name] || [];
+    const pinned = all.filter((r) => r.pinned);
+    const unpinned = all.filter((r) => !r.pinned).slice(-latest);
+    const seen = new Set<string>();
+    const rows = [...pinned, ...unpinned].sort(
+      (a, b) => a.chapterOrder - b.chapterOrder
+    );
     for (const row of rows) {
-      lines.push(`第${row.chapterOrder}章 ${name}：${row.note}`);
+      const key = `${row.chapterOrder}|${row.note}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(
+        `第${row.chapterOrder}章 ${name}：${row.note}${row.pinned ? "（写死）" : ""}`
+      );
     }
   }
   return lines.join("\n");

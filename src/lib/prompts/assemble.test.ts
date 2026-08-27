@@ -364,7 +364,7 @@ describe("assemble isolation", () => {
         verbatimAnchors: ["霜桥第三块石缺了一角"],
       },
       beatContractBlock:
-        "## 本拍契约（硬性）\n禁止写成：\n- 「霜桥」不是人\n暗线（仅作者可见，正文不得提前泄漏）：\n- 铜铃里藏着旧城令",
+        "## 本拍契约（硬性）\n禁止写成：\n- 「霜桥」不是人",
     });
     expect(user).toContain("本拍契约");
     expect(user).toContain("不是人");
@@ -483,7 +483,10 @@ describe("assemble isolation", () => {
       projectTags: [],
       priorBlock: "## 上一章结尾片段（衔接用）\n他推开门。",
     };
-    const off = assemble("chapter", "general", payload);
+    const off = assemble("chapter", "general", {
+      ...payload,
+      settings: { ...general.settings, serialMode: false },
+    });
     const offExplicit = assemble("chapter", "general", {
       ...payload,
       settings: { ...general.settings, serialMode: false },

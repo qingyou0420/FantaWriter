@@ -338,7 +338,10 @@ export async function POST(req: NextRequest) {
       const text = await chatComplete(
         "你是严格的小说连续性审稿人。只输出 JSON。",
         buildConsistencyCheckUserPrompt({
-          characters: body.characters || [],
+          characters: (body.characters || []).map((c) => {
+            const { truth: _truth, ...rest } = c;
+            return rest;
+          }),
           background: body.background || {
             title: "",
             synopsis: "",

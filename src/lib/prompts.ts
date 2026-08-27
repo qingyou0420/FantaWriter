@@ -354,6 +354,8 @@ export function parseSettingsFields(
     ),
     extraRules: fallback.extraRules,
     temperature: fallback.temperature,
+    serialMode: fallback.serialMode,
+    injectFullOutline: fallback.injectFullOutline,
   };
 }
 

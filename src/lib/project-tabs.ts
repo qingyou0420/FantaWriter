@@ -1,5 +1,6 @@
 export type ProjectTab =
   | "original"
+  | "premise"
   | "characters"
   | "background"
   | "settings"
@@ -14,6 +15,7 @@ export type StageId = "setup" | "write" | "review";
 
 const ALL_TABS: ProjectTab[] = [
   "original",
+  "premise",
   "characters",
   "background",
   "settings",
@@ -51,6 +53,6 @@ export function stageOf(tab: ProjectTab): StageId {
 export function setupTabs(hasOriginal: boolean): ProjectTab[] {
   const tabs: ProjectTab[] = [];
   if (hasOriginal) tabs.push("original");
-  tabs.push("characters", "background", "lore", "volumes", "settings");
+  tabs.push("premise", "characters", "background", "lore", "volumes", "settings");
   return tabs;
 }

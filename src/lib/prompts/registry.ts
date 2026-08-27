@@ -28,6 +28,10 @@ import {
   injectOriginalGrounding,
 } from "../original";
 import { buildExtractSkeletonUserPrompt } from "../skeleton";
+import {
+  characterWithoutTruth,
+  charactersWithoutTruth,
+} from "../author-secrets";
 
 export type GenerateTaskMode =
   | "outline"
@@ -177,6 +181,18 @@ function assembleGeneral(
   task: GenerateTaskMode,
   payload: Record<string, unknown>
 ): { system: string; user: string } {
+  payload = {
+    ...payload,
+    characters: payload.characters
+      ? charactersWithoutTruth(payload.characters as never)
+      : payload.characters,
+    character: payload.character
+      ? characterWithoutTruth(payload.character as never)
+      : payload.character,
+    otherCharacters: payload.otherCharacters
+      ? charactersWithoutTruth(payload.otherCharacters as never)
+      : payload.otherCharacters,
+  };
   const settings = payload.settings as
     | { writingStyle?: string; learnedStyleGuide?: string; learnedStyleFingerprints?: string[] }
     | undefined;
@@ -236,7 +252,24 @@ function assembleGeneral(
                 payload.previousChapterSnippet as string | undefined,
                 payload.projectTags as string[] | undefined,
                 payload.priorBlock as string | undefined,
-                payload.volumes as never
+                payload.volumes as never,
+                {
+                  premise: payload.premise as string | undefined,
+                  includeEndingDirection: Boolean(
+                    payload.includeEndingDirection
+                  ),
+                  endingDirection: payload.endingDirection as
+                    | string
+                    | undefined,
+                  chapterContractBlock: payload.chapterContractBlock as
+                    | string
+                    | undefined,
+                  injectFullOutline: Boolean(
+                    payload.injectFullOutline ||
+                      (payload.settings as { injectFullOutline?: boolean } | undefined)
+                        ?.injectFullOutline
+                  ),
+                }
               )
             : task === "continue"
               ? generalContinueUser(payload as never)
@@ -300,7 +333,15 @@ function assembleGeneral(
     case "polish_chapter_outline":
       return {
         system: chapterSys,
-        user: generalPolishOutlineUser(payload as never),
+        user: generalPolishOutlineUser({
+          characters: payload.characters as never,
+          background: payload.background as never,
+          settings: payload.settings as never,
+          outline: payload.outline as never,
+          chapter: payload.chapter as never,
+          projectTags: payload.projectTags as string[] | undefined,
+          includeEndingDirection: Boolean(payload.includeEndingDirection),
+        }),
       };
     case "extract_canon":
       return {

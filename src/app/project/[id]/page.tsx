@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { BackgroundPanel } from "@/components/BackgroundPanel";
+import { DailyStatusBar } from "@/components/DailyStatusBar";
+import { PremisePanel } from "@/components/PremisePanel";
+import { VolumeCloseWizard } from "@/components/VolumeCloseWizard";
 import { BookJobBar } from "@/components/BookJobBar";
 import { ChaptersReader } from "@/components/ChaptersReader";
 import { CharactersPanel } from "@/components/CharactersPanel";
@@ -36,9 +39,18 @@ import {
   volumeHasWrittenChapters,
   volumeNeedsSummaryPrompt,
 } from "@/lib/volumes";
+import { chapterAssembleExtras } from "@/lib/chapter-contract";
 import {
-  mergeCharacterStates,
-} from "@/lib/character-states";
+  formatOpenThreadsForOutline,
+  readerKnownOpenThreadTitles,
+} from "@/lib/author-secrets";
+import {
+  defaultOpeningTab,
+  findWriteNextChapter,
+  listUnreviewedChapters,
+  pushAccountRepairMark,
+} from "@/lib/daily-flow";
+import { projectAfterFinalize } from "@/lib/finalize-chapter";
 import {
   formatCharacterStateLedger,
   isPlotThreadOverdue,
@@ -97,6 +109,7 @@ type Tab = ProjectTab;
 
 const TAB_LABEL: Record<Tab, string> = {
   original: "原作焕新",
+  premise: "前提卡",
   characters: "人物设定",
   background: "故事背景",
   settings: "生成参数",
@@ -126,7 +139,9 @@ export default function ProjectPage() {
   } = useProjectStore(id);
 
   const [tab, setTab] = useState<Tab>(() =>
-    resolveProjectTab(readProjectTab(id))
+    resolveProjectTab(readProjectTab(id)) === "characters"
+      ? "premise"
+      : resolveProjectTab(readProjectTab(id))
   );
   const [stage, setStage] = useState<StageId>(() =>
     stageOf(resolveProjectTab(readProjectTab(id)))
@@ -152,6 +167,11 @@ export default function ProjectPage() {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
     null
   );
+  const [contractChapterId, setContractChapterId] = useState<string | null>(
+    null
+  );
+  const [includeEndingDirection, setIncludeEndingDirection] = useState(false);
+  const [volumeWizardId, setVolumeWizardId] = useState<string | null>(null);
   const [characterEditorRequest, setCharacterEditorRequest] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const [streamPreview, setStreamPreview] = useState("");
@@ -173,6 +193,20 @@ export default function ProjectPage() {
   useEffect(() => {
     streamPreviewRef.current = streamPreview;
   }, [streamPreview]);
+
+  useEffect(() => {
+    if (!ready || !project) return;
+    const stored = readProjectTab(id);
+    const next = defaultOpeningTab(stored, project);
+    const firstUnreviewed = listUnreviewedChapters(project)[0];
+    queueMicrotask(() => {
+      setTab(next);
+      setStage(stageOf(next));
+      if (firstUnreviewed) setSelectedChapterId(firstUnreviewed.id);
+    });
+    // 只在打开项目时归位一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, project?.id]);
 
   function goTab(next: Tab) {
     setTab(next);
@@ -322,6 +356,12 @@ export default function ProjectPage() {
             background: project.background,
             settings: project.settings,
             projectTags: project.tags || [],
+            premise: project.premiseCard?.premise || project.outline?.premise,
+            includeEndingDirection,
+            endingDirection: includeEndingDirection
+              ? project.premiseCard?.endingDirection ||
+                project.outline?.endingNote
+              : undefined,
           })
         ),
       });
@@ -461,14 +501,27 @@ export default function ProjectPage() {
             summary: row?.summary || ch.summary || "",
           };
         });
-      const openThreads = (fresh.plotThreads || [])
-        .filter((t) => t.status !== "resolved")
-        .map((t) => {
-          const overdue = isPlotThreadOverdue(t, orderById, writtenMax);
-          return `- ${t.title}${t.note ? `：${t.note}` : ""}${
-            overdue ? "（建议在本批回收）" : ""
-          }`;
-        });
+      if (
+        !(volume.arcGoal || "").trim() ||
+        !(volume.exitState || "").trim()
+      ) {
+        const fill = confirm(
+          "开卷前请先重定本卷弧线目标与出卷局面。现在去分卷页填写？\n点「取消」仍继续续排。"
+        );
+        if (fill) {
+          setTab("volumes");
+          setStage("setup");
+          setBusy(null);
+          return;
+        }
+      }
+      const openThreads = formatOpenThreadsForOutline(
+        fresh.plotThreads,
+        (t) =>
+          isPlotThreadOverdue(t, orderById, writtenMax)
+            ? "（建议在本批回收）"
+            : ""
+      );
       const names = (fresh.characters || []).map((c) => c.name).filter(Boolean);
       const res = await postGenerate(
         attachOriginalContext(fresh, {
@@ -488,6 +541,10 @@ export default function ProjectPage() {
             3
           ),
           projectTags: fresh.tags || [],
+          includeEndingDirection,
+          endingDirection: includeEndingDirection
+            ? fresh.premiseCard?.endingDirection || fresh.outline?.endingNote
+            : undefined,
         })
       );
       if (res.parseError) setError(String(res.parseError));
@@ -603,6 +660,7 @@ export default function ProjectPage() {
       const liveChapter =
         fresh.outline?.chapters.find((c) => c.id === chapter.id) || chapter;
       const prior = buildPreviousContext(fresh, liveChapter.order);
+      const extras = chapterAssembleExtras(fresh, liveChapter);
 
       const buildBody = (
         mode: "chapter" | "continue",
@@ -630,6 +688,7 @@ export default function ProjectPage() {
           volumes: fresh.volumes,
           existingText: extra?.existingText,
           instruction: extra?.instruction,
+          ...extras,
         });
 
       let text = await streamGenerate(buildBody("chapter"), {
@@ -687,9 +746,7 @@ export default function ProjectPage() {
       }
       const canonWarnings = saveVerdict.violations;
 
-      const openThreads = (fresh.plotThreads || [])
-        .filter((t) => t.status !== "resolved" && t.title.trim())
-        .map((t) => t.title.trim());
+      const openThreads = readerKnownOpenThreadTitles(fresh.plotThreads);
       const summaryPromise = postGenerate({
         mode: "chapter_summary",
         writingBoard: fresh.writingBoard,
@@ -717,15 +774,11 @@ export default function ProjectPage() {
               summary: raw,
               touchedThreads: touched,
               summaryFailed: false,
+              pendingStateDeltas: deltas,
             };
             return {
               ...p,
               chapters,
-              characterStates: mergeCharacterStates(
-                p.characterStates,
-                liveChapter.order,
-                deltas
-              ),
             };
           });
         })
@@ -1007,6 +1060,30 @@ export default function ProjectPage() {
       abortRef.current = null;
       setStreamPreview("");
     }
+  }
+
+  function requestWriteNext() {
+    if (!project) return;
+    const unreviewed = listUnreviewedChapters(project);
+    if (unreviewed.length) {
+      const go = confirm(
+        `还有 ${unreviewed.length} 章未审，先审再写？\n确定 = 去最早未审章；取消 = 仍要写。`
+      );
+      if (go) {
+        setSelectedChapterId(unreviewed[0].id);
+        goTab("chapters");
+        setContractChapterId(null);
+        return;
+      }
+    }
+    const next = findWriteNextChapter(project, effectiveSelectedId);
+    if (!next) {
+      setError("没有可写的下一章，请先排大纲。");
+      return;
+    }
+    setSelectedChapterId(next.id);
+    goTab("chapters");
+    setContractChapterId(next.id);
   }
 
   function startBookJob(
@@ -1301,7 +1378,23 @@ export default function ProjectPage() {
               "生成大纲"
             )}
           </button>
-          {allowsWholeBookGenerate(project) ? (
+          {allowsWholeBookGenerate(project) && project.settings.serialMode ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!!busy || !project.outline?.chapters.length}
+              onClick={() => requestWriteNext()}
+              title="先立本章契约，再写下一章"
+            >
+              {busy?.startsWith("chapter") && bookJob?.status === "running" ? (
+                <>
+                  <span className="spinner" /> 队列中
+                </>
+              ) : (
+                "写下一章"
+              )}
+            </button>
+          ) : allowsWholeBookGenerate(project) ? (
             <button
               type="button"
               className="btn btn-primary btn-sm"
@@ -1344,17 +1437,45 @@ export default function ProjectPage() {
                 />
                 <div className="menu-dropdown">
                   {allowsWholeBookGenerate(project) ? (
-                    <button
-                      type="button"
-                      className="menu-item menu-item-danger"
-                      disabled={!!busy || !project.outline?.chapters.length}
-                      onClick={() => {
-                        setMoreOpen(false);
-                        startBookJob("all");
-                      }}
-                    >
-                      强制全量重写
-                    </button>
+                    <>
+                      {project.settings.serialMode ? (
+                        <button
+                          type="button"
+                          className="menu-item"
+                          disabled={!!busy || !project.outline?.chapters.length}
+                          onClick={() => {
+                            setMoreOpen(false);
+                            if (
+                              confirm(
+                                "连载的正路是一章一契约，确定批量生成？"
+                              )
+                            ) {
+                              startBookJob("missing");
+                            }
+                          }}
+                        >
+                          一键生成正文
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="menu-item menu-item-danger"
+                        disabled={!!busy || !project.outline?.chapters.length}
+                        onClick={() => {
+                          setMoreOpen(false);
+                          if (
+                            !project.settings.serialMode ||
+                            confirm(
+                              "连载的正路是一章一契约，确定批量生成？"
+                            )
+                          ) {
+                            startBookJob("all");
+                          }
+                        }}
+                      >
+                        强制全量重写
+                      </button>
+                    </>
                   ) : null}
                   <div className="menu-sep" />
                   <button
@@ -1576,6 +1697,23 @@ export default function ProjectPage() {
           />
         )}
 
+        {visibleTab === "premise" && (
+          <PremisePanel
+            project={project}
+            onChange={(premiseCard, extra) =>
+              update((p) => ({
+                ...p,
+                premiseCard,
+                outline: p.outline
+                  ? { ...p.outline, premise: premiseCard.premise }
+                  : p.outline,
+                settings: extra?.serialMode == null
+                  ? p.settings
+                  : { ...p.settings, serialMode: extra.serialMode },
+              }))
+            }
+          />
+        )}
         {visibleTab === "original" && (
           <OriginalPanel
             original={project.original}
@@ -1600,7 +1738,33 @@ export default function ProjectPage() {
             canon={project.canon}
             characterStates={project.characterStates}
             onCharacterStatesChange={(characterStates) =>
-              update((p) => ({ ...p, characterStates }))
+              update((p) => {
+                const prev = p.characterStates || {};
+                let pinOrder = 0;
+                for (const [name, rows] of Object.entries(characterStates)) {
+                  for (const row of rows) {
+                    const old = (prev[name] || []).find(
+                      (r) =>
+                        r.chapterOrder === row.chapterOrder &&
+                        r.note === row.note
+                    );
+                    if (row.pinned && !old?.pinned) {
+                      pinOrder = Math.max(pinOrder, row.chapterOrder);
+                    }
+                  }
+                }
+                return {
+                  ...p,
+                  characterStates,
+                  accountRepairMarks: pinOrder
+                    ? pushAccountRepairMark(
+                        p.accountRepairMarks,
+                        pinOrder,
+                        "ledger"
+                      )
+                    : p.accountRepairMarks,
+                };
+              })
             }
             openEditorRequest={characterEditorRequest}
             onChange={(charactersOrFn) =>
@@ -1643,6 +1807,36 @@ export default function ProjectPage() {
             onChange={(lore) => update((p) => ({ ...p, lore }))}
           />
         )}
+        {visibleTab === "volumes" && volumeWizardId ? (
+          <div className="mb-4">
+            <VolumeCloseWizard
+              project={project}
+              volumeId={volumeWizardId}
+              busy={!!busy}
+              onRequestSummary={() =>
+                void generateVolumeSummary(volumeWizardId)
+              }
+              onChangeVolume={(id, patch) =>
+                update((p) => ({
+                  ...p,
+                  volumes: (p.volumes || []).map((v) =>
+                    v.id === id ? { ...v, ...patch } : v
+                  ),
+                }))
+              }
+              onChangeThreads={(plotThreads) =>
+                update((p) => ({ ...p, plotThreads }))
+              }
+            />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm mt-2"
+              onClick={() => setVolumeWizardId(null)}
+            >
+              收起过卷向导
+            </button>
+          </div>
+        ) : null}
         {visibleTab === "volumes" && (
           <VolumesPanel
             project={project}
@@ -1666,6 +1860,7 @@ export default function ProjectPage() {
             onGenerateVolumeSummary={(volumeId) =>
               void generateVolumeSummary(volumeId)
             }
+            onOpenCloseWizard={(volumeId) => setVolumeWizardId(volumeId)}
             summaryDraft={volumeSummaryDraft}
             onSaveSummaryDraft={() => {
               if (!volumeSummaryDraft) return;
@@ -1726,6 +1921,8 @@ export default function ProjectPage() {
         )}
         {visibleTab === "outline" && (
           <OutlinePanel
+            includeEndingDirection={includeEndingDirection}
+            onIncludeEndingDirection={setIncludeEndingDirection}
             outline={project.outline}
             projectTags={project.tags || []}
             library={tagLibrary}
@@ -1763,7 +1960,11 @@ export default function ProjectPage() {
                 return { ...p, outline, chapters };
               });
             }}
-            onGenerateChapter={(ch) => void generateChapter(ch)}
+            onGenerateChapter={(ch) => {
+              setSelectedChapterId(ch.id);
+              goTab("chapters");
+              setContractChapterId(ch.id);
+            }}
             onPolishChapter={async (ch) => {
               setError("");
               setBusy(`polish:${ch.id}`);
@@ -1786,6 +1987,11 @@ export default function ProjectPage() {
                     outline: fresh.outline,
                     chapter: live,
                     projectTags: fresh.tags || [],
+                    includeEndingDirection,
+                    endingDirection: includeEndingDirection
+                      ? fresh.premiseCard?.endingDirection ||
+                        fresh.outline?.endingNote
+                      : undefined,
                   })
                 );
                 const polished = data.chapter as {
@@ -1841,6 +2047,23 @@ export default function ProjectPage() {
           />
         )}
         {visibleTab === "chapters" && (
+          <div className="mb-2">
+            <DailyStatusBar
+              project={project}
+              onJumpUnreviewed={(chapterId) => {
+                setSelectedChapterId(chapterId);
+                setContractChapterId(null);
+              }}
+              onJumpOverdue={() => goTab("plot")}
+              onJumpCheckup={() => goTab("tools")}
+              onJumpVolumeClose={(volumeId) => {
+                setVolumeWizardId(volumeId);
+                goTab("volumes");
+              }}
+            />
+          </div>
+        )}
+        {visibleTab === "chapters" && (
           <ChaptersReader
             project={project}
             library={tagLibrary}
@@ -1849,6 +2072,75 @@ export default function ProjectPage() {
             busy={busy}
             onSelect={setSelectedChapterId}
             onGenerateChapter={(ch) => void generateChapter(ch)}
+            contractChapterId={contractChapterId}
+            onRequestContract={(id) => {
+              if (id) {
+                const unreviewed = listUnreviewedChapters(project);
+                if (
+                  unreviewed.length &&
+                  !unreviewed.some((c) => c.id === id)
+                ) {
+                  const go = confirm(
+                    `还有 ${unreviewed.length} 章未审，先审再写？\n确定 = 去最早未审章；取消 = 仍要写。`
+                  );
+                  if (go) {
+                    setSelectedChapterId(unreviewed[0].id);
+                    setContractChapterId(null);
+                    return;
+                  }
+                }
+                setSelectedChapterId(id);
+              }
+              setContractChapterId(id);
+            }}
+            onPatchOutlineChapter={(chapterId, patch) => {
+              update((p) => {
+                if (!p.outline) return p;
+                return {
+                  ...p,
+                  outline: {
+                    ...p.outline,
+                    chapters: p.outline.chapters.map((c) =>
+                      c.id === chapterId ? { ...c, ...patch } : c
+                    ),
+                  },
+                };
+              });
+            }}
+            onFinalizeChapter={(payload) => {
+              update((p) => {
+                const next = projectAfterFinalize({
+                  project: p,
+                  chapterId: payload.chapterId,
+                  chapterOrder: payload.chapterOrder,
+                  summary: payload.summary,
+                  deltas: payload.deltas,
+                  pinnedNames: payload.pinnedNames,
+                  threadActions: payload.threadActions,
+                  newThreadTitle: payload.newThreadTitle,
+                });
+                const ch = next.outline?.chapters.find(
+                  (c) => c.id === payload.chapterId
+                );
+                const volId = ch?.volumeId || next.volumes?.[0]?.id;
+                if (volId && volumeNeedsSummaryPrompt(next, volId)) {
+                  queueMicrotask(() => setVolumeWizardId(volId));
+                }
+                return next;
+              });
+            }}
+            onHandEditSummary={(_id, order) => {
+              update((p) => ({
+                ...p,
+                accountRepairMarks: pushAccountRepairMark(
+                  p.accountRepairMarks,
+                  order,
+                  "summary"
+                ),
+              }));
+            }}
+            onJumpPlot={() => goTab("plot")}
+            onJumpTools={() => goTab("tools")}
             onOpenSettings={() => goTab("settings")}
             onCancel={cancelGeneration}
             onBusy={setBusy}
@@ -1891,11 +2183,35 @@ export default function ProjectPage() {
                 return next;
               });
             }}
-            onWriteNext={() =>
-              startBookJob("missing", undefined, 1, true)
-            }
+            onWriteNext={() => requestWriteNext()}
             onCharacterStatesChange={(characterStates) =>
-              update((p) => ({ ...p, characterStates }))
+              update((p) => {
+                const prev = p.characterStates || {};
+                let pinOrder = 0;
+                for (const [name, rows] of Object.entries(characterStates)) {
+                  for (const row of rows) {
+                    const old = (prev[name] || []).find(
+                      (r) =>
+                        r.chapterOrder === row.chapterOrder &&
+                        r.note === row.note
+                    );
+                    if (row.pinned && !old?.pinned) {
+                      pinOrder = Math.max(pinOrder, row.chapterOrder);
+                    }
+                  }
+                }
+                return {
+                  ...p,
+                  characterStates,
+                  accountRepairMarks: pinOrder
+                    ? pushAccountRepairMark(
+                        p.accountRepairMarks,
+                        pinOrder,
+                        "ledger"
+                      )
+                    : p.accountRepairMarks,
+                };
+              })
             }
             onContentChange={(chapterId, content, opts) => {
               const live = getLive() || project;

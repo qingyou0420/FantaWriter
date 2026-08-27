@@ -142,6 +142,8 @@ export default function HomePage() {
     upsertProject(project);
     if (createMode === "renew") {
       writeProjectTab(project.id, "original");
+    } else {
+      writeProjectTab(project.id, "premise");
     }
     router.push(`/project/${project.id}`);
   }

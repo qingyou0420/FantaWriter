@@ -165,12 +165,25 @@ export function formatVolumeMemory(
       }`
     );
     const done = sortVolumes(volumes).filter(
-      (v) => v.order < currentVol.order && v.summary?.trim()
+      (v) =>
+        v.order < currentVol.order &&
+        (v.summary?.trim() ||
+          v.exitSnapshots?.length ||
+          v.timelineAnchor?.trim())
     );
     if (done.length) {
       lines.push("已完成卷：");
       for (const v of done) {
-        lines.push(`- 《${v.title}》：${v.summary.trim()}`);
+        const snap = (v.exitSnapshots || [])
+          .filter((s) => s.name || s.note)
+          .map((s) => `${s.name}：${s.note}`)
+          .join("；");
+        const extras = [
+          v.summary?.trim(),
+          snap && `出卷人物：${snap}`,
+          v.timelineAnchor?.trim() && `时间落点：${v.timelineAnchor.trim()}`,
+        ].filter(Boolean);
+        lines.push(`- 《${v.title}》：${extras.join("；") || "（无）"}`);
       }
     }
   } else {

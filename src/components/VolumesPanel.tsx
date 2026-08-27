@@ -18,6 +18,7 @@ export function VolumesPanel({
   onGenerateVolumeOutline,
   onGenerateVolumeSummary,
   onGenerateNext,
+  onOpenCloseWizard,
   summaryDraft,
   onSaveSummaryDraft,
   onDiscardSummaryDraft,
@@ -31,6 +32,7 @@ export function VolumesPanel({
   onGenerateVolumeOutline?: (volumeId: string, chapterCount: number) => void;
   onGenerateVolumeSummary?: (volumeId: string) => void;
   onGenerateNext?: (volumeId: string, chapterCount: number) => void;
+  onOpenCloseWizard?: (volumeId: string) => void;
   summaryDraft?: { volumeId: string; text: string } | null;
   onSaveSummaryDraft?: () => void;
   onDiscardSummaryDraft?: () => void;
@@ -146,6 +148,15 @@ export function VolumesPanel({
                       ) : (
                         `续排本卷 ${Math.max(1, Math.min(20, project.settings.chapterCount || 10))} 章`
                       )}
+                    </button>
+                  ) : null}
+                  {onOpenCloseWizard ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => onOpenCloseWizard(v.id)}
+                    >
+                      过卷向导
                     </button>
                   ) : null}
                   <button

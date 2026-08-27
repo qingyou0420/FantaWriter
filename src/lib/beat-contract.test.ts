@@ -120,7 +120,8 @@ describe("beat contract", () => {
     const block = formatBeatContract(contract, threads);
     expect(block).toContain("本拍契约");
     expect(block).toContain("禁止写成");
-    expect(block).toContain("暗线（仅作者可见，正文不得提前泄漏）");
+    expect(block).not.toContain("暗线（仅作者可见");
+    expect(block).not.toContain("铜铃里藏着旧城令");
     expect(block).toContain("原句锚点");
   });
 

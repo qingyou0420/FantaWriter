@@ -137,8 +137,14 @@ export function previousVolumeEnding(
   const row = lastCh
     ? project.chapters.find((c) => c.chapterId === lastCh.id)
     : undefined;
+  const snap = (prev.exitSnapshots || [])
+    .filter((s) => s.name || s.note)
+    .map((s) => `${s.name}：${s.note}`)
+    .join("；");
   const parts = [
     prev.summary && `上卷《${prev.title}》主题：${prev.summary}`,
+    snap && `出卷人物快照：${snap}`,
+    prev.timelineAnchor?.trim() && `时间落点：${prev.timelineAnchor.trim()}`,
     lastCh &&
       `上卷终章《${lastCh.title}》：${row?.summary || lastCh.summary || (row?.content || "").replace(/\s+/g, " ").slice(0, 200) || "（无摘要）"}`,
   ].filter(Boolean);

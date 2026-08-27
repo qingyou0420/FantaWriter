@@ -8,6 +8,7 @@ import {
   maxWrittenOrder,
   plotThreadSuspension,
 } from "@/lib/memory-pack";
+import { threadSortRank } from "@/lib/daily-flow";
 import {
   createEmptyPlotThread,
   type NovelProject,
@@ -41,9 +42,10 @@ export function PlotThreadsPanel({
   const orderById = chapterOrderById(chapters);
   const writtenMax = maxWrittenOrder(project);
   const sortedThreads = [...threads].sort((a, b) => {
-    const ao = isPlotThreadOverdue(a, orderById, writtenMax) ? 0 : 1;
-    const bo = isPlotThreadOverdue(b, orderById, writtenMax) ? 0 : 1;
-    if (ao !== bo) return ao - bo;
+    const d =
+      threadSortRank(a, orderById, writtenMax) -
+      threadSortRank(b, orderById, writtenMax);
+    if (d !== 0) return d;
     return (b.updatedAt || "").localeCompare(a.updatedAt || "");
   });
 
@@ -81,7 +83,7 @@ export function PlotThreadsPanel({
           <div>
             <h2 className="text-base font-semibold m-0">伏笔 / 线索板</h2>
             <p className="text-sm text-[var(--text-muted)] mt-1 mb-0">
-              记录埋下与回收的线索。只有「读者已知」的未回收线索会进记忆包；仅作者的暗线不会泄漏给模型正文。
+              仅作者的暗线不进任何提示词；要拦 AI，请把禁令写进本章契约的禁写清单。去向是作者排程，也不注入。
             </p>
           </div>
           <button
@@ -120,7 +122,9 @@ export function PlotThreadsPanel({
                 className={`card !p-4 space-y-3 ${
                   overdue
                     ? "border-[var(--warning)]/60 bg-[var(--warning)]/5"
-                    : ""
+                    : t.status !== "resolved" && !t.dueVolumeId
+                      ? "border-[var(--warning)]/30 bg-[var(--warning)]/5"
+                      : ""
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -272,6 +276,40 @@ export function PlotThreadsPanel({
                         });
                       }}
                       placeholder="章序"
+                    />
+                  </Field>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Field
+                    label="预计回收位置"
+                    hint={
+                      t.status !== "resolved" && !t.dueVolumeId
+                        ? "未定去向"
+                        : "卷级去向，不注入提示词"
+                    }
+                  >
+                    <select
+                      value={t.dueVolumeId || ""}
+                      onChange={(e) =>
+                        updateThread(t.id, {
+                          dueVolumeId: e.target.value || undefined,
+                        })
+                      }
+                    >
+                      <option value="">未定</option>
+                      {(project.volumes || []).map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.title}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="去向备注（仅作者）">
+                    <input
+                      value={t.destinationNote || ""}
+                      onChange={(e) =>
+                        updateThread(t.id, { destinationNote: e.target.value })
+                      }
                     />
                   </Field>
                 </div>

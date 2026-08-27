@@ -56,6 +56,8 @@ describe("createEmptyProject / defaultVolumeId", () => {
     expect(p.volumes?.[0]?.id).toBe(defaultVolumeId(p.id));
     expect(p.settings.learnedStyleFingerprints).toEqual([]);
     expect(p.settings.temperature).toBe(0.9);
+    expect(p.settings.serialMode).toBe(true);
+    expect(p.premiseCard?.forbidList).toEqual([]);
   });
 
   it("serializes a new project without erotic leftovers", () => {
@@ -125,6 +127,7 @@ describe("normalizeProject", () => {
     expect(a.settings.serialMode).toBe(false);
     expect(a.outline?.chapters[0].hook).toBe("");
     expect(a.characterStates).toEqual({});
+    expect(a.premiseCard?.premise).toBe("p");
     expect(a.chapters[0].reviewState).toBeUndefined();
     expect(a.chapters[0].publishedAt).toBeUndefined();
   });
