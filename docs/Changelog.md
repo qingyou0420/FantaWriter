@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **启动后首页输入立刻可点**：1.4.3 用 `requestIdleCallback` 推迟静默检查，但首屏一画完页面就是 idle，检查会马上跑；而且静默路径仍先连 GitHub（连接阶段不受 socket timeout 约束），失败后再扫安装目录（用户若装到桌面等于扫整个桌面）。1.5.0 连载后 `normalizeProject` / `JSON.stringify` 全库也更重，会占住 renderer。现改为：静默检查 20s 后再跑且不走网络、不扫安装目录；书库初始化让出事件循环；创建表单不因 library / update / init 禁用。
+
 ## 1.5.0
 
 按 `docs/1.4后连载长篇迭代方案.md` 做完连载长篇 P0–P2，并收口复查遗留。已安装的 1.4.0 / 1.4.1 / 1.4.2 / 1.4.3 桌面端可从本仓 GitHub Release 检查到此版本。安装包 `FantaWriter-Setup-1.5.0.exe`。

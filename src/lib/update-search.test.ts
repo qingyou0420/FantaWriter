@@ -4,14 +4,18 @@ import { describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const {
   BULK_USER_DIR_KEYS,
+  SILENT_DIR_KEYS,
   parseCheckUpdateRequest,
+  shouldUseRemoteUpdateCheck,
   collectUpdateSearchDirs,
 } = require("../../electron/update-search.cjs") as {
   BULK_USER_DIR_KEYS: string[];
+  SILENT_DIR_KEYS: string[];
   parseCheckUpdateRequest: (payload: unknown) => {
     silent: boolean;
     kind: "silent" | "manual";
   };
+  shouldUseRemoteUpdateCheck: (kind: "silent" | "manual") => boolean;
   collectUpdateSearchDirs: (
     kind: "silent" | "manual",
     paths: Record<string, string | string[]>
@@ -53,20 +57,29 @@ describe("parseCheckUpdateRequest", () => {
   });
 });
 
+describe("shouldUseRemoteUpdateCheck", () => {
+  it("skips GitHub / feed on silent startup", () => {
+    expect(shouldUseRemoteUpdateCheck("silent")).toBe(false);
+    expect(shouldUseRemoteUpdateCheck("manual")).toBe(true);
+  });
+});
+
 describe("collectUpdateSearchDirs", () => {
-  it("does not scan 桌面 / 下载 / 文档 on silent startup", () => {
+  it("does not scan 桌面 / 下载 / 文档 / 安装目录 on silent startup", () => {
     const dirs = collectUpdateSearchDirs("silent", PATHS);
     expect(dirs).toEqual([
       PATHS.env,
       PATHS.exeUpdates,
       PATHS.userDataUpdates,
       ...PATHS.desktopUpdatesFolder,
-      PATHS.exeDir,
-      PATHS.devDist,
     ]);
     for (const key of BULK_USER_DIR_KEYS) {
       expect(dirs).not.toContain(PATHS[key as keyof typeof PATHS]);
     }
+    expect(dirs).not.toContain(PATHS.exeDir);
+    expect(dirs).not.toContain(PATHS.devDist);
+    expect(SILENT_DIR_KEYS).not.toContain("exeDir");
+    expect(SILENT_DIR_KEYS).not.toContain("devDist");
   });
 
   it("still scans those folders on a manual check", () => {
@@ -74,6 +87,7 @@ describe("collectUpdateSearchDirs", () => {
     expect(dirs).toContain(PATHS.desktop);
     expect(dirs).toContain(PATHS.downloads);
     expect(dirs).toContain(PATHS.documents);
+    expect(dirs).toContain(PATHS.exeDir);
     expect(dirs[0]).toBe(PATHS.env);
   });
 });

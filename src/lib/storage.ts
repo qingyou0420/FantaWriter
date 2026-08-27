@@ -188,10 +188,17 @@ function daysSince(iso: string): number | null {
   return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 }
 
-function rememberWritten(projects: NovelProject[]) {
+function yieldToInput(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+async function rememberWritten(projects: NovelProject[]) {
   lastWrittenJson.clear();
   for (const p of projects) {
     lastWrittenJson.set(p.id, JSON.stringify(p));
+    await yieldToInput();
   }
 }
 
@@ -211,7 +218,12 @@ async function readLegacyIdbArray(name: string): Promise<NovelProject[] | null> 
   const db = await openKv(name);
   const fromIdb = await idbGet<NovelProject[]>(db, IDB_STORE, "projects");
   if (Array.isArray(fromIdb) && fromIdb.length) {
-    return fromIdb.map(normalizeProject);
+    const list: NovelProject[] = [];
+    for (const row of fromIdb) {
+      list.push(normalizeProject(row));
+      await yieldToInput();
+    }
+    return list;
   }
   return Array.isArray(fromIdb) ? fromIdb : null;
 }
@@ -224,6 +236,7 @@ async function readIdbProjects(name: string): Promise<NovelProject[] | null> {
     for (const id of ids) {
       const row = await idbGet<NovelProject>(db, IDB_STORE, projectIdbKey(id));
       if (row && typeof row === "object") list.push(normalizeProject(row));
+      await yieldToInput();
     }
     return list;
   }
@@ -236,6 +249,7 @@ async function readIdbProjects(name: string): Promise<NovelProject[] | null> {
     for (const key of projectKeys) {
       const row = await idbGet<NovelProject>(db, IDB_STORE, key);
       if (row && typeof row === "object") list.push(normalizeProject(row));
+      await yieldToInput();
     }
     return list;
   }
@@ -355,10 +369,10 @@ export async function initStorage(): Promise<void> {
           await migrateLegacyArrayToPerProject(fromNew);
         }
         if (!projectsCache) projectsCache = fromNew;
-        rememberWritten(fromNew);
+        await rememberWritten(fromNew);
         writeLsProjectMeta(fromNew);
         migrateLibrariesIfNeeded();
-        await copyAutoBackupIfNeeded();
+        void copyAutoBackupIfNeeded();
         return;
       }
 
@@ -402,9 +416,9 @@ export async function initStorage(): Promise<void> {
         const db = await getNewDb();
         await idbSet(db, IDB_STORE, [], IDB_PROJECT_INDEX);
       }
-      rememberWritten(projectsCache);
+      await rememberWritten(projectsCache);
       migrateLibrariesIfNeeded();
-      await copyAutoBackupIfNeeded();
+      void copyAutoBackupIfNeeded();
     } catch (e) {
       lastStorageError = e;
       const raw = lsReadNewThenOld(NEW_PROJECTS_LS, OLD_PROJECTS_LS);
@@ -429,7 +443,9 @@ export async function initStorage(): Promise<void> {
 }
 
 export function loadProjects(): NovelProject[] {
-  if (projectsCache) return projectsCache.map(normalizeProject);
+  // Cache is already normalized during init / save. Remapping every read
+  // freezes the homepage after a long serial novel library loads.
+  if (projectsCache) return projectsCache.slice();
   if (typeof window === "undefined") return [];
   return parseProjectsJson(
     lsReadNewThenOld(NEW_PROJECTS_LS, OLD_PROJECTS_LS)

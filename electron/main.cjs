@@ -34,6 +34,7 @@ const {
 const {
   collectUpdateSearchDirs,
   parseCheckUpdateRequest,
+  shouldUseRemoteUpdateCheck,
 } = require("./update-search.cjs");
 
 const GITHUB_UPDATE_TOKEN_KEY = "GITHUB_UPDATE_TOKEN";
@@ -486,21 +487,24 @@ function getBackupsDir() {
   return path.join(app.getPath("userData"), "backups");
 }
 
-function rotateDesktopBackupFiles(dir, keep = 7) {
-  if (!dir || !fs.existsSync(dir)) return [];
-  const names = fs
-    .readdirSync(dir)
-    .filter((n) => /^fw-auto-.+\.json$/i.test(n))
-    .sort();
-  const remove = names.length > keep ? names.slice(0, names.length - keep) : [];
+async function rotateDesktopBackupFiles(dir, keep = 7) {
+  if (!dir) return [];
+  let names;
+  try {
+    names = await fs.promises.readdir(dir);
+  } catch {
+    return [];
+  }
+  const backups = names.filter((n) => /^fw-auto-.+\.json$/i.test(n)).sort();
+  const remove = backups.length > keep ? backups.slice(0, backups.length - keep) : [];
   for (const name of remove) {
     try {
-      fs.unlinkSync(path.join(dir, name));
+      await fs.promises.unlink(path.join(dir, name));
     } catch {
       /* ignore */
     }
   }
-  return names.filter((n) => !remove.includes(n));
+  return backups.filter((n) => !remove.includes(n));
 }
 
 function isAllowedOpenPath(target) {
@@ -665,9 +669,11 @@ function registerIpc() {
     const { kind } = parseCheckUpdateRequest(payload);
     applyConfigFile(getConfigPath());
     const current = app.getVersion();
+    const allowRemote = shouldUseRemoteUpdateCheck(kind);
 
     // 可选远程 feed：UPDATE_FEED_URL → JSON { version, url }
-    const feed = process.env.UPDATE_FEED_URL?.trim();
+    // 静默启动检查不走网络：GFW / 代理挂起时 Node 的 socket timeout 盖不住连接阶段。
+    const feed = allowRemote ? process.env.UPDATE_FEED_URL?.trim() : "";
     if (feed) {
       try {
         const data = await fetchJson(feed);
@@ -692,14 +698,15 @@ function registerIpc() {
       }
     }
 
-    // 默认：GitHub Releases latest
     let githubHint = "";
-    try {
-      const remote = await checkGithubLatest(current);
-      return remote;
-    } catch (e) {
-      appendLog("GitHub latest 失败: " + e);
-      githubHint = githubCheckErrorMessage(e);
+    if (allowRemote) {
+      try {
+        const remote = await checkGithubLatest(current);
+        return remote;
+      } catch (e) {
+        appendLog("GitHub latest 失败: " + e);
+        githubHint = githubCheckErrorMessage(e);
+      }
     }
 
     const { candidates, searchedDirs, allCount } = await findLatestInstaller(
@@ -714,8 +721,10 @@ function registerIpc() {
         latest: null,
         hasUpdate: false,
         message:
-          (hint ? hint + " " : "") +
-          `未找到安装包。请将 FantaWriter-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
+          kind === "silent"
+            ? `已是最新（当前 ${current}）`
+            : (hint ? hint + " " : "") +
+              `未找到安装包。请将 FantaWriter-Setup-x.y.z.exe 放入更新目录后重试。主目录：${getPrimaryUpdateDir()}`,
         searchedDirs,
       };
     }
@@ -910,8 +919,12 @@ function registerIpc() {
     }
     const target = path.join(dir, fileName);
     try {
-      fs.writeFileSync(target, String((payload && payload.content) || ""), "utf8");
-      const kept = rotateDesktopBackupFiles(dir, 7);
+      await fs.promises.writeFile(
+        target,
+        String((payload && payload.content) || ""),
+        "utf8"
+      );
+      const kept = await rotateDesktopBackupFiles(dir, 7);
       return { ok: true, path: target, kept, message: `已写入 ${target}` };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1053,22 +1066,43 @@ function httpGet(url, options = {}) {
   const timeout = options.timeout || 20000;
   const maxRedirects = options.maxRedirects ?? 5;
   return new Promise((resolve, reject) => {
+    /** @type {import('http').ClientRequest | null} */
+    let req = null;
+    let settled = false;
+    const timer = setTimeout(() => fail(new Error("请求超时")), timeout);
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        req?.destroy();
+      } catch {
+        /* ignore */
+      }
+      reject(err);
+    };
+    const ok = (res) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(res);
+    };
     const go = (current, left) => {
       let u;
       try {
         u = new URL(current);
       } catch (e) {
-        reject(e);
+        fail(e);
         return;
       }
       const lib = u.protocol === "https:" ? require("https") : http;
       const reqHeaders = stripAuthIfLeavingGithub(headers, u.hostname);
-      const req = lib.get(current, { headers: reqHeaders, timeout }, (res) => {
+      req = lib.get(current, { headers: reqHeaders, timeout }, (res) => {
         const code = res.statusCode || 0;
         if (code >= 300 && code < 400 && res.headers.location) {
           res.resume();
           if (left <= 0) {
-            reject(new Error("重定向过多"));
+            fail(new Error("重定向过多"));
             return;
           }
           go(new URL(res.headers.location, current).toString(), left - 1);
@@ -1076,16 +1110,13 @@ function httpGet(url, options = {}) {
         }
         if (code >= 400) {
           res.resume();
-          reject(new Error(`HTTP ${code}`));
+          fail(new Error(`HTTP ${code}`));
           return;
         }
-        resolve(res);
+        ok(res);
       });
-      req.on("error", reject);
-      req.on("timeout", () => {
-        req.destroy();
-        reject(new Error("请求超时"));
-      });
+      req.on("error", fail);
+      req.on("timeout", () => fail(new Error("请求超时")));
     };
     go(String(url), maxRedirects);
   });
