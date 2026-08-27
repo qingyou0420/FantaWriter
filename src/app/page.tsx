@@ -13,7 +13,10 @@ import {
   type LearnedStyle,
   type NovelProject,
 } from "@/lib/types";
-import { shouldDisableHomeCreateFields } from "@/lib/home-boot";
+import {
+  homeCreateFieldsDisabledState,
+} from "@/lib/home-boot";
+import { scheduleDeferredWork } from "@/lib/schedule-idle";
 import { hasOriginalText } from "@/lib/original";
 import { saveAppPrefs, loadAppPrefs } from "@/lib/theme";
 import {
@@ -47,7 +50,10 @@ export default function HomePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const origFileRef = useRef<HTMLInputElement>(null);
   const newNameRef = useRef<HTMLInputElement>(null);
-  const createFieldsLocked = shouldDisableHomeCreateFields(ready);
+  const createFieldDisabled = homeCreateFieldsDisabledState({
+    storageReady: ready,
+    libraryReady: ready,
+  });
 
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [keyPrefix, setKeyPrefix] = useState("");
@@ -58,28 +64,34 @@ export default function HomePage() {
   const [usageHint, setUsageHint] = useState("");
 
   useEffect(() => {
-    (async () => {
-      await initStorage();
-      // Give the create-form input a frame before we normalize the project list
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
-      });
-      setProjects(loadProjects());
-      const prefs = loadAppPrefs();
-      if (prefs.defaultBoard !== "general") {
-        saveAppPrefs({ ...prefs, defaultBoard: "general" });
-      }
-      setTagLibrary(loadTagLibraryFor("general"));
-      setStyleLibrary(loadStyleLibraryFor("general"));
-      const u = loadUsageStats();
-      if (u.totalRequests > 0) {
-        setUsageHint(
-          `用量：${u.totalRequests} 次 · 出 ${u.totalCharsOut.toLocaleString()} 字`
-        );
-      }
-      setReady(true);
-      refreshApiStatus();
-    })();
+    let cancelled = false;
+    // Yield one macrotask so the first click/keystroke reaches the input
+    // before IndexedDB + normalizeProject run on the renderer thread.
+    const stop = scheduleDeferredWork(() => {
+      void (async () => {
+        await initStorage();
+        if (cancelled) return;
+        setProjects(loadProjects());
+        const prefs = loadAppPrefs();
+        if (prefs.defaultBoard !== "general") {
+          saveAppPrefs({ ...prefs, defaultBoard: "general" });
+        }
+        setTagLibrary(loadTagLibraryFor("general"));
+        setStyleLibrary(loadStyleLibraryFor("general"));
+        const u = loadUsageStats();
+        if (u.totalRequests > 0) {
+          setUsageHint(
+            `用量：${u.totalRequests} 次 · 出 ${u.totalCharsOut.toLocaleString()} 字`
+          );
+        }
+        setReady(true);
+        void refreshApiStatus();
+      })();
+    }, 0);
+    return () => {
+      cancelled = true;
+      stop();
+    };
   }, []);
 
   function updateTagLibrary(next: string[]) {
@@ -330,7 +342,7 @@ export default function HomePage() {
                   defaultValue=""
                   autoComplete="off"
                   spellCheck={false}
-                  disabled={createFieldsLocked}
+                  disabled={createFieldDisabled["project-name"]}
                   onInput={(e) => setNewName(e.currentTarget.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && createMode === "scratch") {
@@ -354,7 +366,7 @@ export default function HomePage() {
                     name="original-title"
                     placeholder="原作标题"
                     value={origTitle}
-                    disabled={createFieldsLocked}
+                    disabled={createFieldDisabled["original-title"]}
                     onChange={(e) => setOrigTitle(e.target.value)}
                   />
                   <textarea
@@ -363,7 +375,7 @@ export default function HomePage() {
                     className="!font-mono !text-[0.85rem]"
                     placeholder="把旧稿全文贴在这里…"
                     value={origText}
-                    disabled={createFieldsLocked}
+                    disabled={createFieldDisabled["original-text"]}
                     onChange={(e) => {
                       setOrigText(e.target.value);
                       if (origSource === "粘贴导入" || !origSource) {

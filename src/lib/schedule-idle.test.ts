@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { scheduleIdleWork } from "./schedule-idle";
+import { scheduleDeferredWork, scheduleIdleWork } from "./schedule-idle";
 
 describe("scheduleIdleWork", () => {
   afterEach(() => {
@@ -32,6 +32,37 @@ describe("scheduleIdleWork", () => {
     const fn = vi.fn();
     const stop = scheduleIdleWork(fn, 2000);
     expect(typeof stop).toBe("function");
+    stop();
+  });
+});
+
+describe("scheduleDeferredWork", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses setTimeout, not requestIdleCallback", () => {
+    const ric = vi.fn();
+    vi.stubGlobal("requestIdleCallback", ric);
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    scheduleDeferredWork(fn, 20_000);
+    expect(ric).not.toHaveBeenCalled();
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(19_999);
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("can yield one macrotask with delay 0", () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const stop = scheduleDeferredWork(fn, 0);
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(0);
+    expect(fn).toHaveBeenCalledTimes(1);
     stop();
   });
 });

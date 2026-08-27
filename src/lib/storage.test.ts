@@ -212,6 +212,19 @@ describe("storage dual-write", () => {
     spy.mockRestore();
   });
 
+  it("loadProjects after init returns cached rows without remapping", async () => {
+    await initStorage();
+    const a = createEmptyProject("甲");
+    const b = createEmptyProject("乙");
+    saveProjects([a, b]);
+    await flushStorage();
+    const first = loadProjects();
+    const second = loadProjects();
+    expect(first).toHaveLength(2);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+  });
+
   it("LS mirror stores metadata only", async () => {
     await initStorage();
     const p = createEmptyProject("元数据");

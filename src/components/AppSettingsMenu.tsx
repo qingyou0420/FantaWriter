@@ -16,7 +16,8 @@ import {
   saveAppPrefs,
   type AppTheme,
 } from "@/lib/theme";
-import { scheduleIdleWork } from "@/lib/schedule-idle";
+import { scheduleDeferredWork } from "@/lib/schedule-idle";
+import { SILENT_UPDATE_DELAY_MS } from "@/lib/home-boot";
 import { downloadFullBackup, importFullBackup } from "@/lib/storage";
 
 type Panel = "none" | "api" | "menu";
@@ -83,10 +84,10 @@ export function AppSettingsMenu({
   }, []);
 
   useEffect(() => {
-    // 等首屏能点输入框之后再查更新，避免主进程扫盘卡住打字
-    return scheduleIdleWork(() => {
+    // 真延迟，不用 requestIdleCallback：首屏空闲时它会立刻跑，正好撞上第一次点击。
+    return scheduleDeferredWork(() => {
       void silentCheck();
-    });
+    }, SILENT_UPDATE_DELAY_MS);
   }, [silentCheck]);
 
   useEffect(() => {
@@ -108,7 +109,9 @@ export function AppSettingsMenu({
   useEffect(() => {
     if (panel !== "menu" || !desktop) return;
     const bridge = getDesktop();
-    if (!bridge?.getUpdateSettings) return;
+    if (!bridge) return;
+    void bridge.getAppInfo().then(setAppInfo).catch(() => {});
+    if (!bridge.getUpdateSettings) return;
     void bridge.getUpdateSettings().then((s) => {
       setGhTokenSaved(s.hasGithubToken);
       setGhTokenPrefix(s.tokenPrefix || "");
