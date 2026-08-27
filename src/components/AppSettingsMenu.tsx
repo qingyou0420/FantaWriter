@@ -117,7 +117,6 @@ export function AppSettingsMenu({
 
   useEffect(() => {
     if (panel !== "api") return;
-    setConfigLoaded(false);
     (async () => {
       try {
         const res = await fetch("/api/config");
