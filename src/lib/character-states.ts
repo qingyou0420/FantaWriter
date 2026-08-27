@@ -62,16 +62,22 @@ export function parseCharacterStatesAppendix(text: string): CharacterStateDelta[
 
 export function stripCharacterStatesAppendix(text: string): string {
   const raw = String(text || "");
-  const start = raw.lastIndexOf("{");
-  if (start < 0) return raw.trim();
-  const candidate = raw.slice(start);
-  try {
-    const data = JSON.parse(extractJsonObject(candidate)) as { states?: unknown };
-    if (!Array.isArray(data.states)) return raw.trim();
-    return raw.slice(0, start).replace(/```(?:json)?\s*$/i, "").trim();
-  } catch {
-    return raw.trim();
+  let start = raw.lastIndexOf("{");
+  while (start >= 0) {
+    const candidate = raw.slice(start);
+    try {
+      const data = JSON.parse(extractJsonObject(candidate)) as {
+        states?: unknown;
+      };
+      if (Array.isArray(data.states)) {
+        return raw.slice(0, start).replace(/```(?:json)?\s*$/i, "").trim();
+      }
+    } catch {
+      /* 继续往前找带 states 的对象 */
+    }
+    start = raw.lastIndexOf("{", start - 1);
   }
+  return raw.trim();
 }
 
 export function mergeCharacterStates(

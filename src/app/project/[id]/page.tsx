@@ -877,10 +877,11 @@ export default function ProjectPage() {
           });
           setBookJob(job);
           // 全书队列跑完：可选自动一致性检查
-          if (job.status === "done") {
+          const finished = job;
+          if (finished?.status === "done") {
             const live = getLive();
-            if (live && job.volumeId && volumeNeedsSummaryPrompt(live, job.volumeId)) {
-              const vol = (live.volumes || []).find((v) => v.id === job.volumeId);
+            if (live && finished.volumeId && volumeNeedsSummaryPrompt(live, finished.volumeId)) {
+              const vol = (live.volumes || []).find((v) => v.id === finished.volumeId);
               if (vol) setVolumeSummaryHint({ volumeId: vol.id, title: vol.title });
             } else if (live) {
               for (const vol of live.volumes || []) {

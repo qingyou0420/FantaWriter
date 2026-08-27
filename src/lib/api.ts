@@ -154,7 +154,14 @@ export function finishStreamGenerate(
 export function buildPreviousContext(
   project: Pick<
     NovelProject,
-    "characters" | "outline" | "chapters" | "plotThreads" | "lore" | "volumes"
+    | "characters"
+    | "outline"
+    | "chapters"
+    | "plotThreads"
+    | "lore"
+    | "volumes"
+    | "settings"
+    | "characterStates"
   >,
   currentOrder: number
 ): {

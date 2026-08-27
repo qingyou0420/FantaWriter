@@ -137,6 +137,7 @@ export function ChaptersReader({
   const [chapterHealth, setChapterHealth] = useState<ChapterHealth | null>(
     null
   );
+  const [summaryUiKey, setSummaryUiKey] = useState(selectedChapterId);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamSinkRef = useRef(
@@ -147,12 +148,6 @@ export function ChaptersReader({
   const chapters = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
     : [];
-
-  useEffect(() => {
-    setEditingSummary(false);
-    setChapterHealth(null);
-    setSummaryDraft("");
-  }, [selectedChapterId]);
 
   const persistPrefs = useCallback((next: ReaderPrefs) => {
     setPrefs(next);
@@ -256,6 +251,12 @@ export function ChaptersReader({
   const unreviewedCount = project.chapters.filter(
     (c) => c.content?.trim() && c.reviewState !== "reviewed"
   ).length;
+  if (summaryUiKey !== selectedChapterId) {
+    setSummaryUiKey(selectedChapterId);
+    setEditingSummary(false);
+    setChapterHealth(null);
+    setSummaryDraft("");
+  }
   const chapterTagCount = selectedOutline?.tags?.length || 0;
   const renewal = hasOriginalText(project.original);
   const displayContent =

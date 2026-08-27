@@ -1,4 +1,6 @@
 import { formatCharacterStateLedger } from "./character-states";
+
+export { formatCharacterStateLedger };
 import { formatLoreBlock, selectLoreForPrompt } from "./lore";
 import { isReaderKnownThread } from "./types";
 import type {

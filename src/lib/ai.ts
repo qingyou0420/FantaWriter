@@ -410,10 +410,11 @@ export async function chatComplete(
 
   try {
     const resp = await client.chat.completions.create(
-      body as Parameters<typeof client.chat.completions.create>[0]
+      body as unknown as Parameters<typeof client.chat.completions.create>[0]
     );
 
-    const text = resp.choices[0]?.message?.content;
+    const text = (resp as { choices?: { message?: { content?: string } }[] })
+      .choices?.[0]?.message?.content;
     if (!text) throw new Error("模型未返回内容");
     return text;
   } catch (e: unknown) {
@@ -468,7 +469,7 @@ export async function chatCompleteStream(
         maxTokens: options?.maxTokens,
         stream: true,
         mode: options?.mode,
-      }) as Parameters<typeof client.chat.completions.create>[0],
+      }) as unknown as Parameters<typeof client.chat.completions.create>[0],
       { signal: controller.signal }
     )) as AsyncIterable<{
       choices?: { delta?: { content?: string | null } }[];

@@ -131,7 +131,7 @@ describe("beat contract", () => {
     ];
     const deltas = proposeBeatDeltas({
       draft: "行人甲在霜桥交还铜铃。",
-      scene: { summary: "上桥", threadIds: ["t1"] },
+      scene: { order: 1, summary: "上桥", threadIds: ["t1"] },
       threads,
     });
     expect(deltas.touchedThreadIds).toEqual(["t1"]);
