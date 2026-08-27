@@ -4,7 +4,7 @@
 
 A local AI editor for long-form mainstream fiction. Next.js + Electron. Your data stays on your machine.
 
-当前版本：**1.4.3**
+当前版本：**1.5.0**
 
 ## 系统要求
 
@@ -17,7 +17,7 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 
 **https://github.com/qingyou0420/FantaWriter/releases/latest**
 
-文件名形如 **`FantaWriter-Setup-*.exe`**。1.4.3 为 `FantaWriter-Setup-1.4.3.exe`。1.4.0 已发布为 `Fantasy-Writer-Setup-1.4.0.exe`。
+文件名形如 **`FantaWriter-Setup-*.exe`**。1.5.0 为 `FantaWriter-Setup-1.5.0.exe`。1.4.0 已发布为 `Fantasy-Writer-Setup-1.4.0.exe`。
 
 ## Windows 提示「已保护你的电脑」
 
