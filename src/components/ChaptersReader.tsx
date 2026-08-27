@@ -26,6 +26,11 @@ import { BeatWorkbench } from "@/components/BeatWorkbench";
 import { EmptyState } from "@/components/EmptyState";
 import { collectChapterAnchors } from "@/lib/beat-contract";
 import type { BeatCommitDeltas } from "@/lib/beat-contract";
+import {
+  mergeCharacterStates,
+  type CharacterStateDelta,
+} from "@/lib/character-states";
+import { buildChapterHealth, type ChapterHealth } from "@/lib/chapter-health";
 import { hasOriginalText } from "@/lib/original";
 import { allowsWholeBookGenerate } from "@/lib/renewal";
 import type { ChapterPersistResult } from "@/lib/renewal";
@@ -37,6 +42,7 @@ import {
   LENGTH_LABELS,
   STYLE_LABELS,
   pushChapterVersion,
+  type CharacterStateLedger,
   type ChapterContent,
   type ChapterScene,
   type ChapterVersion,
@@ -78,6 +84,8 @@ export function ChaptersReader({
   onBusy,
   onError,
   onOpenSettings,
+  onWriteNext,
+  onCharacterStatesChange,
 }: {
   project: NovelProject;
   library: string[];
@@ -103,6 +111,8 @@ export function ChaptersReader({
   onBusy: (v: string | null) => void;
   onError: (msg: string) => void;
   onOpenSettings?: () => void;
+  onWriteNext?: () => void;
+  onCharacterStatesChange?: (states: CharacterStateLedger) => void;
 }) {
   const [metaOpen, setMetaOpen] = useState(false);
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadReaderPrefs());
@@ -122,6 +132,11 @@ export function ChaptersReader({
     content: string;
     violations: string[];
   } | null>(null);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState("");
+  const [chapterHealth, setChapterHealth] = useState<ChapterHealth | null>(
+    null
+  );
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamSinkRef = useRef(
@@ -132,6 +147,12 @@ export function ChaptersReader({
   const chapters = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
     : [];
+
+  useEffect(() => {
+    setEditingSummary(false);
+    setChapterHealth(null);
+    setSummaryDraft("");
+  }, [selectedChapterId]);
 
   const persistPrefs = useCallback((next: ReaderPrefs) => {
     setPrefs(next);
@@ -218,8 +239,23 @@ export function ChaptersReader({
   }, [selectedOutline, busy, onGenerateChapter]);
   const content = selectedContent?.content || "";
   const wordCount = countChapterChars(content);
-  const lengthRange = lengthRangeFor(project.settings.length);
-  const needsFill = !!content && chapterBelowMin(content, project.settings.length);
+  const lengthRange = lengthRangeFor(
+    project.settings.length,
+    project.settings.customLength
+  );
+  const needsFill =
+    !!content &&
+    chapterBelowMin(
+      content,
+      project.settings.length,
+      project.settings.customLength
+    );
+  const lengthLabel = project.settings.customLength
+    ? `自定义（${lengthRange.min}–${lengthRange.max}字/章）`
+    : LENGTH_LABELS[project.settings.length];
+  const unreviewedCount = project.chapters.filter(
+    (c) => c.content?.trim() && c.reviewState !== "reviewed"
+  ).length;
   const chapterTagCount = selectedOutline?.tags?.length || 0;
   const renewal = hasOriginalText(project.original);
   const displayContent =
@@ -613,8 +649,12 @@ export function ChaptersReader({
         openThreads: (project.plotThreads || [])
           .filter((t) => t.status !== "resolved" && t.title.trim())
           .map((t) => t.title.trim()),
+        settings: project.settings,
       });
       const raw = String(data.summary || "").trim();
+      const deltas = Array.isArray(data.characterStates)
+        ? (data.characterStates as CharacterStateDelta[])
+        : [];
       onUpdateChapterMeta(selectedOutline.id, {
         summary: raw,
         summaryFailed: false,
@@ -622,6 +662,50 @@ export function ChaptersReader({
           ? data.touchedThreads
           : parseTouchedThreads(raw),
       });
+      if (deltas.length && onCharacterStatesChange) {
+        onCharacterStatesChange(
+          mergeCharacterStates(
+            project.characterStates,
+            selectedOutline.order,
+            deltas
+          )
+        );
+      }
+      setEditingSummary(false);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      onBusy(null);
+    }
+  }
+
+  async function runChapterHealth() {
+    if (!selectedOutline || !content.trim()) {
+      onError("该章尚无正文");
+      return;
+    }
+    onError("");
+    onBusy("chapter_health");
+    try {
+      const data = await postGenerate(
+        attachOriginalContext(project, {
+          mode: "outline_vs_content",
+          writingBoard: project.writingBoard,
+          chapter: selectedOutline,
+          content,
+          projectTags: project.tags || [],
+        })
+      );
+      setChapterHealth(
+        buildChapterHealth({
+          outlineCheck: data.result,
+          content,
+          settings: project.settings,
+          canon: project.canon,
+          original: project.original,
+          summary: selectedContent?.summary,
+        })
+      );
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -695,6 +779,7 @@ export function ChaptersReader({
         <div className="flex items-center justify-between px-2 py-1.5 mb-1 shrink-0">
           <span className="text-xs font-medium text-[var(--text-muted)]">
             章节（{chapters.length}）
+            {unreviewedCount ? ` · ${unreviewedCount} 章未审` : ""}
           </span>
           {allowsWholeBookGenerate(project) ? (
             <button
@@ -716,7 +801,7 @@ export function ChaptersReader({
             onClick={onOpenSettings}
             title="打开生成参数"
           >
-            篇幅 {LENGTH_LABELS[project.settings.length]} · 文风{" "}
+            篇幅 {lengthLabel} · 文风{" "}
             {STYLE_LABELS[project.settings.writingStyle] ||
               project.settings.writingStyle}{" "}
             · 温度 {project.settings.temperature ?? 0.9}
@@ -740,6 +825,10 @@ export function ChaptersReader({
                           words={countChapterChars(c?.content || "")}
                           selected={ch.id === selectedChapterId}
                           touched={c?.touchedThreads}
+                          unreviewed={
+                            Boolean(c?.content?.trim()) &&
+                            c?.reviewState !== "reviewed"
+                          }
                           onSelect={onSelect}
                         />
                       );
@@ -757,6 +846,10 @@ export function ChaptersReader({
                     words={countChapterChars(c?.content || "")}
                     selected={ch.id === selectedChapterId}
                     touched={c?.touchedThreads}
+                    unreviewed={
+                      Boolean(c?.content?.trim()) &&
+                      c?.reviewState !== "reviewed"
+                    }
                     onSelect={onSelect}
                   />
                 );
@@ -857,12 +950,66 @@ export function ChaptersReader({
                     "生成本章"
                   )}
                 </button>
+                {allowsWholeBookGenerate(project) && onWriteNext ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!!busy}
+                    onClick={onWriteNext}
+                  >
+                    写下一章
+                  </button>
+                ) : null}
+                {content.trim() ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={!!busy}
+                    onClick={() => void runChapterHealth()}
+                  >
+                    {busy === "chapter_health" ? "体检中…" : "本章体检"}
+                  </button>
+                ) : null}
+                {content.trim() ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      const next =
+                        selectedContent?.reviewState === "reviewed"
+                          ? "draft"
+                          : "reviewed";
+                      onUpdateChapterMeta(selectedOutline.id, {
+                        reviewState: next,
+                      });
+                    }}
+                  >
+                    {selectedContent?.reviewState === "reviewed"
+                      ? "标为未审"
+                      : "标为已审"}
+                  </button>
+                ) : null}
+                {content.trim() ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() =>
+                      onUpdateChapterMeta(selectedOutline.id, {
+                        publishedAt: selectedContent?.publishedAt
+                          ? undefined
+                          : new Date().toISOString(),
+                      })
+                    }
+                  >
+                    {selectedContent?.publishedAt ? "取消发布" : "标为已发布"}
+                  </button>
+                ) : null}
               </div>
 
               {needsFill ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--warning)]">
                   <span>
-                    未达 {LENGTH_LABELS[project.settings.length]} 下限（{lengthRange.min} 字）
+                    未达 {lengthLabel} 下限（{lengthRange.min} 字）
                   </span>
                   <button
                     type="button"
@@ -881,19 +1028,88 @@ export function ChaptersReader({
                 </div>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-[var(--text-muted)]">
+              {chapterHealth ? (
+                <div className="mt-2 rounded-md border border-[var(--border-soft)] px-3 py-2 text-xs space-y-1">
+                  <div>
+                    篇幅：{chapterHealth.length.chars} 字（
+                    {chapterHealth.length.min}–{chapterHealth.length.max}）
+                    {chapterHealth.length.ok ? " · 达标" : " · 未达标"}
+                  </div>
+                  <div>
+                    摘要：{chapterHealth.summary.present ? "已有" : "缺失"}
+                  </div>
+                  <div>
+                    锁定设定：
+                    {chapterHealth.canon.ok
+                      ? "无冲突"
+                      : chapterHealth.canon.violations.join("；")}
+                  </div>
+                  {chapterHealth.outline ? (
+                    <div>
+                      大纲对照 {chapterHealth.outline.score}/10
+                      {chapterHealth.outline.missing?.length
+                        ? ` · 未覆盖：${chapterHealth.outline.missing.join("、")}`
+                        : ""}
+                      {chapterHealth.outline.advice
+                        ? ` · ${chapterHealth.outline.advice}`
+                        : ""}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-start gap-2 mt-2 text-xs text-[var(--text-muted)]">
                 {selectedContent?.summaryFailed ? (
                   <span className="text-[var(--danger-text)]">
                     摘要生成失败，点击重试
                   </span>
+                ) : editingSummary ? (
+                  <div className="w-full space-y-2">
+                    <textarea
+                      rows={4}
+                      className="w-full"
+                      value={summaryDraft}
+                      onChange={(e) => setSummaryDraft(e.target.value)}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          onUpdateChapterMeta(selectedOutline.id, {
+                            summary: summaryDraft.trim(),
+                            summaryFailed: false,
+                          });
+                          setEditingSummary(false);
+                        }}
+                      >
+                        保存摘要
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setEditingSummary(false)}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
                 ) : (selectedContent?.summary || "").trim() ? (
-                  <span className="line-clamp-2">
+                  <button
+                    type="button"
+                    className="line-clamp-2 text-left border-0 bg-transparent p-0 cursor-pointer text-[var(--text-muted)]"
+                    onClick={() => {
+                      setSummaryDraft(selectedContent?.summary || "");
+                      setEditingSummary(true);
+                    }}
+                    title="点击编辑摘要"
+                  >
                     摘要：{selectedContent?.summary}
-                  </span>
+                  </button>
                 ) : content.trim() ? (
                   <span>无摘要</span>
                 ) : null}
-                {content.trim() ? (
+                {content.trim() && !editingSummary ? (
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
@@ -1437,6 +1653,7 @@ function ChapterNavItem({
   words,
   selected,
   touched,
+  unreviewed,
   onSelect,
 }: {
   ch: OutlineChapter;
@@ -1444,6 +1661,7 @@ function ChapterNavItem({
   words: number;
   selected: boolean;
   touched?: string[];
+  unreviewed?: boolean;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -1461,7 +1679,15 @@ function ChapterNavItem({
           <span className="font-medium truncate">
             {ch.order}. {ch.title}
           </span>
-          <StatusDot status={status} />
+          <span className="inline-flex items-center gap-1 shrink-0">
+            {unreviewed ? (
+              <span
+                className="inline-block w-2 h-2 rounded-full bg-[var(--warning)]"
+                title="未审"
+              />
+            ) : null}
+            <StatusDot status={status} />
+          </span>
         </div>
         <div className="text-[10px] text-[var(--text-muted)] mt-0.5 tabular-nums">
           {words ? `${words.toLocaleString()} 字` : "未写"}

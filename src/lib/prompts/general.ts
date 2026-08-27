@@ -68,7 +68,9 @@ ${tags ? `\n## 类型标签\n${tags}\n` : ""}
       "title": "章节标题",
       "summary": "本章剧情摘要（3–6句）",
       "keyPoints": "关键情节点/冲突/转折，分号分隔",
-      "intensityNote": "可选：节奏/冲突/情绪强度备注；无则空字符串"
+      "intensityNote": "可选：节奏/冲突/情绪强度备注；无则空字符串",
+      "hook": "章末钩子：本章结尾要悬着的事；无则空字符串",
+      "cast": ["出场人物姓名"]
     }
   ]
 }`;
@@ -129,7 +131,7 @@ export function generalChapterUser(
   const allChapters = formatBookOutlineForChapter(outline, chapter, volumes);
   const tags = formatTagBlock(projectTags, chapter.tags, "chapter", "general");
   const intensity = chapter.intensityNote || chapter.eroticNote || "无";
-  const lengthRule = chapterLengthRequirement(settings.length);
+  const lengthRule = chapterLengthRequirement(settings.length, settings.customLength);
   const memory = (priorBlock || "").trim();
   return `请根据完整大纲，撰写**其中一章**的详细正文。
 
@@ -160,7 +162,11 @@ ${memory ? `\n${memory}\n` : previousChapterSnippet ? `\n## 上一章结尾片�
 1. 只写本章正文，不要写「第X章」以外的元说明。
 2. 开头可保留一行标题：# ${chapter.title}
 3. 严格按文风与人称；人物口吻与设定一致。
-4. 情节完整、有起承转合，与前后章可衔接。
+4. ${
+    settings.serialMode
+      ? `开头 1–2 段承接上一章结尾的悬念，不要另起炉灶；结尾必须停在钩子上（本章钩子：${chapter.hook || "（未填）"}），禁止把冲突写完、禁止总结式收尾`
+      : "情节完整、有起承转合，与前后章可衔接。"
+  }
 5. ${lengthRule}
 6. 直接输出小说正文。`;
 }
@@ -459,7 +465,9 @@ ${tags ? `\n## 类型标签\n${tags}\n` : ""}
       "title": "章节标题",
       "summary": "本章剧情摘要（3–6句）",
       "keyPoints": "关键情节点/冲突/转折，分号分隔",
-      "intensityNote": "可选：节奏/冲突/情绪强度备注；无则空字符串"
+      "intensityNote": "可选：节奏/冲突/情绪强度备注；无则空字符串",
+      "hook": "章末钩子：本章结尾要悬着的事；无则空字符串",
+      "cast": ["出场人物姓名"]
     }
   ]
 }
@@ -552,7 +560,82 @@ ${opts.existingText.slice(-6000)}
 ## 输出要求
 1. 只输出续写部分，不要重复上文。
 2. 保持文风、人称、尺度一致，情节连贯；称呼与人物状态勿漂移。
-3. ${continueLengthRequirement(opts.settings, countChapterChars(opts.existingText))}`;
+3. ${continueLengthRequirement(opts.settings, countChapterChars(opts.existingText))}${
+    opts.settings.serialMode
+      ? `\n4. 若尚未落到钩子上，结尾停在钩子（本章钩子：${opts.chapter?.hook || "（未填）"}），禁止总结式收尾。`
+      : ""
+  }`;
+}
+
+export function generalNextChaptersUser(opts: {
+  characters: Character[];
+  background: StoryBackground;
+  settings: GenerationSettings;
+  volume: Volume;
+  chapterCount: number;
+  recentSummaries: { order: number; title: string; summary: string }[];
+  openThreads?: string[];
+  characterStates?: string;
+  projectTags?: string[];
+}): string {
+  const tags = formatTagBlock(opts.projectTags, undefined, "outline", "general");
+  const n = Math.max(1, Math.min(20, opts.chapterCount || 10));
+  const summaries =
+    opts.recentSummaries
+      .map(
+        (c) =>
+          `第${c.order}章《${c.title}》：${(c.summary || "").trim() || "（无摘要）"}`
+      )
+      .join("\n") || "（无）";
+  const threads = (opts.openThreads || []).join("\n") || "（无）";
+  const arc = [
+    opts.volume.summary && `卷摘要：${opts.volume.summary}`,
+    opts.volume.arcGoal && `本卷弧线目标：${opts.volume.arcGoal}`,
+    opts.volume.exitState && `出卷局面：${opts.volume.exitState}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return `请根据**已经写出来的前情**续排本卷接下来的 ${n} 章大纲。只追加新章，不要改写已有章，不要输出已写正文。
+
+## 本卷
+标题：${opts.volume.title}
+${arc || "（未填写弧线，请根据前情自拟本批走向）"}
+期望续排章数：${n} 章（可 ±2，上限 20）
+
+## 最近章节实际摘要（优先 AI 摘要，不要当正文）
+${summaries}
+
+## 未回收的读者已知伏笔
+${threads}
+
+${opts.characterStates ? `## 人物状态账本\n${opts.characterStates}\n` : ""}
+## 人物设定
+${formatCharacters(opts.characters)}
+
+## 故事背景
+${formatBackground(opts.background)}
+
+## 生成参数
+${formatSettings(opts.settings, "general")}
+${tags ? `\n## 类型标签\n${tags}\n` : ""}
+## 输出要求
+请严格输出如下 JSON（不要 markdown 代码块，不要其它说明文字）：
+{
+  "premise": "本批弧线一句话",
+  "endingNote": "本批收束走向",
+  "chapters": [
+    {
+      "order": 1,
+      "title": "章节标题",
+      "summary": "本章剧情摘要（3–6句）",
+      "keyPoints": "关键情节点/冲突/转折，分号分隔",
+      "intensityNote": "可选：节奏/冲突/情绪强度备注；无则空字符串",
+      "hook": "章末钩子：本章结尾要悬着的事；无则空字符串",
+      "cast": ["出场人物姓名"]
+    }
+  ]
+}
+chapters 长度约为 ${n}。只写新章，不要重复已有章。`;
 }
 
 export function generalScenePlanUser(opts: {

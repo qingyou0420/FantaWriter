@@ -44,13 +44,16 @@ export interface BookJob {
   mode: "all" | "missing" | "retry_errors";
   /** 仅生成本卷；不要复用 mode */
   volumeId?: string;
+  /** 本次最多生成章数；满后暂停 */
+  maxChapters?: number;
 }
 
 export function createBookJob(
   outlineChapters: OutlineChapter[],
   existing: ChapterContent[],
   mode: BookJob["mode"] = "missing",
-  volumeId?: string
+  volumeId?: string,
+  maxChapters?: number
 ): BookJob {
   const now = new Date().toISOString();
   let sorted = [...outlineChapters].sort((a, b) => a.order - b.order);
@@ -86,7 +89,19 @@ export function createBookJob(
     updatedAt: now,
     mode,
     volumeId,
+    maxChapters:
+      typeof maxChapters === "number" && maxChapters > 0
+        ? maxChapters
+        : undefined,
   };
+}
+
+/** 本轮已完成章数达到 maxChapters 时应暂停 */
+export function shouldPauseAfterMaxChapters(
+  job: BookJob,
+  completedThisRun: number
+): boolean {
+  return Boolean(job.maxChapters && completedThisRun >= job.maxChapters);
 }
 
 export function bookJobProgress(job: BookJob | null | undefined): {

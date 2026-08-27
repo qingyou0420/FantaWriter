@@ -161,3 +161,62 @@ export function mergeVolumeChapters(
   }
   return [...kept, ...stamped].map((c, i) => ({ ...c, order: i + 1 }));
 }
+
+/** 把新章追加到该卷末尾，不替换已有章，再重排全书 order */
+export function appendVolumeChapters(
+  existing: OutlineChapter[],
+  incoming: OutlineChapter[],
+  volumeId: string,
+  volumes?: Volume[]
+): OutlineChapter[] {
+  const current = existing.filter((c) => (c.volumeId || "") === volumeId);
+  return mergeVolumeChapters(
+    existing,
+    [...current, ...incoming],
+    volumeId,
+    volumes
+  );
+}
+
+/** 在指定章后插入新章，继承 volumeId，重排全书 order */
+export function insertChapterAfter(
+  existing: OutlineChapter[],
+  afterId: string,
+  incoming: OutlineChapter
+): OutlineChapter[] {
+  const sorted = [...existing].sort((a, b) => a.order - b.order);
+  const idx = sorted.findIndex((c) => c.id === afterId);
+  const insertAt = idx < 0 ? sorted.length : idx + 1;
+  const next = [
+    ...sorted.slice(0, insertAt),
+    {
+      ...incoming,
+      id: incoming.id || crypto.randomUUID(),
+      volumeId: incoming.volumeId || sorted[idx]?.volumeId,
+      tags: Array.isArray(incoming.tags) ? incoming.tags : [],
+    },
+    ...sorted.slice(insertAt),
+  ];
+  return next.map((c, i) => ({ ...c, order: i + 1 }));
+}
+
+export function volumeAllChaptersDone(
+  project: NovelProject,
+  volumeId: string
+): boolean {
+  const chs = chaptersInVolume(project, volumeId);
+  if (!chs.length) return false;
+  return chs.every((ch) => {
+    const row = project.chapters.find((c) => c.chapterId === ch.id);
+    return Boolean(row?.content?.trim() && row.status === "done");
+  });
+}
+
+export function volumeNeedsSummaryPrompt(
+  project: NovelProject,
+  volumeId: string
+): boolean {
+  const vol = (project.volumes || []).find((v) => v.id === volumeId);
+  if (!vol || vol.summary?.trim()) return false;
+  return volumeAllChaptersDone(project, volumeId);
+}

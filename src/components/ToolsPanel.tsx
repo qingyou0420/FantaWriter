@@ -27,7 +27,15 @@ import {
   loadUsageStats,
   resetUsageStats,
 } from "@/lib/storage";
-import { buildConsistencyRows, toConsistencyReport } from "@/lib/consistency";
+import {
+  mergeCharacterStates,
+  type CharacterStateDelta,
+} from "@/lib/character-states";
+import {
+  buildConsistencyRows,
+  toConsistencyReport,
+  type ConsistencyScope,
+} from "@/lib/consistency";
 import { loadAppPrefs, saveAppPrefs } from "@/lib/theme";
 import {
   pushChapterVersion,
@@ -67,6 +75,12 @@ export function ToolsPanel({
   const [checkChapterId, setCheckChapterId] = useState(
     project.outline?.chapters[0]?.id || ""
   );
+  const [consistencyScope, setConsistencyScope] =
+    useState<ConsistencyScope>("volume");
+  const [fillProgress, setFillProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [backupInfo, setBackupInfo] = useState("");
   const [repoRoot, setRepoRoot] = useState(
     () => loadAppPrefs().chapterRepoRoot || ""
@@ -98,7 +112,14 @@ export function ToolsPanel({
     onError("");
     onBusy("consistency");
     try {
-      const rows = buildConsistencyRows(project);
+      const volumeId =
+        project.volumes?.[0]?.id ||
+        chapters.find((c) => c.volumeId)?.volumeId;
+      const rows = buildConsistencyRows(project, {
+        scope: consistencyScope,
+        volumeId,
+        coveredUpTo: project.lastConsistencyReport?.coveredUpTo,
+      });
       if (!rows.length) throw new Error("请先生成至少一章正文或摘要");
       const data = await postGenerate(
         attachOriginalContext(project, {
@@ -109,7 +130,8 @@ export function ToolsPanel({
           chapters: rows,
         })
       );
-      const report = toConsistencyReport(data.result);
+      const coveredUpTo = rows.reduce((m, r) => Math.max(m, r.order), 0);
+      const report = toConsistencyReport(data.result, coveredUpTo);
       setConsistency(report);
       onProjectUpdate((p) => ({ ...p, lastConsistencyReport: report }));
     } catch (e) {
@@ -117,6 +139,76 @@ export function ToolsPanel({
     } finally {
       onBusy(null);
       setUsage(loadUsageStats());
+    }
+  }
+
+  async function fillMissingSummaries() {
+    const missing = chapters.filter((ch) => {
+      const row = project.chapters.find((c) => c.chapterId === ch.id);
+      return Boolean(row?.content?.trim() && !row.summary?.trim());
+    });
+    if (!missing.length) {
+      toast.info("没有缺摘要的章节");
+      return;
+    }
+    onError("");
+    onBusy("fill_summaries");
+    setFillProgress({ done: 0, total: missing.length });
+    try {
+      for (let i = 0; i < missing.length; i++) {
+        const ch = missing[i];
+        const row = project.chapters.find((c) => c.chapterId === ch.id);
+        if (!row?.content?.trim() || row.summary?.trim()) {
+          setFillProgress({ done: i + 1, total: missing.length });
+          continue;
+        }
+        try {
+          const data = await postGenerate({
+            mode: "chapter_summary",
+            writingBoard: project.writingBoard,
+            content: row.content,
+            title: ch.title,
+            openThreads: (project.plotThreads || [])
+              .filter((t) => t.status !== "resolved" && t.title.trim())
+              .map((t) => t.title.trim()),
+            settings: project.settings,
+          });
+          const raw = String(data.summary || "").trim();
+          const deltas = Array.isArray(data.characterStates)
+            ? (data.characterStates as CharacterStateDelta[])
+            : [];
+          onProjectUpdate((p) => {
+            const chapters = [...p.chapters];
+            const idx = chapters.findIndex((c) => c.chapterId === ch.id);
+            if (idx < 0) return p;
+            if (chapters[idx].summary?.trim()) return p;
+            chapters[idx] = {
+              ...chapters[idx],
+              summary: raw,
+              summaryFailed: false,
+              touchedThreads: Array.isArray(data.touchedThreads)
+                ? data.touchedThreads
+                : chapters[idx].touchedThreads,
+            };
+            return {
+              ...p,
+              chapters,
+              characterStates: mergeCharacterStates(
+                p.characterStates,
+                ch.order,
+                deltas
+              ),
+            };
+          });
+        } catch {
+          /* 中途失败不覆盖已有摘要 */
+        }
+        setFillProgress({ done: i + 1, total: missing.length });
+      }
+      toast.success("缺失摘要已补齐");
+    } finally {
+      onBusy(null);
+      setFillProgress(null);
     }
   }
 
@@ -486,18 +578,51 @@ export function ToolsPanel({
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <h2 className="text-base font-semibold m-0">人物一致性检查</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="!w-auto !py-1 !px-2 text-sm"
+              value={consistencyScope}
+              onChange={(e) =>
+                setConsistencyScope(e.target.value as ConsistencyScope)
+              }
+            >
+              <option value="volume">本卷</option>
+              <option value="recent">最近 8 章</option>
+              <option value="sinceLast">自上次以来</option>
+              <option value="all">全书</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!!busy}
+              onClick={runConsistency}
+            >
+              {busy === "consistency" ? (
+                <>
+                  <span className="spinner" /> 检查中
+                </>
+              ) : (
+                "AI 检查"
+              )}
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-secondary btn-sm"
             disabled={!!busy}
-            onClick={runConsistency}
+            onClick={() => void fillMissingSummaries()}
           >
-            {busy === "consistency" ? (
+            {busy === "fill_summaries" ? (
               <>
-                <span className="spinner" /> 检查中
+                <span className="spinner" />{" "}
+                {fillProgress
+                  ? `补摘要 ${fillProgress.done}/${fillProgress.total}`
+                  : "补摘要…"}
               </>
             ) : (
-              "AI 检查"
+              "补齐缺失摘要"
             )}
           </button>
         </div>

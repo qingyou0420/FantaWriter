@@ -20,17 +20,31 @@ import { OriginalPanel } from "@/components/OriginalPanel";
 import { attachOriginalContext, mergeCanonFacts } from "@/lib/original";
 import { allowsWholeBookGenerate, evaluateRenewalSave, wholeBookGenerateBlockedReason } from "@/lib/renewal";
 import { mapSkeletonToProject } from "@/lib/skeleton";
-import type { BeatCommitDeltas } from "@/lib/beat-contract";
+import {
+  applyBeatDeltasToProject,
+  type BeatCommitDeltas,
+} from "@/lib/beat-contract";
 import {
   chapterBelowMin,
   continueLengthRequirement,
   countChapterChars,
 } from "@/lib/length";
 import {
+  appendVolumeChapters,
   mergeVolumeChapters,
   previousVolumeEnding,
   volumeHasWrittenChapters,
+  volumeNeedsSummaryPrompt,
 } from "@/lib/volumes";
+import {
+  mergeCharacterStates,
+} from "@/lib/character-states";
+import {
+  formatCharacterStateLedger,
+  isPlotThreadOverdue,
+  chapterOrderById,
+  maxWrittenOrder,
+} from "@/lib/memory-pack";
 import { useProjectStore } from "@/hooks/useProjectStore";
 import { loadAppPrefs } from "@/lib/theme";
 import {
@@ -58,6 +72,7 @@ import {
   patchBookJobItem,
   prepareJobForResume,
   prepareRetryErrors,
+  shouldPauseAfterMaxChapters,
   type BookJob,
 } from "@/lib/book-job";
 import {
@@ -129,6 +144,10 @@ export default function ProjectPage() {
   const [volumeSummaryDraft, setVolumeSummaryDraft] = useState<{
     volumeId: string;
     text: string;
+  } | null>(null);
+  const [volumeSummaryHint, setVolumeSummaryHint] = useState<{
+    volumeId: string;
+    title: string;
   } | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
     null
@@ -416,6 +435,103 @@ export default function ProjectPage() {
     }
   }
 
+  async function generateNextChapters(volumeId: string, chapterCount: number) {
+    if (!project) return;
+    if (!allowsWholeBookGenerate(project)) {
+      setError(wholeBookGenerateBlockedReason());
+      return;
+    }
+    const volume = (project.volumes || []).find((v) => v.id === volumeId);
+    if (!volume) return;
+    setError("");
+    setBusy(`outline_next:${volumeId}`);
+    try {
+      const fresh = getLive() || project;
+      const orderById = chapterOrderById(fresh.outline?.chapters);
+      const writtenMax = maxWrittenOrder(fresh);
+      const recent = [...(fresh.outline?.chapters || [])]
+        .filter((c) => (c.volumeId || fresh.volumes?.[0]?.id) === volumeId)
+        .sort((a, b) => a.order - b.order)
+        .slice(-10)
+        .map((ch) => {
+          const row = fresh.chapters.find((c) => c.chapterId === ch.id);
+          return {
+            order: ch.order,
+            title: ch.title,
+            summary: row?.summary || ch.summary || "",
+          };
+        });
+      const openThreads = (fresh.plotThreads || [])
+        .filter((t) => t.status !== "resolved")
+        .map((t) => {
+          const overdue = isPlotThreadOverdue(t, orderById, writtenMax);
+          return `- ${t.title}${t.note ? `：${t.note}` : ""}${
+            overdue ? "（建议在本批回收）" : ""
+          }`;
+        });
+      const names = (fresh.characters || []).map((c) => c.name).filter(Boolean);
+      const res = await postGenerate(
+        attachOriginalContext(fresh, {
+          mode: "outline_next",
+          writingBoard: fresh.writingBoard,
+          characters: fresh.characters,
+          background: fresh.background,
+          settings: fresh.settings,
+          volume,
+          volumeId,
+          chapterCount,
+          recentSummaries: recent,
+          openThreads,
+          characterStates: formatCharacterStateLedger(
+            fresh.characterStates,
+            names,
+            3
+          ),
+          projectTags: fresh.tags || [],
+        })
+      );
+      if (res.parseError) setError(String(res.parseError));
+      const incoming = res.outline as Outline;
+      incoming.chapters = (incoming.chapters || []).map((ch) => ({
+        ...ch,
+        tags: Array.isArray(ch.tags) ? ch.tags : [],
+        volumeId,
+      }));
+      update((p) => {
+        const nextChapters = appendVolumeChapters(
+          p.outline?.chapters || [],
+          incoming.chapters,
+          volumeId,
+          p.volumes
+        );
+        const outline: Outline = {
+          premise: p.outline?.premise || incoming.premise || "",
+          endingNote: p.outline?.endingNote || incoming.endingNote || "",
+          chapters: nextChapters,
+          raw: incoming.raw,
+        };
+        const chapters = nextChapters.map((ch) => {
+          const old = p.chapters.find((c) => c.chapterId === ch.id);
+          return (
+            old || {
+              chapterId: ch.id,
+              title: ch.title,
+              content: "",
+              status: "idle" as const,
+              updatedAt: new Date().toISOString(),
+            }
+          );
+        });
+        return { ...p, outline, chapters };
+      });
+      setTab("outline");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function cancelGeneration() {
     jobControlRef.current.pause = true;
     abortRef.current?.abort();
@@ -580,12 +696,16 @@ export default function ProjectPage() {
         content: text,
         title: liveChapter.title,
         openThreads,
+        settings: fresh.settings,
       })
         .then((sumRes) => {
           const raw = String(sumRes.summary || "");
           const touched = Array.isArray(sumRes.touchedThreads)
             ? (sumRes.touchedThreads as string[])
             : parseTouchedThreads(raw);
+          const deltas = Array.isArray(sumRes.characterStates)
+            ? sumRes.characterStates
+            : [];
           update((p) => {
             const chapters = [...p.chapters];
             const idx = chapters.findIndex(
@@ -598,7 +718,15 @@ export default function ProjectPage() {
               touchedThreads: touched,
               summaryFailed: false,
             };
-            return { ...p, chapters };
+            return {
+              ...p,
+              chapters,
+              characterStates: mergeCharacterStates(
+                p.characterStates,
+                liveChapter.order,
+                deltas
+              ),
+            };
           });
         })
         .catch(() => {
@@ -631,6 +759,7 @@ export default function ProjectPage() {
           scenes: prev?.scenes,
           summary: prev?.summary,
           canonWarnings: canonWarnings.length ? canonWarnings : undefined,
+          reviewState: "draft",
         };
         if (idx >= 0) chapters[idx] = row;
         else chapters.push(row);
@@ -726,6 +855,7 @@ export default function ProjectPage() {
 
     setTab("chapters");
     setError("");
+    let completedThisRun = 0;
 
     try {
       while (true) {
@@ -748,6 +878,18 @@ export default function ProjectPage() {
           setBookJob(job);
           // 全书队列跑完：可选自动一致性检查
           if (job.status === "done") {
+            const live = getLive();
+            if (live && job.volumeId && volumeNeedsSummaryPrompt(live, job.volumeId)) {
+              const vol = (live.volumes || []).find((v) => v.id === job.volumeId);
+              if (vol) setVolumeSummaryHint({ volumeId: vol.id, title: vol.title });
+            } else if (live) {
+              for (const vol of live.volumes || []) {
+                if (volumeNeedsSummaryPrompt(live, vol.id)) {
+                  setVolumeSummaryHint({ volumeId: vol.id, title: vol.title });
+                  break;
+                }
+              }
+            }
             void maybeAutoConsistency();
           }
           break;
@@ -823,6 +965,17 @@ export default function ProjectPage() {
             error: undefined,
             partialContent: undefined,
           });
+          completedThisRun += 1;
+          if (shouldPauseAfterMaxChapters(job, completedThisRun) && nextPendingItem(job)) {
+            job = {
+              ...finalizeBookJobStatus(job),
+              status: "paused",
+              currentChapterId: null,
+            };
+            setBookJob(job);
+            setInfo(`已完成 ${job.maxChapters} 章，续跑继续`);
+            break;
+          }
           setBookJob(job);
           continue;
         }
@@ -857,7 +1010,9 @@ export default function ProjectPage() {
 
   function startBookJob(
     mode: BookJob["mode"] = "missing",
-    volumeId?: string
+    volumeId?: string,
+    maxChapters?: number,
+    skipConfirm?: boolean
   ) {
     if (!project) return;
     if (!allowsWholeBookGenerate(project)) {
@@ -880,9 +1035,23 @@ export default function ProjectPage() {
       mode === "all"
         ? `将按顺序重新生成${scope}全部 ${n} 章（覆盖已有正文，产生 API 费用）`
         : `将按顺序生成${scope}未完成章节（共 ${n} 章大纲，已有正文会跳过）`;
-    if (!confirm(`${label}，是否继续？`)) return;
+    let limit = maxChapters;
+    if (!skipConfirm) {
+      const def = project.settings.serialMode ? "3" : "";
+      const raw = window.prompt(
+        `${label}，是否继续？\n本次最多生成多少章（空=全部${project.settings.serialMode ? "，连载模式默认 3" : ""}）`,
+        def
+      );
+      if (raw === null) return;
+      const parsed = Number(raw.trim());
+      if (raw.trim() && Number.isFinite(parsed) && parsed > 0) {
+        limit = parsed;
+      } else if (project.settings.serialMode && !raw.trim()) {
+        limit = 3;
+      }
+    }
 
-    const job = createBookJob(pool, project.chapters, mode, volumeId);
+    const job = createBookJob(pool, project.chapters, mode, volumeId, limit);
     if (!nextPendingItem(job)) {
       setError(
         mode === "missing"
@@ -945,7 +1114,8 @@ export default function ProjectPage() {
     if (!prefs.autoConsistencyAfterBookJob) return;
     const live = getLive();
     if (!live?.outline?.chapters.length) return;
-    const rows = buildConsistencyRows(live);
+    const volumeId = live.bookJob?.volumeId || live.volumes?.[0]?.id;
+    const rows = buildConsistencyRows(live, { scope: "volume", volumeId });
     if (rows.length < 2) return;
     try {
       setBusy("consistency");
@@ -958,13 +1128,13 @@ export default function ProjectPage() {
           chapters: rows,
         })
       );
-      const report = toConsistencyReport(data.result);
+      const coveredUpTo = rows.reduce((m, r) => Math.max(m, r.order), 0);
+      const report = toConsistencyReport(data.result, coveredUpTo);
       update((p) => ({ ...p, lastConsistencyReport: report }));
       const score = report.score;
       setInfo(
         `全书生成完成 · 自动一致性 ${score != null ? `${score}/10` : ""}：${report.summary || "完成"}（可在「工具」页查看详情）`
       );
-      goTab("tools");
     } catch {
       /* 自动检查失败不打断主流程 */
     } finally {
@@ -1194,17 +1364,7 @@ export default function ProjectPage() {
                       goTab("tools");
                     }}
                   >
-                    打开工具页
-                  </button>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      goTab("tools");
-                    }}
-                  >
-                    查看进度
+                    打开工具与进度
                   </button>
                 </div>
               </>
@@ -1345,6 +1505,38 @@ export default function ProjectPage() {
         </div>
       ) : null}
 
+      {volumeSummaryHint ? (
+        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
+          <div className="card !py-2.5 !px-3 text-sm border-[color-mix(in_srgb,var(--accent)_35%,transparent)] flex flex-wrap items-center justify-between gap-3">
+            <span>
+              《{volumeSummaryHint.title}》已全部完成，生成卷摘要以进入长期记忆？
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={!!busy}
+                onClick={() => {
+                  const id = volumeSummaryHint.volumeId;
+                  setVolumeSummaryHint(null);
+                  goTab("volumes");
+                  void generateVolumeSummary(id);
+                }}
+              >
+                生成卷摘要
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setVolumeSummaryHint(null)}
+              >
+                稍后
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div
         className={`flex-1 ${shellMax} mx-auto w-full min-h-0 flex flex-col ${
           visibleTab === "chapters" ? "px-3 py-3" : "px-4 py-5 overflow-y-auto"
@@ -1405,6 +1597,10 @@ export default function ProjectPage() {
             writingBoard={project.writingBoard}
             original={project.original}
             canon={project.canon}
+            characterStates={project.characterStates}
+            onCharacterStatesChange={(characterStates) =>
+              update((p) => ({ ...p, characterStates }))
+            }
             openEditorRequest={characterEditorRequest}
             onChange={(charactersOrFn) =>
               update((p) => ({
@@ -1457,6 +1653,9 @@ export default function ProjectPage() {
               }))
             }
             hideWholeVolumeGenerate={!allowsWholeBookGenerate(project)}
+            onGenerateNext={(volumeId, n) =>
+              void generateNextChapters(volumeId, n)
+            }
             onGenerateVolume={(volumeId) =>
               startBookJob("missing", volumeId)
             }
@@ -1533,6 +1732,11 @@ export default function ProjectPage() {
             volumes={project.volumes}
             characters={project.characters}
             busy={busy}
+            hideRollingOutline={!allowsWholeBookGenerate(project)}
+            planChapterCount={project.settings.chapterCount}
+            onGenerateNext={(volumeId, n) =>
+              void generateNextChapters(volumeId, n)
+            }
             onGenerate={generateOutline}
             onChange={(outline) => {
               update((p) => {
@@ -1667,9 +1871,31 @@ export default function ProjectPage() {
                 const row = { ...base, ...patch, chapterId };
                 if (idx >= 0) chapters[idx] = row;
                 else chapters.push(row);
-                return { ...p, chapters };
+                const next = { ...p, chapters };
+                if (patch.reviewState === "reviewed") {
+                  const ch = next.outline?.chapters.find((c) => c.id === chapterId);
+                  const volId = ch?.volumeId || next.volumes?.[0]?.id;
+                  if (volId && volumeNeedsSummaryPrompt(next, volId)) {
+                    const vol = (next.volumes || []).find((v) => v.id === volId);
+                    if (vol) {
+                      queueMicrotask(() =>
+                        setVolumeSummaryHint({
+                          volumeId: vol.id,
+                          title: vol.title,
+                        })
+                      );
+                    }
+                  }
+                }
+                return next;
               });
             }}
+            onWriteNext={() =>
+              startBookJob("missing", undefined, 1, true)
+            }
+            onCharacterStatesChange={(characterStates) =>
+              update((p) => ({ ...p, characterStates }))
+            }
             onContentChange={(chapterId, content, opts) => {
               const live = getLive() || project;
               const verdict = evaluateRenewalSave(content, {
@@ -1706,6 +1932,7 @@ export default function ProjectPage() {
                   canonWarnings: verdict.violations.length
                     ? verdict.violations
                     : undefined,
+                  reviewState: opts?.pushVersion ? "draft" : row.reviewState,
                 };
                 if (idx >= 0) chapters[idx] = row;
                 else chapters.push(row);
@@ -1715,35 +1942,23 @@ export default function ProjectPage() {
             }}
             onCommitBeatDeltas={(chapterId, deltas: BeatCommitDeltas) => {
               update((p) => {
-                const chapters = p.chapters.map((c) =>
-                  c.chapterId === chapterId
-                    ? {
-                        ...c,
-                        summary: deltas.summary?.trim() || c.summary,
-                        touchedThreads: (p.plotThreads || [])
-                          .filter((t) => deltas.touchedThreadIds.includes(t.id))
-                          .map((t) => t.title),
-                      }
-                    : c
+                const row = p.chapters.find((c) => c.chapterId === chapterId);
+                const accepted = (row?.scenes || []).filter(
+                  (s) => s.status === "accepted"
                 );
-                let lore = p.lore || [];
-                if (deltas.timelineNote?.trim()) {
-                  const idx = lore.findIndex((e) => e.title === "时间线");
-                  if (idx >= 0) {
-                    lore = lore.map((e, i) =>
-                      i === idx
-                        ? {
-                            ...e,
-                            body: `${e.body}\n${deltas.timelineNote}`.trim(),
-                          }
-                        : e
-                    );
-                  }
-                }
+                const last = accepted[accepted.length - 1];
+                const applied = applyBeatDeltasToProject({
+                  chapters: p.chapters,
+                  lore: p.lore,
+                  threads: p.plotThreads,
+                  chapterId,
+                  deltas,
+                  scene: last,
+                });
                 return {
                   ...p,
-                  chapters,
-                  lore,
+                  chapters: applied.chapters,
+                  lore: applied.lore,
                   canon: mergeCanonFacts(p.canon || [], deltas.canonProposals),
                 };
               });

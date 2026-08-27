@@ -30,7 +30,19 @@ export interface Volume {
   order: number;
   title: string;
   summary: string;
+  /** 本卷弧线要达成什么 */
+  arcGoal?: string;
+  /** 出卷时的局面 */
+  exitState?: string;
 }
+
+/** 人物状态账本：按人名滚动追加的本章变化 */
+export interface CharacterStateNote {
+  chapterOrder: number;
+  note: string;
+}
+
+export type CharacterStateLedger = Record<string, CharacterStateNote[]>;
 
 export interface LoreEntry {
   id: string;
@@ -153,6 +165,10 @@ export interface GenerationSettings {
   extraInstructions: string;
   /** 写入 assemble system 末尾的用户附加规则；空则只用内置 pack */
   extraRules?: string;
+  /** 连载模式：章末钩子、开头接上章悬念；默认关 */
+  serialMode?: boolean;
+  /** 自定义章节字数档；设置后优先于 length 三档 */
+  customLength?: { min: number; max: number };
 }
 
 export interface OutlineChapter {
@@ -171,6 +187,8 @@ export interface OutlineChapter {
   tags: string[];
   /** 本章出场人物 id；未选则生成时仍全量注入 */
   castIds?: string[];
+  /** 章末钩子：本章结尾要悬着的事 */
+  hook?: string;
 }
 
 export interface Outline {
@@ -221,6 +239,10 @@ export interface ChapterContent {
   canonWarnings?: string[];
   /** 本章摘要最近一次生成失败；保留旧摘要并允许重试 */
   summaryFailed?: boolean;
+  /** 审阅状态：AI 落稿为 draft，作者标已审为 reviewed */
+  reviewState?: "draft" | "reviewed";
+  /** 标为已发布的时间 */
+  publishedAt?: string;
 }
 
 /** 人物一致性检查结果（自动/手动共用，写入项目以便切 tab 不丢） */
@@ -235,6 +257,8 @@ export interface ConsistencyReport {
     character?: string;
     chapter?: string;
   }[];
+  /** 检查覆盖到的章 order */
+  coveredUpTo?: number;
 }
 
 export type PlotThreadStatus = "planted" | "active" | "resolved";
@@ -257,6 +281,8 @@ export interface PlotThread {
   /** 缺省：主线/支线/伏笔为读者已知，暗线为仅作者 */
   visibility?: PlotThreadVisibility;
   kind?: PlotThreadKind;
+  /** 打算在第几章前回收 */
+  dueChapterOrder?: number;
 }
 
 /** 全书批量生成任务（可序列化，暂停/续跑） */
@@ -277,6 +303,8 @@ export interface BookGenerationJob {
   mode: "all" | "missing" | "retry_errors";
   /** M3「仅生成本卷」；禁止复用 mode */
   volumeId?: string;
+  /** 本次最多生成章数；满后暂停 */
+  maxChapters?: number;
 }
 
 export interface NovelProject {
@@ -309,6 +337,8 @@ export interface NovelProject {
   bookJob?: BookGenerationJob | null;
   /** 最近一次一致性检查（自动/手动同源） */
   lastConsistencyReport?: ConsistencyReport | null;
+  /** 人物状态账本：按人名累积本章变化 */
+  characterStates?: CharacterStateLedger;
   promptPackId?: string;
 }
 
@@ -517,6 +547,10 @@ function normalizePlotThread(raw: PlotThread): PlotThread {
     status: raw.status === "active" || raw.status === "resolved" ? raw.status : "planted",
     kind,
     visibility,
+    dueChapterOrder:
+      typeof raw.dueChapterOrder === "number" && Number.isFinite(raw.dueChapterOrder)
+        ? raw.dueChapterOrder
+        : undefined,
   };
 }
 
@@ -611,6 +645,44 @@ export function normalizeLockedCanon(
     .filter((f) => f.name || f.statement);
 }
 
+export const CHARACTER_STATE_KEEP = 6;
+
+export function normalizeCustomLength(
+  raw: GenerationSettings["customLength"] | undefined
+): { min: number; max: number } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const min = Math.round(Number(raw.min));
+  const max = Math.round(Number(raw.max));
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return undefined;
+  const lo = Math.max(500, Math.min(20000, min));
+  const hi = Math.max(500, Math.min(20000, max));
+  if (lo >= hi) return undefined;
+  return { min: lo, max: hi };
+}
+
+export function normalizeCharacterStates(
+  raw: NovelProject["characterStates"] | undefined
+): CharacterStateLedger {
+  if (!raw || typeof raw !== "object") return {};
+  const out: CharacterStateLedger = {};
+  for (const [name, notes] of Object.entries(raw)) {
+    const key = String(name || "").trim();
+    if (!key || !Array.isArray(notes)) continue;
+    const rows = notes
+      .filter((n): n is CharacterStateNote => Boolean(n && typeof n === "object"))
+      .map((n) => ({
+        chapterOrder:
+          typeof n.chapterOrder === "number" && Number.isFinite(n.chapterOrder)
+            ? n.chapterOrder
+            : 0,
+        note: String(n.note || "").trim(),
+      }))
+      .filter((n) => n.note);
+    if (rows.length) out[key] = rows.slice(-CHARACTER_STATE_KEEP);
+  }
+  return out;
+}
+
 function ensureVolumes(projectId: string, volumes?: Volume[]): Volume[] {
   const existing = Array.isArray(volumes) ? volumes.filter(Boolean) : [];
   if (existing.length) {
@@ -619,6 +691,8 @@ function ensureVolumes(projectId: string, volumes?: Volume[]): Volume[] {
       order: typeof v.order === "number" ? v.order : i + 1,
       title: v.title || `第 ${i + 1} 卷`,
       summary: v.summary || "",
+      arcGoal: typeof v.arcGoal === "string" ? v.arcGoal : "",
+      exitState: typeof v.exitState === "string" ? v.exitState : "",
     }));
   }
   return [
@@ -654,8 +728,6 @@ export function normalizeProject(p: NovelProject): NovelProject {
           .filter((t): t is PlotThread => Boolean(t && typeof t === "object"))
           .map(normalizePlotThread)
       : [],
-    bookJob: p.bookJob ?? null,
-    lastConsistencyReport: p.lastConsistencyReport ?? null,
     settings: {
       ...createDefaultSettings(),
       ...settings,
@@ -665,6 +737,8 @@ export function normalizeProject(p: NovelProject): NovelProject {
       learnedStyleFingerprints: Array.isArray(settings.learnedStyleFingerprints)
         ? settings.learnedStyleFingerprints.map((s) => String(s).trim()).filter(Boolean)
         : [],
+      serialMode: Boolean(settings.serialMode),
+      customLength: normalizeCustomLength(settings.customLength),
     },
     outline: p.outline
       ? {
@@ -682,6 +756,7 @@ export function normalizeProject(p: NovelProject): NovelProject {
               castIds: Array.isArray(c.castIds)
                 ? c.castIds.map((id) => String(id).trim()).filter(Boolean)
                 : [],
+              hook: typeof c.hook === "string" ? c.hook : "",
             };
             delete next.eroticNote;
             return next;
@@ -701,7 +776,33 @@ export function normalizeProject(p: NovelProject): NovelProject {
         ? c.touchedThreads.map((s) => String(s).trim()).filter(Boolean)
         : undefined,
       canonWarnings: Array.isArray(c.canonWarnings) ? c.canonWarnings : undefined,
+      reviewState:
+        c.reviewState === "reviewed" || c.reviewState === "draft"
+          ? c.reviewState
+          : undefined,
+      publishedAt: typeof c.publishedAt === "string" ? c.publishedAt : undefined,
     })),
+    characterStates: normalizeCharacterStates(p.characterStates),
+    lastConsistencyReport: p.lastConsistencyReport
+      ? {
+          ...p.lastConsistencyReport,
+          coveredUpTo:
+            typeof p.lastConsistencyReport.coveredUpTo === "number" &&
+            Number.isFinite(p.lastConsistencyReport.coveredUpTo)
+              ? p.lastConsistencyReport.coveredUpTo
+              : undefined,
+        }
+      : p.lastConsistencyReport ?? null,
+    bookJob: p.bookJob
+      ? {
+          ...p.bookJob,
+          maxChapters:
+            typeof p.bookJob.maxChapters === "number" &&
+            Number.isFinite(p.bookJob.maxChapters)
+              ? p.bookJob.maxChapters
+              : undefined,
+        }
+      : p.bookJob ?? null,
   };
 }
 

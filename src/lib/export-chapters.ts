@@ -95,15 +95,19 @@ export function bookExportFolderName(project: NovelProject): string {
 }
 
 /**
- * 只含 chapterId，标题/章序改了仍覆盖同一文件（正文与 frontmatter 里有标题）。
+ * 按章序三位零填充 + 标题安全化，同 order 重导出覆盖。
  */
 export function chapterRepoFileName(ch: {
   id: string;
   order?: number;
   title?: string;
 }): string {
-  const id = sanitizePathSegment(ch.id, "unknown");
-  return `ch-${id}.md`;
+  const order = String(Math.max(0, Math.floor(Number(ch.order) || 0))).padStart(
+    3,
+    "0"
+  );
+  const title = sanitizePathSegment(ch.title || "", "untitled");
+  return `ch-${order}-${title}.md`;
 }
 
 export function chapterRepoRelativePath(

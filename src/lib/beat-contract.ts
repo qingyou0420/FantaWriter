@@ -1,8 +1,11 @@
 import { forbiddenClaimsFromStatement, lockedCanonFacts } from "./original";
+import { createEmptyLoreEntry } from "./lore";
 import {
   isReaderKnownThread,
+  type ChapterContent,
   type ChapterScene,
   type LockedCanonFact,
+  type LoreEntry,
   type PlotThread,
 } from "./types";
 
@@ -140,9 +143,108 @@ export function collectChapterAnchors(scenes?: ChapterScene[] | null): string[] 
 }
 
 /** 从已接受正文里提议增量；不发明物品或锁定，等人确认后再提交 */
+const TIME_WORD =
+  /昨夜|今日|次日|翌日|三天后|那年|月初|月底|春天|夏天|秋天|冬天|凌晨|黄昏|午后|傍晚|黎明|\d+月|\d+日|甲子|戌时|子时/;
+
+export function extractTimelineNote(draft: string): string | undefined {
+  const hits = String(draft || "")
+    .split(/[。！？\n]/)
+    .map((s) => s.trim())
+    .filter((s) => s && TIME_WORD.test(s));
+  if (!hits.length) return undefined;
+  return hits.slice(0, 2).join("。");
+}
+
+export function mergeBeatChapterSummary(
+  existing: string | undefined,
+  sceneOrder: number,
+  sceneSummary: string | undefined
+): string {
+  const beat = sceneSummary?.trim();
+  if (!beat) return existing || "";
+  const line = `【拍${sceneOrder}】${beat}`;
+  const cur = (existing || "").trim();
+  if (!cur) return line;
+  if (cur.includes(`【拍${sceneOrder}】`)) {
+    return cur.replace(new RegExp(`【拍${sceneOrder}】[^\\n]*`), line);
+  }
+  return `${cur}\n${line}`;
+}
+
+export function upsertTimelineLore(
+  lore: LoreEntry[] | undefined,
+  note: string
+): LoreEntry[] {
+  const text = note.trim();
+  if (!text) return lore || [];
+  const list = [...(lore || [])];
+  const idx = list.findIndex((e) => e.title.trim() === "时间线");
+  if (idx >= 0) {
+    const prev = list[idx].body?.trim();
+    list[idx] = {
+      ...list[idx],
+      body: prev ? `${prev}\n${text}` : text,
+      keys: Array.from(new Set([...(list[idx].keys || []), "时间线"])),
+      enabled: true,
+    };
+    return list;
+  }
+  return [
+    ...list,
+    {
+      ...createEmptyLoreEntry("时间线"),
+      body: text,
+      keys: ["时间线"],
+      category: "other",
+      enabled: true,
+    },
+  ];
+}
+
+export function applyBeatCommitDeltas(
+  chapter: ChapterContent,
+  deltas: BeatCommitDeltas,
+  scene?: Pick<ChapterScene, "order" | "summary">
+): ChapterContent {
+  const summary = mergeBeatChapterSummary(
+    chapter.summary,
+    scene?.order ?? 0,
+    deltas.summary || scene?.summary
+  );
+  return {
+    ...chapter,
+    summary,
+  };
+}
+
+export function applyBeatDeltasToProject(opts: {
+  chapters: ChapterContent[];
+  lore?: LoreEntry[];
+  threads?: PlotThread[] | null;
+  chapterId: string;
+  deltas: BeatCommitDeltas;
+  scene?: Pick<ChapterScene, "order" | "summary">;
+}): { chapters: ChapterContent[]; lore: LoreEntry[] } {
+  const chapters = opts.chapters.map((c) => {
+    if (c.chapterId !== opts.chapterId) return c;
+    const next = applyBeatCommitDeltas(c, opts.deltas, opts.scene);
+    const touched = (opts.threads || [])
+      .filter((t) => opts.deltas.touchedThreadIds.includes(t.id))
+      .map((t) => t.title);
+    return {
+      ...next,
+      touchedThreads: touched.length ? touched : c.touchedThreads,
+    };
+  });
+  const lore = opts.deltas.timelineNote?.trim()
+    ? upsertTimelineLore(opts.lore, opts.deltas.timelineNote)
+    : opts.lore || [];
+  return { chapters, lore };
+}
+
 export function proposeBeatDeltas(opts: {
   draft: string;
-  scene?: Pick<ChapterScene, "summary" | "threadIds">;
+  scene?: Pick<ChapterScene, "summary" | "threadIds" | "order">;
   threads?: PlotThread[] | null;
 }): BeatCommitDeltas {
   const mentioned = (opts.threads || []).filter(
@@ -155,6 +257,7 @@ export function proposeBeatDeltas(opts: {
   return {
     summary: opts.scene?.summary?.trim() || undefined,
     touchedThreadIds: touched.map((t) => t.id),
+    timelineNote: extractTimelineNote(opts.draft),
     itemProposals: [],
     canonProposals: [],
   };

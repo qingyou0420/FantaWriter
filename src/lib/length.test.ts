@@ -44,4 +44,20 @@ describe("length ranges", () => {
     expect(expandTargetChars(1000, Number("2"))).toBe(2000);
     expect(expandTargetChars(1000, 1.5)).toBe(1500);
   });
+
+  it("custom range drives requirement, belowMin, and continue", () => {
+    const custom = { min: 1700, max: 2300 };
+    expect(lengthRangeFor("medium", custom)).toEqual(custom);
+    expect(chapterLengthRequirement("medium", custom)).toContain("1700–2300");
+    expect(chapterBelowMin("x".repeat(1699), "medium", custom)).toBe(true);
+    expect(chapterBelowMin("x".repeat(1700), "medium", custom)).toBe(false);
+    const cont = continueLengthRequirement(
+      { length: "medium", customLength: custom },
+      1000
+    );
+    expect(cont).toContain("1700");
+    expect(cont).toContain("2300");
+    expect(chapterLengthRequirement("medium")).toContain("1500–3000");
+    expect(lengthRangeFor("medium")).toEqual(LENGTH_RANGES.medium);
+  });
 });

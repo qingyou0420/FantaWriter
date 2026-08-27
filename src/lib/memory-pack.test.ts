@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   buildCharacterStateCard,
   buildMemoryPack,
+  formatPlotThreads,
   formatVolumeMemory,
+  isPlotThreadOverdue,
+  plotThreadSuspension,
 } from "./memory-pack";
-import { createEmptyCharacter, createEmptyProject } from "./types";
+import {
+  createEmptyCharacter,
+  createEmptyPlotThread,
+  createEmptyProject,
+} from "./types";
 
 describe("character state card", () => {
   it("keeps recent clues and drops static character fields", () => {
@@ -118,5 +125,127 @@ describe("volume memory", () => {
     expect(pack.previousSummaries).not.toContain("章摘要2");
     expect(pack.priorBlock).toContain("分卷记忆");
     expect(pack.priorBlock).toContain("前情摘要");
+  });
+});
+
+describe("character state ledger", () => {
+  it("keeps chapter 40 injury on the card when generating chapter 46", () => {
+    const chars = [
+      { ...createEmptyCharacter(), name: "甲", role: "主角" },
+    ];
+    const card = buildCharacterStateCard(chars, ["第45章：甲在客栈过夜"], {
+      甲: [
+        { chapterOrder: 40, note: "左臂骨折" },
+        { chapterOrder: 44, note: "改口叫师父" },
+      ],
+    });
+    expect(card).toContain("【角色状态卡");
+    expect(card).toContain("第40章 甲：左臂骨折");
+    expect(card).toContain("第44章 甲：改口叫师父");
+    expect(card).not.toContain("近期状态线索");
+  });
+
+  it("matches the old card when the ledger is empty", () => {
+    const chars = [
+      {
+        ...createEmptyCharacter(),
+        name: "甲",
+        role: "主角",
+        personality: "冷硬寡言",
+      },
+    ];
+    const card = buildCharacterStateCard(chars, ["第1章：甲在渡口受伤"]);
+    expect(card).toBe(
+      [
+        "【角色状态卡 — 近期状态线索（关注：甲）】",
+        "请延续下列状态，勿无故重置称呼、伤势、关系与情绪。",
+        "第1章：甲在渡口受伤",
+      ].join("\n")
+    );
+  });
+
+  it("puts a hand-edited summary into the memory pack", () => {
+    const p = createEmptyProject("手改摘要");
+    p.outline = {
+      premise: "p",
+      endingNote: "e",
+      chapters: [
+        {
+          id: "c1",
+          order: 1,
+          title: "一",
+          summary: "大纲旧句",
+          keyPoints: "",
+          tags: [],
+        },
+        {
+          id: "c2",
+          order: 2,
+          title: "二",
+          summary: "",
+          keyPoints: "",
+          tags: [],
+        },
+      ],
+    };
+    p.chapters = [
+      {
+        chapterId: "c1",
+        title: "一",
+        content: "正文",
+        status: "done",
+        updatedAt: "",
+        summary: "手改：甲改口叫师父，左臂还没好。",
+      },
+    ];
+    const pack = buildMemoryPack(p, 2);
+    expect(pack.previousSummaries).toContain("手改：甲改口叫师父，左臂还没好。");
+    expect(pack.priorBlock).toContain("手改：甲改口叫师父，左臂还没好。");
+  });
+});
+
+describe("plot thread injection and suspension", () => {
+  it("injects at most 12 open threads and always keeps named ones", () => {
+    const named = {
+      ...createEmptyPlotThread("指名主线"),
+      id: "named",
+      status: "active" as const,
+      visibility: "reader_known" as const,
+      kind: "main" as const,
+    };
+    const others = Array.from({ length: 19 }, (_, i) => ({
+      ...createEmptyPlotThread(`开放线索${i + 1}`),
+      id: `t${i + 1}`,
+      status: "active" as const,
+      visibility: "reader_known" as const,
+      kind: "other" as const,
+      updatedAt: `2026-01-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`,
+    }));
+    const text = formatPlotThreads([named, ...others], {
+      namedThreadIds: ["named"],
+    });
+    const lines = text.split("\n").filter((l) => l.startsWith("- "));
+    expect(lines.length).toBeLessThanOrEqual(12);
+    expect(text).toContain("指名主线");
+    expect(text).toContain("其余 8 条未列出，见伏笔板");
+  });
+
+  it("marks threads planted more than 30 chapters ago as overdue", () => {
+    const orderById = new Map([["plant", 2]]);
+    const thread = {
+      ...createEmptyPlotThread("旧线"),
+      plantChapterId: "plant",
+      status: "active" as const,
+    };
+    expect(plotThreadSuspension(thread, orderById, 40)).toBe(38);
+    expect(isPlotThreadOverdue(thread, orderById, 40)).toBe(true);
+    expect(isPlotThreadOverdue(thread, orderById, 20)).toBe(false);
+    expect(
+      isPlotThreadOverdue(
+        { ...thread, dueChapterOrder: 10 },
+        orderById,
+        10
+      )
+    ).toBe(true);
   });
 });

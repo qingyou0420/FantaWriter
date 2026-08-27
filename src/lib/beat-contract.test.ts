@@ -3,10 +3,13 @@ import {
   authorOnlyThreads,
   buildBeatContract,
   formatBeatContract,
+  applyBeatDeltasToProject,
   incomingCanonDeltas,
+  mergeBeatChapterSummary,
   missingVerbatimAnchors,
   proposeBeatDeltas,
   readerKnownThreads,
+  upsertTimelineLore,
 } from "./beat-contract";
 import { buildMemoryPack } from "./memory-pack";
 import { createEmptyPlotThread, createEmptyProject, type LockedCanonFact } from "./types";
@@ -175,5 +178,45 @@ describe("beat contract", () => {
         "霜桥第三块石缺了一角",
       ])
     ).toEqual([]);
+  });
+
+  it("accumulates multi-beat summaries and creates the timeline lore entry", () => {
+    expect(mergeBeatChapterSummary(undefined, 1, "上桥")).toBe("【拍1】上桥");
+    expect(mergeBeatChapterSummary("【拍1】上桥", 2, "交铃")).toBe(
+      "【拍1】上桥\n【拍2】交铃"
+    );
+    const created = upsertTimelineLore([], "寅时出城");
+    expect(created[0].title).toBe("时间线");
+    expect(created[0].body).toContain("寅时出城");
+    const appended = upsertTimelineLore(created, "卯时过桥");
+    expect(appended[0].body).toContain("寅时出城");
+    expect(appended[0].body).toContain("卯时过桥");
+
+    const applied = applyBeatDeltasToProject({
+      chapters: [
+        {
+          chapterId: "c1",
+          title: "一",
+          content: "正文",
+          status: "done",
+          updatedAt: "",
+          summary: "【拍1】上桥",
+        },
+      ],
+      lore: [],
+      threads: [],
+      chapterId: "c1",
+      deltas: {
+        summary: "交铃",
+        timelineNote: "卯时过桥",
+        touchedThreadIds: [],
+        itemProposals: [],
+        canonProposals: [],
+      },
+      scene: { order: 2, summary: "交铃" },
+    });
+    expect(applied.chapters[0].summary).toContain("【拍1】上桥");
+    expect(applied.chapters[0].summary).toContain("【拍2】交铃");
+    expect(applied.lore.some((e) => e.title === "时间线")).toBe(true);
   });
 });

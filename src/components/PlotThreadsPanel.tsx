@@ -3,6 +3,12 @@
 import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import {
+  chapterOrderById,
+  isPlotThreadOverdue,
+  maxWrittenOrder,
+  plotThreadSuspension,
+} from "@/lib/memory-pack";
+import {
   createEmptyPlotThread,
   type NovelProject,
   type PlotThread,
@@ -32,6 +38,14 @@ export function PlotThreadsPanel({
   const chapters = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
     : [];
+  const orderById = chapterOrderById(chapters);
+  const writtenMax = maxWrittenOrder(project);
+  const sortedThreads = [...threads].sort((a, b) => {
+    const ao = isPlotThreadOverdue(a, orderById, writtenMax) ? 0 : 1;
+    const bo = isPlotThreadOverdue(b, orderById, writtenMax) ? 0 : 1;
+    if (ao !== bo) return ao - bo;
+    return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+  });
 
   function updateThread(id: string, patch: Partial<PlotThread>) {
     onChange(
@@ -96,10 +110,33 @@ export function PlotThreadsPanel({
         />
       ) : (
         <div className="space-y-3">
-          {threads.map((t) => {
+          {sortedThreads.map((t) => {
             const hits = chaptersTouching(t.title);
+            const suspended = plotThreadSuspension(t, orderById, writtenMax);
+            const overdue = isPlotThreadOverdue(t, orderById, writtenMax);
             return (
-              <div key={t.id} className="card !p-4 space-y-3">
+              <div
+                key={t.id}
+                className={`card !p-4 space-y-3 ${
+                  overdue
+                    ? "border-[var(--warning)]/60 bg-[var(--warning)]/5"
+                    : ""
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {suspended > 0 ? (
+                    <span
+                      className={`badge ${
+                        overdue ? "text-[var(--warning)]" : ""
+                      }`}
+                    >
+                      悬置 {suspended} 章
+                    </span>
+                  ) : null}
+                  {overdue ? (
+                    <span className="text-[var(--warning)]">建议尽快回收</span>
+                  ) : null}
+                </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <Field label="线索标题">
                     <input
@@ -185,7 +222,7 @@ export function PlotThreadsPanel({
                     rows={2}
                   />
                 </Field>
-                <div className="grid sm:grid-cols-2 gap-3">
+                <div className="grid sm:grid-cols-3 gap-3">
                   <Field label="埋下章节（可选）">
                     <select
                       value={t.plantChapterId || ""}
@@ -219,6 +256,23 @@ export function PlotThreadsPanel({
                         </option>
                       ))}
                     </select>
+                  </Field>
+                  <Field label="打算第几章前回收">
+                    <input
+                      type="number"
+                      min={1}
+                      value={t.dueChapterOrder ?? ""}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        updateThread(t.id, {
+                          dueChapterOrder:
+                            e.target.value.trim() && Number.isFinite(n) && n > 0
+                              ? n
+                              : undefined,
+                        });
+                      }}
+                      placeholder="章序"
+                    />
                   </Field>
                 </div>
                 <div className="flex justify-end">

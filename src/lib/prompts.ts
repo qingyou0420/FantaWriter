@@ -71,8 +71,13 @@ export function formatCharacters(
     : "（未匹配到出场人物，回退为全量）\n" +
       characters.map((c, i) => formatCharacterFull(c, i)).join("\n\n");
   if (!others.length || !featured.length) return featuredBlock;
-  const cards = others.map((c) => formatCharacterNameCard(c, featured)).join("\n");
-  return `## 本章出场人物（完整设定）\n${featuredBlock}\n\n## 其余人物（仅名片，非必要勿写入正文）\n${cards}`;
+  const NAME_CARD_CAP = 20;
+  const shown = others.slice(0, NAME_CARD_CAP);
+  const omitted = others.length - shown.length;
+  const cards = shown.map((c) => formatCharacterNameCard(c, featured)).join("\n");
+  const footer =
+    omitted > 0 ? `\n其余 ${omitted} 人本章不出场，勿写入。` : "";
+  return `## 本章出场人物（完整设定）\n${featuredBlock}\n\n## 其余人物（仅名片，非必要勿写入正文）\n${cards}${footer}`;
 }
 
 export function formatBackground(bg: StoryBackground): string {
@@ -107,7 +112,11 @@ export function formatSettings(
   lines.push(
     styleLine,
     `叙述人称：${PERSON_LABELS[s.person]}`,
-    `章节篇幅：${LENGTH_LABELS[s.length]}`,
+    `章节篇幅：${
+      s.customLength && s.customLength.min < s.customLength.max
+        ? `自定义（${s.customLength.min}–${s.customLength.max}字/章）`
+        : LENGTH_LABELS[s.length]
+    }`,
     `语言：${s.language === "zh" ? "中文" : "English"}`
   );
   if (s.extraInstructions) lines.push(`额外指令：${s.extraInstructions}`);
@@ -172,7 +181,7 @@ export function extractJsonObject(text: string): string {
 
 export function parseOutlineJson(
   text: string,
-  opts?: { volumeId?: string }
+  opts?: { volumeId?: string; characters?: Character[] }
 ): Outline {
   const data = JSON.parse(extractJsonObject(text)) as {
     premise?: string;
@@ -184,11 +193,20 @@ export function parseOutlineJson(
       keyPoints?: string;
       eroticNote?: string;
       intensityNote?: string;
+      hook?: string;
+      cast?: string[];
     }>;
   };
 
+  const roster = opts?.characters || [];
   const chapters: OutlineChapter[] = (data.chapters || []).map((c, i) => {
     const intensityNote = String(c.intensityNote || c.eroticNote || "").trim();
+    const names = Array.isArray(c.cast)
+      ? c.cast.map((n) => String(n || "").trim()).filter(Boolean)
+      : [];
+    const castIds = names
+      .map((name) => roster.find((ch) => ch.name.trim() === name.trim())?.id)
+      .filter((id): id is string => Boolean(id));
     return {
       id: crypto.randomUUID(),
       order: c.order ?? i + 1,
@@ -198,7 +216,8 @@ export function parseOutlineJson(
       intensityNote: intensityNote || undefined,
       tags: [],
       volumeId: opts?.volumeId,
-      castIds: [],
+      castIds,
+      hook: typeof c.hook === "string" ? c.hook : "",
     };
   });
 
@@ -391,17 +410,24 @@ export function buildChapterSummaryUserPrompt(opts: {
   content: string;
   title: string;
   openThreads?: string[];
+  serialMode?: boolean;
 }): string {
   const threads = (opts.openThreads || []).map((t) => t.trim()).filter(Boolean);
   const threadLine = threads.length
     ? `\n当前未回收伏笔标题：${threads.join("、")}\n请在摘要末尾单独一行写：触及的伏笔：A、B（只列确实写到的；没有则写「触及的伏笔：无」）`
     : `\n若正文触及可回收线索，在摘要末尾单独一行写：触及的伏笔：A、B；没有则写「触及的伏笔：无」`;
+  const hookLine = opts.serialMode
+    ? `\n4. 本章结尾钩子是否落地，一句话写进摘要散文（不要另起字段）`
+    : "";
   return `请用 120–250 字中文总结下列章节正文，供后续章节衔接使用。
 必须包含：
 1. 关键事件与情节推进
 2. 主要人物的状态变化（称呼/情绪/关系/伤势等，写具体）
-3. 未解冲突与可回收伏笔
+3. 未解冲突与可回收伏笔${hookLine}
 不要引号包裹，不要标题。${threadLine}
+
+在散文摘要之后，另起一段只输出如下 JSON（不要 markdown 代码块）。只写**本章发生变化**的人物、只写正文明写的事实；无人变化则 "states": []：
+{"states":[{"name":"姓名","location":"可选","injury":"可选","relationsDelta":"可选","addressDelta":"可选","goal":"可选"}]}
 
 章节：${opts.title}
 正文：

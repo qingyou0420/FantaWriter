@@ -18,6 +18,10 @@ import {
   stripTouchedThreadLine,
   type RewriteMode,
 } from "@/lib/prompts";
+import {
+  parseCharacterStatesAppendix,
+  stripCharacterStatesAppendix,
+} from "@/lib/character-states";
 import type {
   Character,
   GenerationSettings,
@@ -73,6 +77,15 @@ type Body =
       volumeId?: string;
       previousEnding?: string;
       chapterCount?: number;
+    })
+  | (BodyBase & {
+      mode: "outline_next";
+      volume?: Volume;
+      volumeId?: string;
+      chapterCount?: number;
+      recentSummaries?: { order: number; title: string; summary: string }[];
+      openThreads?: string[];
+      characterStates?: string;
     })
   | (BodyBase & { mode: "chapter" })
   | (BodyBase & { mode: "rewrite"; selectedText?: string; fullContext?: string })
@@ -137,7 +150,7 @@ function sseEncode(obj: unknown): string {
 function streamResponse(
   system: string,
   user: string,
-  options: { temperature?: number; maxTokens?: number },
+  options: { temperature?: number; maxTokens?: number; mode?: string },
   signal: AbortSignal
 ): Response {
   const encoder = new TextEncoder();
@@ -192,25 +205,34 @@ export async function POST(req: NextRequest) {
     const wantStream = Boolean(body.stream);
     const writingBoard = parseWritingBoard(body);
 
-    if (body.mode === "outline" || body.mode === "outline_volume") {
+    if (
+      body.mode === "outline" ||
+      body.mode === "outline_volume" ||
+      body.mode === "outline_next"
+    ) {
       const { system, user } = assemble(
-        body.mode === "outline_volume" ? "outline_volume" : "outline",
+        body.mode === "outline_volume"
+          ? "outline_volume"
+          : body.mode === "outline_next"
+            ? "outline_next"
+            : "outline",
         writingBoard,
         asAssemblePayload(body)
       );
       const text = await chatComplete(system, user, {
         temperature: 0.8,
         maxTokens: 8192,
+        mode: body.mode,
       });
       try {
         const volumeId =
-          body.mode === "outline_volume"
+          body.mode === "outline_volume" || body.mode === "outline_next"
             ? String(body.volume?.id || body.volumeId || "")
             : "";
-        const outline = parseOutlineJson(
-          text,
-          volumeId ? { volumeId } : undefined
-        );
+        const outline = parseOutlineJson(text, {
+          volumeId: volumeId || undefined,
+          characters: body.characters,
+        });
         return NextResponse.json({ ok: true, outline, raw: text });
       } catch {
         return NextResponse.json({
@@ -234,13 +256,14 @@ export async function POST(req: NextRequest) {
         return streamResponse(
           assembled.system,
           assembled.user,
-          { temperature, maxTokens: 8192 },
+          { temperature, maxTokens: 8192, mode: body.mode },
           signal
         );
       }
       const text = await chatComplete(assembled.system, assembled.user, {
         temperature,
         maxTokens: 8192,
+        mode: body.mode,
       });
       return NextResponse.json({ ok: true, content: text });
     }
@@ -257,13 +280,14 @@ export async function POST(req: NextRequest) {
         return streamResponse(
           system,
           user,
-          { temperature: 0.75, maxTokens: rewriteTokens },
+          { temperature: 0.75, maxTokens: rewriteTokens, mode: body.mode },
           signal
         );
       }
       const text = await chatComplete(system, user, {
         temperature: 0.75,
         maxTokens: rewriteTokens,
+        mode: body.mode,
       });
       return NextResponse.json({ ok: true, content: text });
     }
@@ -275,13 +299,14 @@ export async function POST(req: NextRequest) {
         return streamResponse(
           system,
           user,
-          { temperature, maxTokens: 8192 },
+          { temperature, maxTokens: 8192, mode: body.mode },
           signal
         );
       }
       const text = await chatComplete(system, user, {
         temperature,
         maxTokens: 8192,
+        mode: body.mode,
       });
       return NextResponse.json({ ok: true, content: text });
     }
@@ -293,14 +318,18 @@ export async function POST(req: NextRequest) {
           content: String(body.content || ""),
           title: String(body.title || ""),
           openThreads: body.openThreads,
+          serialMode: Boolean(body.settings?.serialMode),
         }),
-        { temperature: 0.4, maxTokens: 512 }
+        { temperature: 0.4, maxTokens: 512, mode: body.mode }
       );
       const raw = text.trim();
+      const states = parseCharacterStatesAppendix(raw);
+      const prose = stripTouchedThreadLine(stripCharacterStatesAppendix(raw)) || raw;
       return NextResponse.json({
         ok: true,
-        summary: stripTouchedThreadLine(raw) || raw,
+        summary: prose,
         touchedThreads: parseTouchedThreads(raw),
+        characterStates: states,
         raw,
       });
     }
@@ -395,13 +424,14 @@ export async function POST(req: NextRequest) {
         return streamResponse(
           system,
           user,
-          { temperature, maxTokens: 4096 },
+          { temperature, maxTokens: 4096, mode: body.mode },
           signal
         );
       }
       const text = await chatComplete(system, user, {
         temperature,
         maxTokens: 4096,
+        mode: body.mode,
       });
       return NextResponse.json({ ok: true, content: text });
     }

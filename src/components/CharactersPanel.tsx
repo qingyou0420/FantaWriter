@@ -16,6 +16,7 @@ import { assertCharactersRespectCanon, hasOriginalGrounding } from "@/lib/origin
 import {
   createEmptyCharacter,
   type Character,
+  type CharacterStateLedger,
   type LockedCanonFact,
   type OriginalManuscript,
   type StoryBackground,
@@ -29,6 +30,8 @@ export function CharactersPanel({
   original,
   canon,
   openEditorRequest = 0,
+  characterStates,
+  onCharacterStatesChange,
   onChange,
   onCastGenerated,
   onError,
@@ -40,6 +43,8 @@ export function CharactersPanel({
   canon?: LockedCanonFact[];
   /** Increment to open the edit dialog (e.g. onboarding「写人物」). */
   openEditorRequest?: number;
+  characterStates?: CharacterStateLedger;
+  onCharacterStatesChange?: (states: CharacterStateLedger) => void;
   onChange: (c: Character[] | ((prev: Character[]) => Character[])) => void;
   onCastGenerated: (c: Character[], b: StoryBackground) => void;
   onError: (msg: string) => void;
@@ -385,6 +390,71 @@ export function CharactersPanel({
           />
         )}
       </div>
+
+      {onCharacterStatesChange ? (
+        <div className="card">
+          <h2 className="card-title">当前人物状态</h2>
+          <p className="text-xs text-[var(--text-muted)] mt-0 mb-3">
+            手改账本会进入下一章记忆包。每人保留最近 6 条。
+          </p>
+          {(() => {
+            const names = Array.from(
+              new Set([
+                ...list.map((c) => c.name.trim()).filter(Boolean),
+                ...Object.keys(characterStates || {}),
+              ])
+            );
+            if (!names.length) {
+              return (
+                <p className="text-sm text-[var(--text-muted)] m-0">
+                  添加人物或生成章摘要后，可在这里改称呼 / 伤势 / 位置。
+                </p>
+              );
+            }
+            return (
+              <ul className="list-none p-0 m-0 space-y-3">
+                {names.map((name) => {
+                  const rows = characterStates?.[name] || [];
+                  const latest = rows[rows.length - 1];
+                  return (
+                    <li key={name}>
+                      <Field label={name}>
+                        <textarea
+                          rows={2}
+                          value={latest?.note || ""}
+                          placeholder="位置、伤势、称呼、关系…"
+                          onChange={(e) => {
+                            const note = e.target.value;
+                            const next: CharacterStateLedger = {
+                              ...(characterStates || {}),
+                            };
+                            const prev = [...(next[name] || [])];
+                            if (prev.length) {
+                              prev[prev.length - 1] = {
+                                ...prev[prev.length - 1],
+                                note,
+                              };
+                            } else {
+                              prev.push({ chapterOrder: 0, note });
+                            }
+                            if (!note.trim()) {
+                              if (prev.length <= 1) delete next[name];
+                              else next[name] = prev.slice(0, -1);
+                            } else {
+                              next[name] = prev;
+                            }
+                            onCharacterStatesChange(next);
+                          }}
+                        />
+                      </Field>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
+        </div>
+      ) : null}
 
       {editor.open && draft ? (
         <div

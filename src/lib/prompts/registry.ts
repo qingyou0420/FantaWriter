@@ -21,6 +21,7 @@ import {
   generalContinueUser,
   generalVolumeOutlineUser,
   generalVolumeSummaryUser,
+  generalNextChaptersUser,
 } from "./general";
 import {
   buildExtractCanonUserPrompt,
@@ -31,6 +32,7 @@ import { buildExtractSkeletonUserPrompt } from "../skeleton";
 export type GenerateTaskMode =
   | "outline"
   | "outline_volume"
+  | "outline_next"
   | "chapter"
   | "rewrite"
   | "continue"
@@ -200,6 +202,21 @@ function assembleGeneral(
           volume: payload.volume as never,
           previousEnding: payload.previousEnding as string | undefined,
           chapterCount: Number(payload.chapterCount || 10),
+          projectTags: payload.projectTags as string[] | undefined,
+        }),
+      };
+    case "outline_next":
+      return {
+        system: chapterSys,
+        user: generalNextChaptersUser({
+          characters: payload.characters as never,
+          background: payload.background as never,
+          settings: payload.settings as never,
+          volume: payload.volume as never,
+          chapterCount: Number(payload.chapterCount || 10),
+          recentSummaries: (payload.recentSummaries || []) as never,
+          openThreads: payload.openThreads as string[] | undefined,
+          characterStates: payload.characterStates as string | undefined,
           projectTags: payload.projectTags as string[] | undefined,
         }),
       };

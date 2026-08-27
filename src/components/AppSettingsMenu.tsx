@@ -52,6 +52,12 @@ export function AppSettingsMenu({
   const [apiKey, setApiKey] = useState("");
   const [apiModel, setApiModel] = useState("deepseek-v4-pro");
   const [apiBaseURL, setApiBaseURL] = useState("https://api.deepseek.com");
+  const [fineOpen, setFineOpen] = useState(false);
+  const [fineApiKey, setFineApiKey] = useState("");
+  const [fineModel, setFineModel] = useState("");
+  const [fineBaseURL, setFineBaseURL] = useState("");
+  const [fineHasKey, setFineHasKey] = useState(false);
+  const [fineKeyPrefix, setFineKeyPrefix] = useState("");
   const [apiSaving, setApiSaving] = useState(false);
 
   const [appInfo, setAppInfo] = useState<DesktopAppInfo | null>(null);
@@ -119,6 +125,13 @@ export function AppSettingsMenu({
         if (typeof data.env?.thinkingEnabled === "boolean") {
           setThinkingEnabled(data.env.thinkingEnabled);
         }
+        if (data.env?.fineModel) setFineModel(data.env.fineModel);
+        if (data.env?.fineBaseURL) setFineBaseURL(data.env.fineBaseURL);
+        setFineHasKey(Boolean(data.env?.fineHasKey));
+        setFineKeyPrefix(String(data.env?.fineKeyPrefix || ""));
+        if (data.env?.fineConfigured || data.env?.fineHasKey || data.env?.fineModel) {
+          setFineOpen(true);
+        }
       } catch {
         /* ignore */
       }
@@ -142,11 +155,15 @@ export function AppSettingsMenu({
           apiKey: apiKey.trim() || undefined,
           model: apiModel.trim() || "deepseek-v4-pro",
           baseURL: apiBaseURL.trim() || "https://api.deepseek.com",
+          fineApiKey: fineApiKey.trim() || undefined,
+          fineModel: fineModel.trim(),
+          fineBaseURL: fineBaseURL.trim(),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "保存失败");
       setApiKey("");
+      setFineApiKey("");
       toast.success("API 已保存");
       onHasKeyChange?.();
       setPanel("menu");
@@ -547,6 +564,50 @@ export function AppSettingsMenu({
                 推理开关 DEEPSEEK_THINKING：{thinkingEnabled ? "已开启" : "未开启"}
                 （由环境变量控制）
               </p>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm w-full !justify-between mb-2"
+              onClick={() => setFineOpen((v) => !v)}
+            >
+              <span>精写模型（可选）</span>
+              <span>{fineOpen ? "▴" : "▾"}</span>
+            </button>
+            {fineOpen ? (
+              <div className="mb-2">
+                <p className="text-xs text-[var(--text-muted)] m-0 mb-2">
+                  正文 / 续写 / 改写 / 按拍扩写走此档；未填则回落主力模型。摘要、大纲、检查等大宗任务仍走上面的主力档。
+                </p>
+                <div className="field !mb-2">
+                  <label className="field-label">
+                    精写 API Key
+                    {fineHasKey ? `（${fineKeyPrefix}…，留空不改）` : ""}
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={fineApiKey}
+                    onChange={(e) => setFineApiKey(e.target.value)}
+                    placeholder="FINE_API_KEY"
+                  />
+                </div>
+                <div className="field !mb-2">
+                  <label className="field-label">精写 Base URL</label>
+                  <input
+                    value={fineBaseURL}
+                    onChange={(e) => setFineBaseURL(e.target.value)}
+                    placeholder="FINE_BASE_URL"
+                  />
+                </div>
+                <div className="field !mb-2">
+                  <label className="field-label">精写模型</label>
+                  <input
+                    value={fineModel}
+                    onChange={(e) => setFineModel(e.target.value)}
+                    placeholder="FINE_MODEL"
+                  />
+                </div>
+              </div>
             ) : null}
             <button
               type="button"
