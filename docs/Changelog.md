@@ -1,3 +1,5 @@
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)；本文仍是开发细志。
+
 # Changelog
 
 ## Unreleased

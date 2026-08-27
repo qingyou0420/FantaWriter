@@ -6,6 +6,8 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 
 当前版本：**1.5.0**
 
+**[更新日志](./CHANGELOG.md)**：各已发行版本的用户可见改动。 / User-facing changelog: **[CHANGELOG.md](./CHANGELOG.md)**.
+
 ## 系统要求
 
 - **安装包**：仅 Windows 64 位（x64）。没有 macOS / Linux 安装包。
