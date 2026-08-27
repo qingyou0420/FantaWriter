@@ -2,6 +2,14 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「幻想作家」，英文名 FantaWriter。
 
+## [1.5.1] - 2026-08-27
+
+安装包：`FantaWriter-Setup-1.5.1.exe`（同时上传 `Fantasy-Writer-Setup-1.5.1.exe` 别名）。
+
+### 修复
+
+- 冷启动后窗口一出现，首页项目名等输入框立刻可点可输；静默检查更新不再挡首屏。
+
 ## [1.5.0] - 2026-08-27
 
 安装包：`FantaWriter-Setup-1.5.0.exe`（同时上传 `Fantasy-Writer-Setup-1.5.0.exe` 别名）。
@@ -133,6 +141,7 @@
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[1.5.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.1
 [1.5.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.0
 [1.4.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.4.3
 [1.4.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.4.2
