@@ -1,19 +1,123 @@
+import { formatCharacterStateLedger } from "./character-states";
+
+export { formatCharacterStateLedger };
 import { formatLoreBlock, selectLoreForPrompt } from "./lore";
 import { isReaderKnownThread } from "./types";
 import type {
   Character,
+  CharacterStateLedger,
   NovelProject,
   OutlineChapter,
   PlotThread,
   Volume,
 } from "./types";
 
-function formatPlotThreads(threads?: PlotThread[]): string {
-  if (!threads?.length) return "";
-  return threads
-    .filter((t) => t.status !== "resolved" && isReaderKnownThread(t))
-    .map((t) => `- [${t.status}] ${t.title}${t.note ? `：${t.note}` : ""}`)
-    .join("\n");
+export const PLOT_THREAD_INJECT_LIMIT = 12;
+
+export function chapterOrderById(
+  chapters: OutlineChapter[] | undefined
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const ch of chapters || []) map.set(ch.id, ch.order);
+  return map;
+}
+
+export function maxWrittenOrder(
+  project: Pick<NovelProject, "outline" | "chapters">
+): number {
+  let max = 0;
+  for (const ch of project.outline?.chapters || []) {
+    const row = project.chapters.find((c) => c.chapterId === ch.id);
+    if (row?.content?.trim() || row?.status === "done") {
+      max = Math.max(max, ch.order);
+    }
+  }
+  return max;
+}
+
+export function plotThreadSuspension(
+  thread: PlotThread,
+  orderById: Map<string, number>,
+  writtenMax: number
+): number {
+  const planted = thread.plantChapterId
+    ? orderById.get(thread.plantChapterId)
+    : undefined;
+  if (typeof planted !== "number") return 0;
+  return Math.max(0, writtenMax - planted);
+}
+
+export function isPlotThreadOverdue(
+  thread: PlotThread,
+  orderById: Map<string, number>,
+  writtenMax: number
+): boolean {
+  if (thread.status === "resolved") return false;
+  if (plotThreadSuspension(thread, orderById, writtenMax) > 30) return true;
+  if (
+    typeof thread.dueChapterOrder === "number" &&
+    writtenMax >= thread.dueChapterOrder
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function selectPlotThreadsForPrompt(
+  threads: PlotThread[] | undefined,
+  opts?: {
+    currentOrder?: number;
+    namedThreadIds?: string[];
+    recentTouchedTitles?: string[];
+  }
+): { selected: PlotThread[]; omitted: number } {
+  const open = (threads || []).filter(
+    (t) => t.status !== "resolved" && isReaderKnownThread(t)
+  );
+  if (!open.length) return { selected: [], omitted: 0 };
+  const named = new Set(opts?.namedThreadIds || []);
+  const recent = new Set(
+    (opts?.recentTouchedTitles || []).map((s) => s.trim()).filter(Boolean)
+  );
+  const rank = (t: PlotThread) => {
+    if (named.has(t.id)) return 0;
+    if (recent.has(t.title.trim())) return 1;
+    if (t.kind === "main") return 2;
+    return 3;
+  };
+  const sorted = [...open].sort((a, b) => {
+    const d = rank(a) - rank(b);
+    if (d !== 0) return d;
+    return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+  });
+  const selected = sorted.slice(0, PLOT_THREAD_INJECT_LIMIT);
+  return { selected, omitted: Math.max(0, sorted.length - selected.length) };
+}
+
+export function formatPlotThreadLine(
+  t: PlotThread,
+  extra?: string
+): string {
+  return `- [${t.status}] ${t.title}${t.note ? `：${t.note}` : ""}${
+    extra ? `（${extra}）` : ""
+  }`;
+}
+
+export function formatPlotThreads(
+  threads?: PlotThread[],
+  opts?: {
+    currentOrder?: number;
+    namedThreadIds?: string[];
+    recentTouchedTitles?: string[];
+  }
+): string {
+  const { selected, omitted } = selectPlotThreadsForPrompt(threads, opts);
+  if (!selected.length) return "";
+  const lines = selected.map((t) => formatPlotThreadLine(t));
+  if (omitted > 0) {
+    lines.push(`（其余 ${omitted} 条未列出，见伏笔板）`);
+  }
+  return lines.join("\n");
 }
 
 /** 跨章记忆包：生成章前注入，减漂移 */
@@ -51,8 +155,14 @@ export function formatVolumeMemory(
     : undefined;
   const lines: string[] = [];
   if (currentVol) {
+    const extras = [
+      currentVol.arcGoal?.trim() && `弧线目标：${currentVol.arcGoal.trim()}`,
+      currentVol.exitState?.trim() && `出卷局面：${currentVol.exitState.trim()}`,
+    ].filter(Boolean);
     lines.push(
-      `本卷《${currentVol.title}》：${(currentVol.summary || "").trim() || "（未填摘要）"}`
+      `本卷《${currentVol.title}》：${(currentVol.summary || "").trim() || "（未填摘要）"}${
+        extras.length ? `；${extras.join("；")}` : ""
+      }`
     );
     const done = sortVolumes(volumes).filter(
       (v) => v.order < currentVol.order && v.summary?.trim()
@@ -78,14 +188,28 @@ export function formatVolumeMemory(
  */
 export function buildCharacterStateCard(
   characters: Character[],
-  recentSummaries: string[]
+  recentSummaries: string[],
+  ledger?: CharacterStateLedger
 ): string {
-  const recent = recentSummaries.filter(Boolean).join("\n");
-  if (!recent) return "";
   const names = characters
     .map((c) => c.name)
     .filter(Boolean)
     .slice(0, 12);
+  const ledgerBlock = formatCharacterStateLedger(ledger, names, 3);
+  const recent = recentSummaries.filter(Boolean).join("\n");
+  if (ledgerBlock) {
+    const who = names.length ? `（关注：${names.join("、")}）` : "";
+    const parts = [
+      `【角色状态卡${who}】`,
+      "请延续下列状态，勿无故重置称呼、伤势、关系与情绪。",
+      ledgerBlock,
+    ];
+    if (recent) {
+      parts.push("近期摘要补充：", recent);
+    }
+    return parts.join("\n");
+  }
+  if (!recent) return "";
   const who = names.length ? `（关注：${names.join("、")}）` : "";
   return [
     `【角色状态卡 — 近期状态线索${who}】`,
@@ -101,7 +225,14 @@ export function buildCharacterStateCard(
 export function buildMemoryPack(
   project: Pick<
     NovelProject,
-    "characters" | "outline" | "chapters" | "plotThreads" | "lore" | "volumes"
+    | "characters"
+    | "outline"
+    | "chapters"
+    | "plotThreads"
+    | "lore"
+    | "volumes"
+    | "settings"
+    | "characterStates"
   >,
   currentOrder: number,
   opts?: { summaryLimit?: number; snippetChars?: number; chapterText?: string }
@@ -140,15 +271,28 @@ export function buildMemoryPack(
 
   const characterStateCard = buildCharacterStateCard(
     castChars,
-    rawSummaries.slice(-3)
+    rawSummaries.slice(-3),
+    project.characterStates
   );
-
-  const plotThreads = formatPlotThreads(project.plotThreads);
-  const previousSummaries = summaryLines.join("\n");
 
   const currentRow = current
     ? project.chapters.find((c) => c.chapterId === current.id)
     : undefined;
+  const namedThreadIds = (currentRow?.scenes || [])
+    .flatMap((s) => s.threadIds || [])
+    .filter(Boolean);
+  const recentTouched = prev
+    .slice(-5)
+    .flatMap((ch) => {
+      const row = project.chapters.find((c) => c.chapterId === ch.id);
+      return row?.touchedThreads || [];
+    });
+  const plotThreads = formatPlotThreads(project.plotThreads, {
+    currentOrder,
+    namedThreadIds,
+    recentTouchedTitles: recentTouched,
+  });
+  const previousSummaries = summaryLines.join("\n");
   const chapterText =
     opts?.chapterText ||
     [
@@ -175,6 +319,9 @@ export function buildMemoryPack(
   }
   if (previousSnippet) {
     priorParts.push(`## 上一章结尾片段（衔接用）\n${previousSnippet}`);
+  }
+  if (project.settings?.serialMode && last?.hook?.trim()) {
+    priorParts.push(`上章钩子：${last.hook.trim()}`);
   }
   if (plotThreads) {
     priorParts.push(`## 伏笔/线索（本章可推进或回收）\n${plotThreads}`);

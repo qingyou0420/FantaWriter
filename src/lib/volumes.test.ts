@@ -6,9 +6,12 @@ import {
   addVolume,
   chaptersInVolume,
   chaptersGroupedByVolume,
+  appendVolumeChapters,
+  insertChapterAfter,
   mergeVolumeChapters,
   removeVolume,
   volumeHasWrittenChapters,
+  volumeNeedsSummaryPrompt,
 } from "./volumes";
 
 describe("volumes + per-volume job + export", () => {
@@ -185,5 +188,107 @@ describe("volumes + per-volume job + export", () => {
     expect(volumeHasWrittenChapters(p, volId)).toBe(false);
     p.chapters[0].content = "已写的一章正文";
     expect(volumeHasWrittenChapters(p, volId)).toBe(true);
+  });
+
+  it("appendVolumeChapters keeps existing ids/order/content links", () => {
+    const existing = Array.from({ length: 30 }, (_, i) => ({
+      id: `c${i + 1}`,
+      order: i + 1,
+      title: `第${i + 1}章`,
+      summary: "",
+      keyPoints: "",
+      tags: [] as string[],
+      volumeId: "v1",
+    }));
+    const incoming = Array.from({ length: 10 }, (_, i) => ({
+      id: `n${i + 1}`,
+      order: i + 1,
+      title: `新${i + 1}`,
+      summary: "s",
+      keyPoints: "",
+      tags: [] as string[],
+    }));
+    const next = appendVolumeChapters(existing, incoming, "v1", [
+      { id: "v1", order: 1, title: "上", summary: "" },
+    ]);
+    expect(next).toHaveLength(40);
+    expect(next.slice(0, 30).map((c) => c.id)).toEqual(
+      existing.map((c) => c.id)
+    );
+    expect(next.slice(0, 30).map((c) => c.order)).toEqual(
+      existing.map((c) => c.order)
+    );
+    expect(next.slice(30).map((c) => c.id)).toEqual(incoming.map((c) => c.id));
+    expect(next.map((c) => c.order)).toEqual(
+      Array.from({ length: 40 }, (_, i) => i + 1)
+    );
+  });
+
+  it("insertChapterAfter keeps chapterId links and continuous order", () => {
+    const existing = [
+      {
+        id: "c1",
+        order: 1,
+        title: "一",
+        summary: "",
+        keyPoints: "",
+        tags: [] as string[],
+        volumeId: "v1",
+      },
+      {
+        id: "c2",
+        order: 2,
+        title: "二",
+        summary: "",
+        keyPoints: "",
+        tags: [] as string[],
+        volumeId: "v1",
+      },
+    ];
+    const inserted = insertChapterAfter(existing, "c1", {
+      id: "c-new",
+      order: 0,
+      title: "插章",
+      summary: "",
+      keyPoints: "",
+      tags: [],
+      volumeId: "v1",
+    });
+    expect(inserted.map((c) => c.id)).toEqual(["c1", "c-new", "c2"]);
+    expect(inserted.map((c) => c.order)).toEqual([1, 2, 3]);
+    expect(inserted[2].id).toBe("c2");
+  });
+
+  it("volumeNeedsSummaryPrompt only when the volume is done and empty", () => {
+    const p = createEmptyProject("完卷");
+    const volId = p.volumes![0].id;
+    p.volumes![0].summary = "";
+    p.outline = {
+      premise: "",
+      endingNote: "",
+      chapters: [
+        {
+          id: "c1",
+          order: 1,
+          title: "一",
+          summary: "",
+          keyPoints: "",
+          tags: [],
+          volumeId: volId,
+        },
+      ],
+    };
+    p.chapters = [
+      {
+        chapterId: "c1",
+        title: "一",
+        content: "正文",
+        status: "done",
+        updatedAt: "",
+      },
+    ];
+    expect(volumeNeedsSummaryPrompt(p, volId)).toBe(true);
+    p.volumes![0].summary = "已有摘要";
+    expect(volumeNeedsSummaryPrompt(p, volId)).toBe(false);
   });
 });

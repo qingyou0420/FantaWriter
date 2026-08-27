@@ -5,6 +5,7 @@ import { AiBox } from "@/components/AiBox";
 import { Field } from "@/components/Field";
 import { postGenerate } from "@/lib/api";
 import { previewBuiltInSystem } from "@/lib/prompts/registry";
+import { lengthRangeFor } from "@/lib/length";
 import {
   LENGTH_LABELS,
   PERSON_LABELS,
@@ -160,12 +161,22 @@ export function SettingsPanel({
         </Field>
         <Field label="章节篇幅">
           <select
-            value={settings.length}
-            onChange={(e) =>
+            value={settings.customLength ? "custom" : settings.length}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "custom") {
+                const cur = lengthRangeFor(
+                  settings.length,
+                  settings.customLength
+                );
+                patch({ customLength: { min: cur.min, max: cur.max } });
+                return;
+              }
               patch({
-                length: e.target.value as GenerationSettings["length"],
-              })
-            }
+                length: v as GenerationSettings["length"],
+                customLength: undefined,
+              });
+            }}
           >
             {(Object.keys(LENGTH_LABELS) as Array<keyof typeof LENGTH_LABELS>).map(
               (k) => (
@@ -174,8 +185,50 @@ export function SettingsPanel({
                 </option>
               )
             )}
+            <option value="custom">自定义</option>
           </select>
         </Field>
+        {settings.customLength ? (
+          <Field
+            label="自定义字数"
+            hint="夹值 500–20000，且下限须小于上限"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={500}
+                max={20000}
+                className="!w-24"
+                value={settings.customLength.min}
+                onChange={(e) => {
+                  const min = Math.max(
+                    500,
+                    Math.min(20000, Number(e.target.value) || 500)
+                  );
+                  const max = Math.max(min + 1, settings.customLength!.max);
+                  patch({ customLength: { min, max } });
+                }}
+              />
+              <span className="text-sm text-[var(--text-muted)]">–</span>
+              <input
+                type="number"
+                min={500}
+                max={20000}
+                className="!w-24"
+                value={settings.customLength.max}
+                onChange={(e) => {
+                  const max = Math.max(
+                    500,
+                    Math.min(20000, Number(e.target.value) || 500)
+                  );
+                  const min = Math.min(max - 1, settings.customLength!.min);
+                  if (min < max) patch({ customLength: { min, max } });
+                }}
+              />
+              <span className="text-xs text-[var(--text-muted)]">字/章</span>
+            </div>
+          </Field>
+        ) : null}
         <Field label="语言">
           <select
             value={settings.language}
@@ -212,7 +265,10 @@ export function SettingsPanel({
             </span>
           </div>
         </Field>
-        <Field label="建议章节数">
+        <Field
+          label="每次规划章数"
+          hint="单次排章 / 续排的批量上限（1–30）"
+        >
           <input
             type="number"
             min={1}
@@ -227,6 +283,20 @@ export function SettingsPanel({
               })
             }
           />
+        </Field>
+        <Field
+          label="连载模式"
+          hint="开启后正文开头承接上章钩子，结尾停在本章钩子上。关闭时与现在完全一致。"
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="!w-auto"
+              checked={Boolean(settings.serialMode)}
+              onChange={(e) => patch({ serialMode: e.target.checked })}
+            />
+            按连载章来写（钩子 / 断章）
+          </label>
         </Field>
       </div>
 

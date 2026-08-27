@@ -1,6 +1,6 @@
 "use client";
 
-import { buildBookProgress } from "@/lib/progress";
+import { buildBookProgress, serialBoardStats } from "@/lib/progress";
 import type { NovelProject } from "@/lib/types";
 
 export function ProgressDashboard({
@@ -11,6 +11,7 @@ export function ProgressDashboard({
   compact?: boolean;
 }) {
   const p = buildBookProgress(project);
+  const board = serialBoardStats(project);
 
   if (!p.totalChapters) {
     return (
@@ -30,7 +31,7 @@ export function ProgressDashboard({
       {!compact ? (
         <h2 className="text-base font-semibold m-0 mb-1">字数进度</h2>
       ) : null}
-      <p className="text-sm text-[var(--text-muted)] mt-0 mb-3">
+      <p className="text-sm text-[var(--text-muted)] mt-0 mb-1">
         实写{" "}
         <strong className="text-[var(--text)]">
           {p.totalWords.toLocaleString()}
@@ -38,6 +39,11 @@ export function ProgressDashboard({
         / 目标约 {p.targetTotal.toLocaleString()} 字（
         {p.percentOfTarget}%）· 已写 {p.doneChapters}/{p.totalChapters} 章（
         {p.percentChapters}%）
+      </p>
+      <p className="text-sm text-[var(--text-muted)] mt-0 mb-3">
+        存稿 <strong className="text-[var(--text)]">{board.backlog}</strong> 章
+        · 已发布 {board.published} 章 · 最近 7 天新增{" "}
+        {board.wordsLast7Days.toLocaleString()} 字
       </p>
 
       <div className="h-2 rounded-full bg-[var(--bg)] overflow-hidden mb-3 border border-[var(--border-soft)]">

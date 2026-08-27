@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   allowsWholeBookGenerate,
+  createBookJob,
   normalizeStaleJob,
+  shouldPauseAfterMaxChapters,
   type BookJob,
 } from "./book-job";
 import { createEmptyProject } from "./types";
@@ -53,5 +55,25 @@ describe("BookGenerationJob stays for from-scratch books", () => {
       updatedAt: "",
     };
     expect(allowsWholeBookGenerate(p)).toBe(false);
+  });
+});
+
+describe("maxChapters pause", () => {
+  it("pauses after N chapters while the rest stay pending", () => {
+    const outline = Array.from({ length: 5 }, (_, i) => ({
+      id: `c${i + 1}`,
+      order: i + 1,
+      title: `第${i + 1}章`,
+      summary: "",
+      keyPoints: "",
+      tags: [] as string[],
+    }));
+    const job = createBookJob(outline, [], "missing", undefined, 2);
+    expect(job.maxChapters).toBe(2);
+    expect(job.items.filter((i) => i.status === "pending")).toHaveLength(5);
+    expect(shouldPauseAfterMaxChapters(job, 1)).toBe(false);
+    expect(shouldPauseAfterMaxChapters(job, 2)).toBe(true);
+    const remaining = job.items.filter((i) => i.status === "pending");
+    expect(remaining).toHaveLength(5);
   });
 });

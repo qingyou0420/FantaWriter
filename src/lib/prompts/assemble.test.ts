@@ -51,6 +51,7 @@ describe("assemble isolation", () => {
       "scene_plan",
       "scene_chapter",
       "volume_summary",
+      "outline_next",
     ] as const;
     for (const task of tasks) {
       const { system, user } = assemble(task, "general", {
@@ -70,6 +71,7 @@ describe("assemble isolation", () => {
         scene: { order: 1, title: "码头", summary: "靠岸" },
         volume: { id: "v1", order: 1, title: "上卷", summary: "离乡" },
         chapterSummaries: [{ order: 1, title: "一", summary: "上路" }],
+        recentSummaries: [{ order: 1, title: "一", summary: "上路" }],
       });
       const hits = bannedHits(system + "\n" + user);
       expect(hits, `${task} leaked ${hits.join(",")}`).toEqual([]);
@@ -469,5 +471,103 @@ describe("assemble isolation", () => {
     expect(user).toContain("《中卷》：朝堂裂开");
     expect(user).not.toContain("1. 《第1章》— 摘要1");
     expect(user).not.toContain("11. 《第11章》— 摘要11");
+  });
+
+  it("serialMode on injects hook clauses; off stays byte-identical", () => {
+    const payload = {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      outline,
+      chapter: { ...chapter, hook: "门后那人还没回头" },
+      projectTags: [],
+      priorBlock: "## 上一章结尾片段（衔接用）\n他推开门。",
+    };
+    const off = assemble("chapter", "general", payload);
+    const offExplicit = assemble("chapter", "general", {
+      ...payload,
+      settings: { ...general.settings, serialMode: false },
+    });
+    expect(off.user).toBe(offExplicit.user);
+    expect(off.user).toContain("情节完整、有起承转合，与前后章可衔接。");
+    expect(off.user).not.toContain("结尾必须停在钩子上");
+    expect(off.user).not.toContain("上章钩子");
+
+    const on = assemble("chapter", "general", {
+      ...payload,
+      settings: { ...general.settings, serialMode: true },
+      priorBlock: `${payload.priorBlock}\n\n上章钩子：铜铃还在响`,
+    });
+    expect(on.user).toContain("结尾必须停在钩子上");
+    expect(on.user).toContain("本章钩子：门后那人还没回头");
+    expect(on.user).toContain("上章钩子：铜铃还在响");
+    expect(on.user).not.toContain("情节完整、有起承转合，与前后章可衔接。");
+  });
+
+  it("outline JSON templates include hook and outline_next uses summaries not bodies", () => {
+    const full = assemble("outline", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      projectTags: [],
+    });
+    expect(full.user).toContain('"hook"');
+    expect(full.user).toContain('"cast"');
+
+    const next = assemble("outline_next", "general", {
+      characters: general.characters,
+      background: general.background,
+      settings: general.settings,
+      volume: {
+        id: "v1",
+        order: 1,
+        title: "上卷",
+        summary: "离乡",
+        arcGoal: "入京",
+      },
+      chapterCount: 10,
+      recentSummaries: [
+        { order: 87, title: "夜雨", summary: "甲在客栈改口叫师父。" },
+      ],
+      openThreads: ["渡口定约（建议在本批回收）"],
+      projectTags: [],
+    });
+    expect(next.user).toContain("甲在客栈改口叫师父");
+    expect(next.user).toContain("渡口定约");
+    expect(next.user).toContain("建议在本批回收");
+    expect(next.user).toContain('"hook"');
+    expect(next.user).not.toContain("只写本章正文");
+    expect(next.user).not.toMatch(/甲推开门走进雨里/);
+  });
+
+  it("caps name cards at 20 when 3 of 30 are featured", () => {
+    const featured = ["a", "b", "c"].map((id, i) => ({
+      ...general.characters[0],
+      id,
+      name: `主${i + 1}`,
+      appearance: `主${i + 1}的完整外貌`,
+      personality: `主${i + 1}的性格`,
+    }));
+    const extras = Array.from({ length: 27 }, (_, i) => ({
+      ...general.characters[0],
+      id: `x${i}`,
+      name: `路人${i + 1}`,
+      appearance: `路人${i + 1}不该整段外貌`,
+      personality: `路人${i + 1}不该整段性格`,
+    }));
+    const { user } = assemble("chapter", "general", {
+      characters: [...featured, ...extras],
+      background: general.background,
+      settings: general.settings,
+      outline,
+      chapter: { ...chapter, castIds: ["a", "b", "c"] },
+      projectTags: [],
+    });
+    const cardLines = user
+      .split("\n")
+      .filter((line) => line.startsWith("- 路人"));
+    expect(cardLines.length).toBeLessThanOrEqual(20);
+    expect(user).toContain("其余 7 人本章不出场，勿写入。");
+    expect(user).toContain("主1的完整外貌");
   });
 });

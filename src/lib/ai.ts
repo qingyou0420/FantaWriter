@@ -19,17 +19,19 @@ function parseEnvText(text: string, forceDeepseek = false) {
     ) {
       value = value.slice(1, -1);
     }
+    const managed =
+      key.startsWith("DEEPSEEK_") || key.startsWith("FINE_");
     if (
       forceDeepseek ||
-      key.startsWith("DEEPSEEK_") ||
+      managed ||
       process.env[key] === undefined ||
       process.env[key] === ""
     ) {
-      if (forceDeepseek && key.startsWith("DEEPSEEK_")) {
+      if (forceDeepseek && managed) {
         process.env[key] = value;
       } else if (!forceDeepseek) {
         if (
-          key.startsWith("DEEPSEEK_") ||
+          managed ||
           process.env[key] === undefined ||
           process.env[key] === ""
         ) {
@@ -79,6 +81,42 @@ export function getDefaultModel() {
   return process.env.DEEPSEEK_MODEL?.trim() || "deepseek-v4-pro";
 }
 
+/** 精写档接管的正文四任务；其它大宗任务永远走主力档 */
+export const FINE_WRITING_MODES = [
+  "chapter",
+  "continue",
+  "rewrite",
+  "scene_chapter",
+] as const;
+
+export type ModelSlot = "main" | "fine";
+
+export function usesFineWritingSlot(mode?: string): boolean {
+  return Boolean(
+    mode && (FINE_WRITING_MODES as readonly string[]).includes(mode)
+  );
+}
+
+export function isFineSlotConfigured(): boolean {
+  return Boolean(process.env.FINE_MODEL?.trim());
+}
+
+export function resolveModelSlot(mode?: string): ModelSlot {
+  return usesFineWritingSlot(mode) && isFineSlotConfigured() ? "fine" : "main";
+}
+
+export function getFineModel() {
+  return process.env.FINE_MODEL?.trim() || "";
+}
+
+function fineBaseURL() {
+  return process.env.FINE_BASE_URL?.trim() || "";
+}
+
+export function thinkingEnabled(): boolean {
+  return process.env.DEEPSEEK_THINKING === "1";
+}
+
 export function getEnvDiagnostics() {
   loadEnvFile();
   const key = (
@@ -86,6 +124,7 @@ export function getEnvDiagnostics() {
     process.env.XAI_API_KEY ||
     ""
   ).trim();
+  const fineKey = (process.env.FINE_API_KEY || "").trim();
   return {
     cwd: process.cwd(),
     baseURL: baseURL(),
@@ -103,7 +142,13 @@ export function getEnvDiagnostics() {
         fs.existsSync(process.env.APP_CONFIG_PATH)
     ),
     isDesktop: Boolean(process.env.APP_CONFIG_PATH),
-    thinkingEnabled: process.env.DEEPSEEK_THINKING === "1",
+    thinkingEnabled: thinkingEnabled(),
+    fineHasKey: Boolean(fineKey),
+    fineKeyLength: fineKey.length,
+    fineKeyPrefix: fineKey ? fineKey.slice(0, 7) : "",
+    fineModel: getFineModel(),
+    fineBaseURL: fineBaseURL(),
+    fineConfigured: isFineSlotConfigured(),
   };
 }
 
@@ -116,6 +161,9 @@ export function saveApiConfig(opts: {
   apiKey?: string;
   model?: string;
   baseURL?: string;
+  fineApiKey?: string;
+  fineModel?: string;
+  fineBaseURL?: string;
 }): { path: string } {
   const filePath = getConfigFilePath();
   const dir = path.dirname(filePath);
@@ -146,6 +194,21 @@ export function saveApiConfig(opts: {
   if (opts.baseURL !== undefined && opts.baseURL.trim()) {
     map.set("DEEPSEEK_BASE_URL", opts.baseURL.trim());
   }
+  if (opts.fineApiKey !== undefined) {
+    const k = opts.fineApiKey.trim();
+    if (k) map.set("FINE_API_KEY", k);
+    else map.delete("FINE_API_KEY");
+  }
+  if (opts.fineModel !== undefined) {
+    const m = opts.fineModel.trim();
+    if (m) map.set("FINE_MODEL", m);
+    else map.delete("FINE_MODEL");
+  }
+  if (opts.fineBaseURL !== undefined) {
+    const u = opts.fineBaseURL.trim();
+    if (u) map.set("FINE_BASE_URL", u);
+    else map.delete("FINE_BASE_URL");
+  }
 
   const lines = [
     CONFIG_FILE_HEADER,
@@ -161,6 +224,19 @@ export function saveApiConfig(opts: {
   }
   if (opts.model?.trim()) process.env.DEEPSEEK_MODEL = opts.model.trim();
   if (opts.baseURL?.trim()) process.env.DEEPSEEK_BASE_URL = opts.baseURL.trim();
+  if (opts.fineApiKey !== undefined) {
+    process.env.FINE_API_KEY = opts.fineApiKey.trim();
+  }
+  if (opts.fineModel !== undefined) {
+    const m = opts.fineModel.trim();
+    if (m) process.env.FINE_MODEL = m;
+    else delete process.env.FINE_MODEL;
+  }
+  if (opts.fineBaseURL !== undefined) {
+    const u = opts.fineBaseURL.trim();
+    if (u) process.env.FINE_BASE_URL = u;
+    else delete process.env.FINE_BASE_URL;
+  }
 
   return { path: filePath };
 }
@@ -211,12 +287,76 @@ function resolveApiKey(): string {
 export const OPENAI_CLIENT_TIMEOUT_MS = 120_000;
 export const STREAM_IDLE_WATCHDOG_MS = 90_000;
 
-export function getClient() {
+function resolveSlotApiKey(slot: ModelSlot): string {
+  if (slot === "fine") {
+    const fine = (process.env.FINE_API_KEY || "").trim();
+    if (fine) {
+      if (
+        /your[-_]?key|changeme|xxx+|placeholder|example/i.test(fine) ||
+        fine === "xai-your-key-here"
+      ) {
+        throw new UserFacingError(
+          "精写档密钥仍是示例。请在设置 → API 设置里填入真实精写密钥。"
+        );
+      }
+      return fine;
+    }
+  }
+  return resolveApiKey();
+}
+
+function resolveSlotBaseURL(slot: ModelSlot): string {
+  if (slot === "fine") {
+    const url = fineBaseURL();
+    if (url) return url;
+  }
+  return baseURL();
+}
+
+export function getClient(slot: ModelSlot = "main") {
   return new OpenAI({
-    apiKey: resolveApiKey(),
-    baseURL: baseURL(),
+    apiKey: resolveSlotApiKey(slot),
+    baseURL: resolveSlotBaseURL(slot),
     timeout: OPENAI_CLIENT_TIMEOUT_MS,
   });
+}
+
+export function resolveSlotModel(slot: ModelSlot): string {
+  if (slot === "fine") {
+    return getFineModel() || getDefaultModel();
+  }
+  return getDefaultModel();
+}
+
+export type ChatRequestOptions = {
+  temperature?: number;
+  maxTokens?: number;
+  stream?: boolean;
+  mode?: string;
+};
+
+/** 可单测的请求体：未开 thinking 时完全不带该字段 */
+export function buildChatRequestBody(
+  system: string,
+  user: string,
+  options?: ChatRequestOptions
+): Record<string, unknown> {
+  const slot = resolveModelSlot(options?.mode);
+  const think = thinkingEnabled();
+  const body: Record<string, unknown> = {
+    model: resolveSlotModel(slot),
+    temperature: think ? undefined : options?.temperature ?? 0.85,
+    max_tokens: options?.maxTokens ?? 8192,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  };
+  if (options?.stream) body.stream = true;
+  if (think) {
+    body.thinking = { type: "enabled" };
+  }
+  return body;
 }
 
 function formatAiError(e: unknown): Error {
@@ -262,26 +402,19 @@ function formatAiError(e: unknown): Error {
 export async function chatComplete(
   system: string,
   user: string,
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; mode?: string }
 ): Promise<string> {
-  const client = getClient();
-  const thinkingEnabled = process.env.DEEPSEEK_THINKING === "1";
-  const model = getDefaultModel();
+  const slot = resolveModelSlot(options?.mode);
+  const client = getClient(slot);
+  const body = buildChatRequestBody(system, user, options);
 
   try {
-    const resp = await client.chat.completions.create({
-      model,
-      temperature: thinkingEnabled ? undefined : options?.temperature ?? 0.85,
-      max_tokens: options?.maxTokens ?? 8192,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      // @ts-expect-error DeepSeek 扩展字段
-      thinking: { type: thinkingEnabled ? "enabled" : "disabled" },
-    });
+    const resp = await client.chat.completions.create(
+      body as unknown as Parameters<typeof client.chat.completions.create>[0]
+    );
 
-    const text = resp.choices[0]?.message?.content;
+    const text = (resp as { choices?: { message?: { content?: string } }[] })
+      .choices?.[0]?.message?.content;
     if (!text) throw new Error("模型未返回内容");
     return text;
   } catch (e: unknown) {
@@ -305,11 +438,11 @@ export async function chatCompleteStream(
     maxTokens?: number;
     signal?: AbortSignal;
     onDelta?: (chunk: string, full: string) => void;
+    mode?: string;
   }
 ): Promise<string> {
-  const client = getClient();
-  const thinkingEnabled = process.env.DEEPSEEK_THINKING === "1";
-  const model = getDefaultModel();
+  const slot = resolveModelSlot(options?.mode);
+  const client = getClient(slot);
   const controller = new AbortController();
   const onOuterAbort = () => controller.abort();
   let lastDeltaAt = Date.now();
@@ -331,19 +464,12 @@ export async function chatCompleteStream(
 
   try {
     const stream = (await client.chat.completions.create(
-      {
-        model,
-        temperature: thinkingEnabled
-          ? undefined
-          : options?.temperature ?? 0.85,
-        max_tokens: options?.maxTokens ?? 8192,
+      buildChatRequestBody(system, user, {
+        temperature: options?.temperature,
+        maxTokens: options?.maxTokens,
         stream: true,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        thinking: { type: thinkingEnabled ? "enabled" : "disabled" },
-      } as Parameters<typeof client.chat.completions.create>[0],
+        mode: options?.mode,
+      }) as unknown as Parameters<typeof client.chat.completions.create>[0],
       { signal: controller.signal }
     )) as AsyncIterable<{
       choices?: { delta?: { content?: string | null } }[];

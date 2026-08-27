@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Field } from "@/components/Field";
 import { TagSelector } from "@/components/TagEditor";
 import { boardCopy } from "@/lib/copy";
+import { insertChapterAfter } from "@/lib/volumes";
 import type {
   Character,
   Outline,
@@ -22,7 +23,10 @@ export function OutlinePanel({
   volumes,
   characters,
   busy,
+  hideRollingOutline,
+  planChapterCount = 10,
   onGenerate,
+  onGenerateNext,
   onChange,
   onGenerateChapter,
   onPolishChapter,
@@ -34,7 +38,10 @@ export function OutlinePanel({
   volumes?: Volume[];
   characters?: Character[];
   busy: string | null;
+  hideRollingOutline?: boolean;
+  planChapterCount?: number;
   onGenerate: () => void;
+  onGenerateNext?: (volumeId: string, chapterCount: number) => void;
   onChange: (o: Outline) => void;
   onGenerateChapter: (ch: OutlineChapter) => void;
   onPolishChapter: (ch: OutlineChapter) => void | Promise<void>;
@@ -91,6 +98,25 @@ export function OutlinePanel({
         c.id === id ? { ...c, ...partial } : c
       ),
     });
+  }
+
+  function insertAfter(afterId: string) {
+    const after = outline!.chapters.find((c) => c.id === afterId);
+    const ch: OutlineChapter = {
+      id: crypto.randomUUID(),
+      order: 0,
+      title: "新章",
+      summary: "",
+      keyPoints: "",
+      tags: [],
+      hook: "",
+      volumeId: after?.volumeId,
+    };
+    onChange({
+      ...outline!,
+      chapters: insertChapterAfter(outline!.chapters, afterId, ch),
+    });
+    setActiveId(ch.id);
   }
 
   function addChapter() {
@@ -301,6 +327,36 @@ export function OutlinePanel({
             >
               + 添加章节
             </button>
+            {!hideRollingOutline && onGenerateNext ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={!!busy}
+                onClick={() => {
+                  const volId =
+                    active?.volumeId ||
+                    (volumes && volumes.length
+                      ? [...volumes].sort((a, b) => a.order - b.order)[
+                          volumes.length - 1
+                        ]?.id
+                      : "") ||
+                    "";
+                  if (!volId) return;
+                  onGenerateNext(
+                    volId,
+                    Math.max(1, Math.min(20, planChapterCount || 10))
+                  );
+                }}
+              >
+                {busy === "outline_next" ? (
+                  <>
+                    <span className="spinner" /> 续排中…
+                  </>
+                ) : (
+                  `续排本卷 ${Math.max(1, Math.min(20, planChapterCount || 10))} 章`
+                )}
+              </button>
+            ) : null}
           </div>
         </div>
         <p className="text-xs text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
@@ -493,6 +549,13 @@ export function OutlinePanel({
                 </button>
                 <button
                   type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => insertAfter(active.id)}
+                >
+                  在本章后插入
+                </button>
+                <button
+                  type="button"
                   className="btn btn-danger btn-sm"
                   onClick={() => removeChapter(active.id)}
                 >
@@ -539,6 +602,20 @@ export function OutlinePanel({
                   }
                   rows={5}
                   className="!min-h-[7rem] w-full outline-field-lg"
+                />
+              </Field>
+              <Field
+                label="章末钩子"
+                hint="本章结尾要悬着的事；连载模式下会写入正文要求"
+              >
+                <textarea
+                  value={active.hook || ""}
+                  onChange={(e) =>
+                    patchChapter(active.id, { hook: e.target.value })
+                  }
+                  rows={2}
+                  className="w-full"
+                  placeholder="例如：门后那人还没回头"
                 />
               </Field>
               <Field label={boardCopy(writingBoard).intensityLabel}>

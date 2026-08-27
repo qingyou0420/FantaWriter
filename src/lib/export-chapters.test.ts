@@ -99,12 +99,19 @@ describe("relative path safety", () => {
 });
 
 describe("chapter / book file names", () => {
-  it("names the file by chapter id so title/order edits still overwrite", () => {
+  it("names the file by zero-padded order and sanitized title", () => {
     const ch = chapter("c1-uuid-aaaa", 3, "第一夜");
-    expect(chapterRepoFileName(ch)).toBe("ch-c1-uuid-aaaa.md");
+    expect(chapterRepoFileName(ch)).toBe("ch-003-第一夜.md");
     expect(chapterRepoFileName({ ...ch, title: "第一夜 / 修订", order: 9 })).toBe(
-      "ch-c1-uuid-aaaa.md"
+      "ch-009-第一夜 _ 修订.md"
     );
+    expect(chapterRepoFileName({ ...ch, title: "夜袭", order: 31 })).toBe(
+      "ch-031-夜袭.md"
+    );
+    const first = chapterRepoFileName(chapter("old-id", 2, "夜行"));
+    const again = chapterRepoFileName(chapter("new-id", 2, "夜行"));
+    expect(first).toBe(again);
+    expect(first).toBe("ch-002-夜行.md");
   });
 
   it("puts files under novels/<book-title>/", () => {
@@ -113,7 +120,7 @@ describe("chapter / book file names", () => {
     ]);
     expect(bookExportFolderName(p)).toBe("测试长篇");
     expect(chapterRepoRelativePath(p, p.outline!.chapters[0])).toBe(
-      "novels/测试长篇/ch-c1.md"
+      "novels/测试长篇/ch-001-开端.md"
     );
   });
 
@@ -225,8 +232,8 @@ describe("chapter markdown payload", () => {
     );
     expect(files).toHaveLength(2);
     expect(files.map((f) => f.relativePath)).toEqual([
-      "novels/测试长篇/ch-a.md",
-      "novels/测试长篇/ch-b.md",
+      "novels/测试长篇/ch-001-一.md",
+      "novels/测试长篇/ch-002-二.md",
     ]);
     expect(files[0].content).toContain("甲");
     expect(files[1].content).toContain("乙");

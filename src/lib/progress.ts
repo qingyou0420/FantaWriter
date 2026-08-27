@@ -2,9 +2,13 @@ import { LENGTH_RANGES, type GenerationSettings, type NovelProject } from "./typ
 
 /** 按篇幅设定的每章目标字数（中文字符，去空白）；区间单源 LENGTH_RANGES */
 export function chapterTargetChars(
-  length: GenerationSettings["length"]
+  length: GenerationSettings["length"],
+  custom?: GenerationSettings["customLength"]
 ): { min: number; max: number; target: number } {
-  const range = LENGTH_RANGES[length] || LENGTH_RANGES.medium;
+  const range =
+    custom && custom.min < custom.max
+      ? custom
+      : LENGTH_RANGES[length] || LENGTH_RANGES.medium;
   return {
     min: range.min,
     max: range.max,
@@ -40,7 +44,10 @@ export interface BookProgress {
 }
 
 export function buildBookProgress(project: NovelProject): BookProgress {
-  const { min, max, target } = chapterTargetChars(project.settings.length);
+  const { min, max, target } = chapterTargetChars(
+    project.settings.length,
+    project.settings.customLength
+  );
   const outline = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
     : [];
@@ -80,5 +87,40 @@ export function buildBookProgress(project: NovelProject): BookProgress {
     totalChapters,
     percentOfTarget,
     percentChapters,
+  };
+}
+
+export function countCharsLast7Days(project: NovelProject, now = Date.now()): number {
+  const cutoff = now - 7 * 24 * 60 * 60 * 1000;
+  let words = 0;
+  for (const ch of project.chapters || []) {
+    const updated = Date.parse(ch.updatedAt || "");
+    if (!Number.isFinite(updated) || updated < cutoff) continue;
+    words += countChars(ch.content || "");
+  }
+  return words;
+}
+
+/** 存稿=已审/已完成且未发布；已发布=有 publishedAt */
+export function serialBoardStats(project: NovelProject, now = Date.now()) {
+  const outline = project.outline?.chapters || [];
+  let backlog = 0;
+  let published = 0;
+  for (const ch of outline) {
+    const row = project.chapters.find((c) => c.chapterId === ch.id);
+    if (!row) continue;
+    if (row.publishedAt) {
+      published += 1;
+      continue;
+    }
+    const ready =
+      row.reviewState === "reviewed" ||
+      (row.status === "done" && Boolean(row.content?.trim()));
+    if (ready) backlog += 1;
+  }
+  return {
+    backlog,
+    published,
+    wordsLast7Days: countCharsLast7Days(project, now),
   };
 }

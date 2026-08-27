@@ -17,6 +17,7 @@ export function VolumesPanel({
   onGenerateVolume,
   onGenerateVolumeOutline,
   onGenerateVolumeSummary,
+  onGenerateNext,
   summaryDraft,
   onSaveSummaryDraft,
   onDiscardSummaryDraft,
@@ -29,6 +30,7 @@ export function VolumesPanel({
   onGenerateVolume: (volumeId: string) => void;
   onGenerateVolumeOutline?: (volumeId: string, chapterCount: number) => void;
   onGenerateVolumeSummary?: (volumeId: string) => void;
+  onGenerateNext?: (volumeId: string, chapterCount: number) => void;
   summaryDraft?: { volumeId: string; text: string } | null;
   onSaveSummaryDraft?: () => void;
   onDiscardSummaryDraft?: () => void;
@@ -122,6 +124,30 @@ export function VolumesPanel({
                       "为本卷生成大纲"
                     )}
                   </button>
+                  {!hideWholeVolumeGenerate && onGenerateNext ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={!!busy}
+                      onClick={() =>
+                        onGenerateNext(
+                          v.id,
+                          Math.max(
+                            1,
+                            Math.min(20, project.settings.chapterCount || 10)
+                          )
+                        )
+                      }
+                    >
+                      {busy === "outline_next" ? (
+                        <>
+                          <span className="spinner" /> 续排中…
+                        </>
+                      ) : (
+                        `续排本卷 ${Math.max(1, Math.min(20, project.settings.chapterCount || 10))} 章`
+                      )}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
@@ -203,6 +229,24 @@ export function VolumesPanel({
                     }
                   />
                 )}
+                <textarea
+                  className="mt-2"
+                  rows={2}
+                  placeholder="本卷弧线目标（可选）"
+                  value={v.arcGoal || ""}
+                  onChange={(e) =>
+                    patchVolume(v.id, { arcGoal: e.target.value })
+                  }
+                />
+                <textarea
+                  className="mt-2"
+                  rows={2}
+                  placeholder="出卷局面（可选）"
+                  value={v.exitState || ""}
+                  onChange={(e) =>
+                    patchVolume(v.id, { exitState: e.target.value })
+                  }
+                />
               </li>
             );
           })}

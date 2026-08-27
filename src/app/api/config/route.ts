@@ -22,11 +22,17 @@ export async function POST(req: NextRequest) {
       apiKey?: string;
       model?: string;
       baseURL?: string;
+      fineApiKey?: string;
+      fineModel?: string;
+      fineBaseURL?: string;
     };
     const result = saveApiConfig({
       apiKey: body.apiKey,
       model: body.model,
       baseURL: body.baseURL,
+      fineApiKey: body.fineApiKey,
+      fineModel: body.fineModel,
+      fineBaseURL: body.fineBaseURL,
     });
     return NextResponse.json({
       ok: true,

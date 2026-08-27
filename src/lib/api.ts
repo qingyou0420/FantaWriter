@@ -1,8 +1,8 @@
-import { buildMemoryPack } from "./memory-pack";
+import { buildMemoryPack, formatPlotThreads } from "./memory-pack";
 import { originalContextFrom } from "./original";
 import { recordUsage } from "./storage";
 import type { GenerateTaskMode } from "./prompts/registry";
-import { isReaderKnownThread, type NovelProject, type PlotThread, type WritingBoard } from "./types";
+import { type NovelProject, type PlotThread, type WritingBoard } from "./types";
 import { UserFacingError } from "./user-error";
 
 export type GenerateRequest = {
@@ -154,7 +154,14 @@ export function finishStreamGenerate(
 export function buildPreviousContext(
   project: Pick<
     NovelProject,
-    "characters" | "outline" | "chapters" | "plotThreads" | "lore" | "volumes"
+    | "characters"
+    | "outline"
+    | "chapters"
+    | "plotThreads"
+    | "lore"
+    | "volumes"
+    | "settings"
+    | "characterStates"
   >,
   currentOrder: number
 ): {
@@ -177,11 +184,12 @@ export function buildPreviousContext(
 }
 
 export function formatPlotThreadsForPrompt(
-  threads?: Pick<PlotThread, "title" | "note" | "status" | "visibility" | "kind">[]
+  threads?: PlotThread[],
+  opts?: {
+    currentOrder?: number;
+    namedThreadIds?: string[];
+    recentTouchedTitles?: string[];
+  }
 ): string {
-  if (!threads?.length) return "";
-  return threads
-    .filter((t) => t.status !== "resolved" && isReaderKnownThread(t))
-    .map((t) => `- [${t.status}] ${t.title}${t.note ? `：${t.note}` : ""}`)
-    .join("\n");
+  return formatPlotThreads(threads, opts);
 }

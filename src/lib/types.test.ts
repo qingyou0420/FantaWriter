@@ -122,6 +122,11 @@ describe("normalizeProject", () => {
     expect(a.settings.learnedStyleFingerprints).toEqual([]);
     expect(a.settings.eroticLevel).toBe(4);
     expect(a.outline?.chapters[0].castIds).toEqual([]);
+    expect(a.settings.serialMode).toBe(false);
+    expect(a.outline?.chapters[0].hook).toBe("");
+    expect(a.characterStates).toEqual({});
+    expect(a.chapters[0].reviewState).toBeUndefined();
+    expect(a.chapters[0].publishedAt).toBeUndefined();
   });
 
   it("keeps writingBoard=general", () => {
