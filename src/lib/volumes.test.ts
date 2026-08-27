@@ -11,6 +11,7 @@ import {
   mergeVolumeChapters,
   removeVolume,
   volumeHasWrittenChapters,
+  volumeIdForLatestWrittenChapter,
   volumeNeedsSummaryPrompt,
 } from "./volumes";
 
@@ -290,5 +291,47 @@ describe("volumes + per-volume job + export", () => {
     expect(volumeNeedsSummaryPrompt(p, volId)).toBe(true);
     p.volumes![0].summary = "已有摘要";
     expect(volumeNeedsSummaryPrompt(p, volId)).toBe(false);
+  });
+
+  it("volumeIdForLatestWrittenChapter prefers the volume of the highest written chapter", () => {
+    const p = createEmptyProject("多卷");
+    p.volumes = [
+      { id: "v1", order: 1, title: "上", summary: "" },
+      { id: "v2", order: 2, title: "下", summary: "" },
+    ];
+    p.outline = {
+      premise: "",
+      endingNote: "",
+      chapters: [
+        {
+          id: "c1",
+          order: 1,
+          title: "一",
+          summary: "",
+          keyPoints: "",
+          tags: [],
+          volumeId: "v1",
+        },
+        {
+          id: "c2",
+          order: 2,
+          title: "二",
+          summary: "",
+          keyPoints: "",
+          tags: [],
+          volumeId: "v2",
+        },
+      ],
+    };
+    p.chapters = [
+      {
+        chapterId: "c2",
+        title: "二",
+        content: "已写到下卷",
+        status: "done",
+        updatedAt: "",
+      },
+    ];
+    expect(volumeIdForLatestWrittenChapter(p)).toBe("v2");
   });
 });

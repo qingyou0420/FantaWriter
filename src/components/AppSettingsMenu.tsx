@@ -58,6 +58,7 @@ export function AppSettingsMenu({
   const [fineBaseURL, setFineBaseURL] = useState("");
   const [fineHasKey, setFineHasKey] = useState(false);
   const [fineKeyPrefix, setFineKeyPrefix] = useState("");
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [apiSaving, setApiSaving] = useState(false);
 
   const [appInfo, setAppInfo] = useState<DesktopAppInfo | null>(null);
@@ -116,10 +117,12 @@ export function AppSettingsMenu({
 
   useEffect(() => {
     if (panel !== "api") return;
+    setConfigLoaded(false);
     (async () => {
       try {
         const res = await fetch("/api/config");
         const data = await res.json();
+        if (!res.ok) return;
         if (data.env?.model) setApiModel(data.env.model);
         if (data.env?.baseURL) setApiBaseURL(data.env.baseURL);
         if (typeof data.env?.thinkingEnabled === "boolean") {
@@ -132,6 +135,7 @@ export function AppSettingsMenu({
         if (data.env?.fineConfigured || data.env?.fineHasKey || data.env?.fineModel) {
           setFineOpen(true);
         }
+        setConfigLoaded(true);
       } catch {
         /* ignore */
       }
@@ -148,17 +152,26 @@ export function AppSettingsMenu({
   async function saveApi() {
     setApiSaving(true);
     try {
+      const body: {
+        apiKey?: string;
+        model: string;
+        baseURL: string;
+        fineApiKey?: string;
+        fineModel?: string;
+        fineBaseURL?: string;
+      } = {
+        apiKey: apiKey.trim() || undefined,
+        model: apiModel.trim() || "deepseek-v4-pro",
+        baseURL: apiBaseURL.trim() || "https://api.deepseek.com",
+        fineApiKey: fineApiKey.trim() || undefined,
+      };
+      // GET 失败时输入框是空的，空字符串会删掉已有 FINE_*，故不要带上
+      if (configLoaded || fineModel.trim()) body.fineModel = fineModel.trim();
+      if (configLoaded || fineBaseURL.trim()) body.fineBaseURL = fineBaseURL.trim();
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: apiKey.trim() || undefined,
-          model: apiModel.trim() || "deepseek-v4-pro",
-          baseURL: apiBaseURL.trim() || "https://api.deepseek.com",
-          fineApiKey: fineApiKey.trim() || undefined,
-          fineModel: fineModel.trim(),
-          fineBaseURL: fineBaseURL.trim(),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "保存失败");

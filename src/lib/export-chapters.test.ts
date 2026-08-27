@@ -12,6 +12,7 @@ import {
   parseChapterMarkdown,
   sanitizePathSegment,
   selectChaptersForRepoExport,
+  staleChapterRepoPaths,
 } from "./export-chapters";
 import { createEmptyProject, type NovelProject, type OutlineChapter } from "./types";
 
@@ -237,5 +238,43 @@ describe("chapter markdown payload", () => {
     ]);
     expect(files[0].content).toContain("甲");
     expect(files[1].content).toContain("乙");
+  });
+
+  it("detects leftover files for the same chapterId after reorder or rename", () => {
+    const p = projectWith(
+      "general",
+      [chapter("a", 4, "改名后")],
+      [{ id: "a", content: "甲", status: "done" }]
+    );
+    const incoming = buildChapterRepoFiles(p, p.outline!.chapters, "novels");
+    const leftover = buildChapterMarkdown(
+      projectWith(
+        "general",
+        [chapter("a", 3, "旧标题")],
+        [{ id: "a", content: "甲", status: "done" }]
+      ),
+      chapter("a", 3, "旧标题"),
+      "2026-08-01T00:00:00.000Z"
+    );
+    const other = buildChapterMarkdown(
+      projectWith(
+        "general",
+        [chapter("b", 2, "别章")],
+        [{ id: "b", content: "乙", status: "done" }]
+      ),
+      chapter("b", 2, "别章"),
+      "2026-08-01T00:00:00.000Z"
+    );
+    expect(
+      staleChapterRepoPaths(
+        [
+          { relativePath: "novels/测试长篇/ch-003-旧标题.md", content: leftover },
+          { relativePath: incoming[0].relativePath, content: incoming[0].content },
+          { relativePath: "novels/测试长篇/ch-002-别章.md", content: other },
+        ],
+        incoming,
+        p.id
+      )
+    ).toEqual(["novels/测试长篇/ch-003-旧标题.md"]);
   });
 });

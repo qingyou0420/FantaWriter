@@ -110,16 +110,23 @@ export function chapterRepoFileName(ch: {
   return `ch-${order}-${title}.md`;
 }
 
+export function bookExportRelativeDir(
+  project: NovelProject,
+  subdir?: string | null
+): string {
+  const prefix = normalizeExportSubdir(subdir);
+  const book = bookExportFolderName(project);
+  const rel = prefix ? `${prefix}/${book}` : book;
+  return assertSafeRelativePath(rel);
+}
+
 export function chapterRepoRelativePath(
   project: NovelProject,
   ch: OutlineChapter,
   subdir?: string | null
 ): string {
-  const prefix = normalizeExportSubdir(subdir);
-  const book = bookExportFolderName(project);
   const file = chapterRepoFileName(ch);
-  const rel = prefix ? `${prefix}/${book}/${file}` : `${book}/${file}`;
-  return assertSafeRelativePath(rel);
+  return assertSafeRelativePath(`${bookExportRelativeDir(project, subdir)}/${file}`);
 }
 
 function yamlScalar(value: string): string {
@@ -247,6 +254,28 @@ export function parseChapterMarkdown(md: string): {
   const heading = rest.match(/^#\s+第\s*\d+\s*章[^\n]*\n+/);
   const prose = (heading ? rest.slice(heading[0].length) : rest).trim();
   return { meta, prose };
+}
+
+/** 同 chapterId 但文件名已变（改序/改标题）的旧导出，导出前应删掉 */
+export function staleChapterRepoPaths(
+  existing: { relativePath: string; content: string }[],
+  incoming: { relativePath: string; chapterId: string }[],
+  projectId?: string
+): string[] {
+  const keepByChapter = new Map(
+    incoming.map((f) => [f.chapterId, f.relativePath])
+  );
+  const keepPaths = new Set(incoming.map((f) => f.relativePath));
+  const stale: string[] = [];
+  for (const file of existing) {
+    const rel = String(file.relativePath || "").replace(/\\/g, "/");
+    if (!rel || keepPaths.has(rel)) continue;
+    const { meta } = parseChapterMarkdown(file.content);
+    if (!meta.chapterId || !keepByChapter.has(meta.chapterId)) continue;
+    if (projectId && meta.projectId && meta.projectId !== projectId) continue;
+    stale.push(rel);
+  }
+  return stale;
 }
 
 export function orderedOutlineChapters(project: NovelProject): OutlineChapter[] {
@@ -415,12 +444,24 @@ export async function exportChaptersToRepo(
     saveAppPrefs({ ...loadAppPrefs(), chapterExportSubdir: options.subdir });
   }
 
+  let stale: string[] = [];
+  if (bridge.listTextFiles) {
+    const listed = await bridge.listTextFiles({
+      root,
+      relativeDir: bookExportRelativeDir(project, subdir),
+    });
+    if (listed.ok) {
+      stale = staleChapterRepoPaths(listed.files, files, project.id);
+    }
+  }
+
   const written = await bridge.writeTextFiles({
     root,
     files: files.map((f) => ({
       relativePath: f.relativePath,
       content: f.content,
     })),
+    removeRelativePaths: stale,
   });
   if (!written.ok) {
     return {
@@ -438,6 +479,8 @@ export async function exportChaptersToRepo(
       ? written.written
       : files.map((f) => f.relativePath),
     root,
-    message: `已写入 ${files.length} 个文件（同一章再导出会覆盖）`,
+    message: stale.length
+      ? `已写入 ${files.length} 个文件（已清理 ${stale.length} 个同章旧文件）`
+      : `已写入 ${files.length} 个文件（同一章再导出会覆盖）`,
   };
 }

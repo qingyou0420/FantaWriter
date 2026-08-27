@@ -6,6 +6,7 @@ import {
   formatVolumeMemory,
   isPlotThreadOverdue,
   plotThreadSuspension,
+  selectPlotThreadsForPrompt,
 } from "./memory-pack";
 import {
   createEmptyCharacter,
@@ -247,5 +248,28 @@ describe("plot thread injection and suspension", () => {
         10
       )
     ).toBe(true);
+  });
+
+  it("sorts leftover threads by plant recency (createdAt), not updatedAt", () => {
+    const older = {
+      ...createEmptyPlotThread("旧埋"),
+      id: "old",
+      status: "active" as const,
+      visibility: "reader_known" as const,
+      kind: "other" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    };
+    const newer = {
+      ...createEmptyPlotThread("新埋"),
+      id: "new",
+      status: "active" as const,
+      visibility: "reader_known" as const,
+      kind: "other" as const,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:00.000Z",
+    };
+    const { selected } = selectPlotThreadsForPrompt([older, newer]);
+    expect(selected.map((t) => t.id)).toEqual(["new", "old"]);
   });
 });

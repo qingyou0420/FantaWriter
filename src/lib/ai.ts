@@ -342,7 +342,7 @@ export function buildChatRequestBody(
   options?: ChatRequestOptions
 ): Record<string, unknown> {
   const slot = resolveModelSlot(options?.mode);
-  const think = thinkingEnabled();
+  const think = thinkingEnabled() && slot === "main";
   const body: Record<string, unknown> = {
     model: resolveSlotModel(slot),
     temperature: think ? undefined : options?.temperature ?? 0.85,
