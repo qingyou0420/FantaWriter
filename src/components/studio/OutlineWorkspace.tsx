@@ -14,6 +14,7 @@ export function OutlineWorkspace({
   selectedId,
   onSelect,
   onAddSibling,
+  onAddFirst,
   onCreateManuscript,
   onLocate,
   extra,
@@ -22,6 +23,7 @@ export function OutlineWorkspace({
   selectedId?: string | null;
   onSelect: (chapterId: string) => void;
   onAddSibling: (afterId: string) => void;
+  onAddFirst: () => void;
   onCreateManuscript: (chapterId: string) => void;
   onLocate: (chapterId: string) => void;
   extra?: React.ReactNode;
@@ -154,7 +156,22 @@ export function OutlineWorkspace({
             </div>
           </div>
         ) : (
-          <p className="text-sm text-[var(--text-muted)]">从左侧选一个章节点。</p>
+          <div className="card space-y-2">
+            <p className="text-sm text-[var(--text-muted)] m-0">
+              {counts.chapters === 0
+                ? "还没有章节点。可以先手工占一章，再让织卷起草或直接写。"
+                : "从左侧选一个章节点。"}
+            </p>
+            {counts.chapters === 0 ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={onAddFirst}
+              >
+                新增第一章
+              </button>
+            ) : null}
+          </div>
         )}
         {extra}
       </div>

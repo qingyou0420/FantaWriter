@@ -140,7 +140,8 @@ import {
   rollbackWriteRun,
   setWriteRunPhase,
 } from "@/lib/write-pipeline";
-import { insertSiblingChapterRef, syncOutlineTree } from "@/lib/outline-tree";
+import { syncOutlineTree } from "@/lib/outline-tree";
+import { addBlankOutlineChapter } from "@/lib/outline-edit";
 import { chapterGoalText } from "@/lib/chapter-contract";
 import { globalForbidList } from "@/lib/author-secrets";
 import { formatLoreBlock, selectLoreForPrompt } from "@/lib/lore";
@@ -2002,44 +2003,19 @@ export default function ProjectPage() {
           onSelect={setSelectedChapterId}
           onAddSibling={(afterId) => {
             update((p) => {
-              if (!p.outline) return p;
-              const after = p.outline.chapters.find((c) => c.id === afterId);
-              if (!after) return p;
-              const id = crypto.randomUUID();
-              const chapters = [...p.outline.chapters];
-              const idx = chapters.findIndex((c) => c.id === afterId);
-              const created: OutlineChapter = {
-                id,
-                order: after.order + 1,
-                title: "新章",
-                summary: "",
-                keyPoints: "",
-                tags: [],
-                volumeId: after.volumeId,
-              };
-              chapters.splice(idx + 1, 0, created);
-              const renumbered = chapters.map((c, i) => ({ ...c, order: i + 1 }));
-              const fallback = p.volumes?.[0]?.id || `${p.id}:vol:1`;
-              return markAuthorCanonEdit({
-                ...p,
-                outline: { ...p.outline, chapters: renumbered },
-                outlineTree: insertSiblingChapterRef(
-                  p.outlineTree ||
-                    syncOutlineTree(undefined, p.volumes, renumbered, fallback),
-                  afterId,
-                  id
-                ),
-                chapters: [
-                  ...p.chapters,
-                  {
-                    chapterId: id,
-                    title: "新章",
-                    content: "",
-                    status: "idle",
-                    updatedAt: new Date().toISOString(),
-                  },
-                ],
-              });
+              const { project: next, chapterId } = addBlankOutlineChapter(
+                p,
+                afterId
+              );
+              setSelectedChapterId(chapterId);
+              return next;
+            });
+          }}
+          onAddFirst={() => {
+            update((p) => {
+              const { project: next, chapterId } = addBlankOutlineChapter(p);
+              setSelectedChapterId(chapterId);
+              return next;
             });
           }}
           onCreateManuscript={(chapterId) => {
