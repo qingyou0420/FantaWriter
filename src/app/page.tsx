@@ -2,15 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TagLibraryManager } from "@/components/TagEditor";
-import { StyleLearnPanel } from "@/components/StyleLearnPanel";
 import { AppSettingsMenu } from "@/components/AppSettingsMenu";
 import { APP_COPY } from "@/lib/copy";
 import { APP_DISPLAY_NAME, APP_DISPLAY_NAME_ZH } from "@/lib/brand";
 import {
   createEmptyOriginalManuscript,
   createEmptyProject,
-  type LearnedStyle,
   type NovelProject,
 } from "@/lib/types";
 import {
@@ -27,19 +24,12 @@ import {
   isFullBackupJson,
   loadProjects,
   writeProjectTab,
-  loadStyleLibraryFor,
-  loadTagLibraryFor,
   loadUsageStats,
-  resetTagLibraryToDefaultFor,
-  saveTagLibraryFor,
   upsertProject,
 } from "@/lib/storage";
 
-type HomeTab = "projects" | "tags" | "styles";
-
 export default function HomePage() {
   const router = useRouter();
-  const [homeTab, setHomeTab] = useState<HomeTab>("projects");
   const [projects, setProjects] = useState<NovelProject[]>([]);
   const [ready, setReady] = useState(false);
   const [newName, setNewName] = useState("");
@@ -58,8 +48,6 @@ export default function HomePage() {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [keyPrefix, setKeyPrefix] = useState("");
 
-  const [tagLibrary, setTagLibrary] = useState<string[]>([]);
-  const [styleLibrary, setStyleLibrary] = useState<LearnedStyle[]>([]);
   const [libError, setLibError] = useState("");
   const [usageHint, setUsageHint] = useState("");
 
@@ -76,8 +64,6 @@ export default function HomePage() {
         if (prefs.defaultBoard !== "general") {
           saveAppPrefs({ ...prefs, defaultBoard: "general" });
         }
-        setTagLibrary(loadTagLibraryFor("general"));
-        setStyleLibrary(loadStyleLibraryFor("general"));
         const u = loadUsageStats();
         if (u.totalRequests > 0) {
           setUsageHint(
@@ -93,11 +79,6 @@ export default function HomePage() {
       stop();
     };
   }, []);
-
-  function updateTagLibrary(next: string[]) {
-    saveTagLibraryFor("general", next);
-    setTagLibrary(next);
-  }
 
   async function refreshApiStatus() {
     try {
@@ -143,7 +124,7 @@ export default function HomePage() {
     if (createMode === "renew") {
       writeProjectTab(project.id, "original");
     } else {
-      writeProjectTab(project.id, "premise");
+      writeProjectTab(project.id, "overview");
     }
     router.push(`/project/${project.id}`);
   }
@@ -221,12 +202,6 @@ export default function HomePage() {
   const visibleProjects = projects;
   const copy = APP_COPY;
 
-  const navItems: { id: HomeTab; label: string; badge?: string }[] = [
-    { id: "projects", label: "我的项目", badge: String(visibleProjects.length) },
-    { id: "tags", label: copy.homeTagsTitle, badge: String(tagLibrary.length) },
-    { id: "styles", label: "文风学习", badge: String(styleLibrary.length) },
-  ];
-
   return (
     <main className="flex-1 flex flex-col">
       <header className="border-b border-[var(--border-soft)] bg-[var(--bg-elevated)]/80 backdrop-blur sticky top-0 z-10">
@@ -261,27 +236,8 @@ export default function HomePage() {
             />
           </div>
         </div>
-        <div className="max-w-5xl mx-auto px-5 pb-3">
-          <div className="tabs">
-            {navItems.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`tab ${homeTab === t.id ? "active" : ""}`}
-                onClick={() => {
-                  setHomeTab(t.id);
-                  setLibError("");
-                }}
-              >
-                {t.label}
-                {t.badge != null ? (
-                  <span className="opacity-60 text-[0.75em] ml-1">
-                    ({t.badge})
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
+        <div className="max-w-5xl mx-auto px-5 pb-3 text-xs text-[var(--text-muted)]">
+          书架 · {visibleProjects.length} 部。标签库与文风学习已移入项目内「工具与设置」。
         </div>
       </header>
 
@@ -305,8 +261,7 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        {homeTab === "projects" && (
-          <>
+        <>
             <section className="card mb-8">
               <h2 className="card-title">新建小说项目</h2>
               <div className="tabs mb-3">
@@ -322,13 +277,13 @@ export default function HomePage() {
                   className={`tab ${createMode === "renew" ? "active" : ""}`}
                   onClick={() => setCreateMode("renew")}
                 >
-                  原作焕新
+                  从旧稿迁入
                 </button>
               </div>
               {createMode === "renew" ? (
                 <p className="text-sm text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
-                  贴入旧稿后扩写、润色；人设与情节以原文为准，<strong>不是从零遍构</strong>。
-                  创建后请先锁一条原作里不能被改的事实（名称 + 一句话），生成时必须遵守。
+                  项目迁移：导入旧稿后在「工具与设置 → 项目迁移」锁定事实、抽骨架。
+                  这不是首页主路径。
                 </p>
               ) : (
                 <p className="text-sm text-[var(--text-muted)] mt-0 mb-3 leading-relaxed">
@@ -447,7 +402,7 @@ export default function HomePage() {
                           </h3>
                           <div className="flex items-center gap-1 shrink-0">
                           {hasOriginalText(p.original) ? (
-                            <span className="badge shrink-0">原作焕新</span>
+                            <span className="badge shrink-0">旧稿迁入</span>
                           ) : null}
                           <span className="badge shrink-0">
                             {p.outline?.chapters.length
@@ -498,41 +453,8 @@ export default function HomePage() {
                 </ul>
               )}
             </section>
-          </>
-        )}
+        </>
 
-        {homeTab === "tags" && (
-          <section className="card max-w-3xl">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h2 className="text-base font-semibold m-0">{copy.homeTagsTitle}</h2>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  if (confirm(copy.resetTagsConfirm)) {
-                    updateTagLibrary(resetTagLibraryToDefaultFor("general"));
-                  }
-                }}
-              >
-                恢复默认示例
-              </button>
-            </div>
-            <TagLibraryManager
-              library={tagLibrary}
-              onChange={updateTagLibrary}
-            />
-          </section>
-        )}
-
-        {homeTab === "styles" && (
-          <StyleLearnPanel
-            homeMode
-            writingBoard="general"
-            styles={styleLibrary}
-            onStylesChange={setStyleLibrary}
-            onError={setLibError}
-          />
-        )}
       </div>
 
       <footer className="text-center text-[0.7rem] text-[var(--text-muted)] py-6 border-t border-[var(--border-soft)]">

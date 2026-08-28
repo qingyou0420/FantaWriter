@@ -35,6 +35,7 @@ export function CharactersPanel({
   onCharacterStatesChange,
   onChange,
   onCastGenerated,
+  onProposeCast,
   onError,
 }: {
   characters: Character[];
@@ -48,6 +49,8 @@ export function CharactersPanel({
   onCharacterStatesChange?: (states: CharacterStateLedger) => void;
   onChange: (c: Character[] | ((prev: Character[]) => Character[])) => void;
   onCastGenerated: (c: Character[], b: StoryBackground) => void;
+  /** AI 群像写入走提案闸；提供后不再直接 onCastGenerated */
+  onProposeCast?: (c: Character[], b: StoryBackground) => void;
   onError: (msg: string) => void;
 }) {
   const list = Array.isArray(characters) ? characters : [];
@@ -230,7 +233,9 @@ export function CharactersPanel({
       }));
       assertCharactersRespectCanon(next, canon);
       const bg = data.background as StoryBackground;
-      onCastGenerated(next.length ? next : [createEmptyCharacter()], bg);
+      const cast = next.length ? next : [createEmptyCharacter()];
+      if (onProposeCast) onProposeCast(cast, bg);
+      else onCastGenerated(cast, bg);
       if (next[0]) setActive(next[0].id);
       setCastSeed("");
       setEditor(closeCharacterEditor());

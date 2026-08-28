@@ -19,6 +19,7 @@ export function BackgroundPanel({
   original,
   canon,
   onChange,
+  onProposeBackground,
   onError,
 }: {
   background: StoryBackground;
@@ -29,6 +30,7 @@ export function BackgroundPanel({
   onChange: (
     b: StoryBackground | ((prev: StoryBackground) => StoryBackground)
   ) => void;
+  onProposeBackground?: (b: StoryBackground) => void;
   onError: (msg: string) => void;
 }) {
   const [seed, setSeed] = useState("");
@@ -60,7 +62,9 @@ export function BackgroundPanel({
         original,
         canon,
       });
-      onChange(data.background as StoryBackground);
+      const nextBg = data.background as StoryBackground;
+      if (onProposeBackground) onProposeBackground(nextBg);
+      else onChange(nextBg);
       setSeed("");
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -88,7 +92,9 @@ export function BackgroundPanel({
         original,
         canon,
       });
-      onChange(data.background as StoryBackground);
+      const nextBg = data.background as StoryBackground;
+      if (onProposeBackground) onProposeBackground(nextBg);
+      else onChange(nextBg);
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {

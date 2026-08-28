@@ -76,7 +76,7 @@ describe("finalize four-pack", () => {
 describe("daily flow", () => {
   it("opens serial books on chapters and new books on premise", () => {
     const empty = createEmptyProject("新");
-    expect(defaultOpeningTab(null, empty)).toBe("premise");
+    expect(defaultOpeningTab(null, empty)).toBe("overview");
     empty.outline = {
       premise: "p",
       endingNote: "",
@@ -91,7 +91,7 @@ describe("daily flow", () => {
         },
       ],
     };
-    expect(defaultOpeningTab("characters", empty)).toBe("chapters");
+    expect(defaultOpeningTab("characters", empty)).toBe("manuscript");
     expect(defaultOpeningTab("outline", empty)).toBe("outline");
   });
 

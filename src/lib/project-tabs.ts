@@ -1,58 +1,106 @@
-export type ProjectTab =
-  | "original"
-  | "premise"
-  | "characters"
-  | "background"
-  | "settings"
-  | "volumes"
-  | "lore"
+export type StudioWorkspace =
+  | "overview"
   | "outline"
-  | "chapters"
-  | "plot"
+  | "manuscript"
+  | "review"
+  | "library"
+  | "sessions"
   | "tools";
 
+/** @deprecated 旧三段式；只作兼容别名 */
 export type StageId = "setup" | "write" | "review";
 
-const ALL_TABS: ProjectTab[] = [
-  "original",
-  "premise",
-  "characters",
-  "background",
-  "settings",
-  "volumes",
-  "lore",
+/** 历史 tab id，映射到工作区后不再作为主导航 */
+export type ProjectTab = StudioWorkspace;
+
+export type LibrarySection =
+  | "intent"
+  | "focus"
+  | "foundation"
+  | "characters"
+  | "world"
+  | "threads";
+
+export type ToolsSection =
+  | "tools"
+  | "settings"
+  | "tags"
+  | "jobs"
+  | "migrate"
+  | "styles";
+
+const ALL_WORKSPACES: StudioWorkspace[] = [
+  "overview",
   "outline",
-  "chapters",
-  "plot",
+  "manuscript",
+  "review",
+  "library",
+  "sessions",
   "tools",
 ];
 
-/** 已删除的 tab 名回退到合理页 */
-const LEGACY_TAB: Record<string, ProjectTab> = {
+export const STUDIO_NAV: { id: StudioWorkspace; label: string }[] = [
+  { id: "overview", label: "总览" },
+  { id: "outline", label: "大纲" },
+  { id: "manuscript", label: "正文" },
+  { id: "review", label: "审稿" },
+  { id: "library", label: "资料库" },
+  { id: "sessions", label: "AI 协作" },
+  { id: "tools", label: "工具与设置" },
+];
+
+/** 已删除或降级的 tab 名回退到工作区 */
+const LEGACY_TAB: Record<string, StudioWorkspace> = {
   progress: "tools",
-  tags: "settings",
+  tags: "tools",
+  settings: "tools",
+  original: "tools",
+  premise: "library",
+  characters: "library",
+  background: "library",
+  lore: "library",
+  plot: "library",
+  volumes: "outline",
+  outline: "outline",
+  chapters: "manuscript",
+  tools: "tools",
+  setup: "library",
+  write: "manuscript",
+  review: "review",
 };
 
+export function isStudioWorkspace(id: string): id is StudioWorkspace {
+  return ALL_WORKSPACES.includes(id as StudioWorkspace);
+}
+
 export function isProjectTab(id: string): id is ProjectTab {
-  return ALL_TABS.includes(id as ProjectTab);
+  return isStudioWorkspace(id) || id in LEGACY_TAB;
+}
+
+export function resolveStudioWorkspace(
+  raw: string | null | undefined
+): StudioWorkspace {
+  if (!raw) return "overview";
+  if (isStudioWorkspace(raw)) return raw;
+  return LEGACY_TAB[raw] || "overview";
 }
 
 export function resolveProjectTab(
   raw: string | null | undefined
 ): ProjectTab {
-  const mapped = raw ? LEGACY_TAB[raw] || raw : "";
-  return isProjectTab(mapped) ? mapped : "characters";
+  return resolveStudioWorkspace(raw);
 }
 
-export function stageOf(tab: ProjectTab): StageId {
-  if (tab === "outline" || tab === "chapters") return "write";
-  if (tab === "plot" || tab === "tools") return "review";
+export function stageOf(_tab: ProjectTab): StageId {
+  if (_tab === "outline" || _tab === "manuscript") return "write";
+  if (_tab === "review" || _tab === "tools") return "review";
   return "setup";
 }
 
-export function setupTabs(hasOriginal: boolean): ProjectTab[] {
-  const tabs: ProjectTab[] = [];
-  if (hasOriginal) tabs.push("original");
-  tabs.push("premise", "characters", "background", "lore", "volumes", "settings");
-  return tabs;
+export function setupTabs(_hasOriginal: boolean): ProjectTab[] {
+  return ["library"];
+}
+
+export function workspaceOfLegacyPanel(panel: string): StudioWorkspace {
+  return resolveStudioWorkspace(panel);
 }

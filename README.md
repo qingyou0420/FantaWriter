@@ -51,6 +51,10 @@ A local AI editor for long-form mainstream fiction. Next.js + Electron. Your dat
 
 数据优先存在本机 IndexedDB（库名 `fantawriter`）。桌面端用户目录是 `%APPDATA%\fantawriter`。
 
+## 致谢
+
+工作台信息架构与写作流程设计借鉴自 [OpenWrite](https://github.com/LiPu-jpg/Openwrite)（Apache-2.0）；本仓未复制其代码与资源。
+
 ## 许可证
 
 [MIT](LICENSE)。Copyright © 2026 FantaWriter / 幻想作家。

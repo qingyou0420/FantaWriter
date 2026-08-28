@@ -52,6 +52,7 @@ describe("assemble isolation", () => {
       "scene_chapter",
       "volume_summary",
       "outline_next",
+      "review_chapter",
     ] as const;
     for (const task of tasks) {
       const { system, user } = assemble(task, "general", {
@@ -72,6 +73,8 @@ describe("assemble isolation", () => {
         volume: { id: "v1", order: 1, title: "上卷", summary: "离乡" },
         chapterSummaries: [{ order: 1, title: "一", summary: "上路" }],
         recentSummaries: [{ order: 1, title: "一", summary: "上路" }],
+        content: "一段正文。",
+        title: "一",
       });
       const hits = bannedHits(system + "\n" + user);
       expect(hits, `${task} leaked ${hits.join(",")}`).toEqual([]);

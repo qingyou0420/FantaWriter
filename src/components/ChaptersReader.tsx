@@ -106,6 +106,9 @@ export function ChaptersReader({
   onHandEditSummary,
   onJumpPlot: _onJumpPlot,
   onJumpTools: _onJumpTools,
+  hideLegacyFlow = false,
+  onRerunReview,
+  onRerunSettle,
 }: {
   project: NovelProject;
   library: string[];
@@ -149,6 +152,9 @@ export function ChaptersReader({
   onHandEditSummary?: (chapterId: string, chapterOrder: number) => void;
   onJumpPlot?: () => void;
   onJumpTools?: () => void;
+  hideLegacyFlow?: boolean;
+  onRerunReview?: (chapterId: string) => void;
+  onRerunSettle?: (chapterId: string) => void;
 }) {
   const [metaOpen, setMetaOpen] = useState(false);
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadReaderPrefs());
@@ -834,7 +840,7 @@ export function ChaptersReader({
           >
             {summaryOnly ? "看目录" : "只看摘要"}
           </button>
-          {allowsWholeBookGenerate(project) ? (
+          {!hideLegacyFlow && allowsWholeBookGenerate(project) ? (
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -843,7 +849,7 @@ export function ChaptersReader({
             >
               全部生成
             </button>
-          ) : (
+          ) : hideLegacyFlow ? null : (
             <span className="text-[0.7rem] text-[var(--text-muted)]">按拍扩写</span>
           )}
         </div>
@@ -1009,7 +1015,7 @@ export function ChaptersReader({
       </aside>
 
       <div className="card reader-panel flex flex-col min-h-0 overflow-hidden !p-0">
-        {contractChapter && onPatchOutlineChapter ? (
+        {contractChapter && onPatchOutlineChapter && !hideLegacyFlow ? (
           <div className="p-4 overflow-y-auto">
             <ChapterContractPanel
               project={project}
@@ -1025,7 +1031,7 @@ export function ChaptersReader({
               }}
             />
           </div>
-        ) : finalizeOpen && selectedOutline && selectedContent ? (
+        ) : finalizeOpen && selectedOutline && selectedContent && !hideLegacyFlow ? (
           <div className="p-4 overflow-y-auto">
             <FinalizePanel
               project={project}
@@ -1075,9 +1081,11 @@ export function ChaptersReader({
                   className="btn btn-primary btn-sm"
                   disabled={!!busy}
                   onClick={() =>
-                    onRequestContract
-                      ? onRequestContract(selectedOutline.id)
-                      : onGenerateChapter(selectedOutline)
+                    hideLegacyFlow && onWriteNext
+                      ? onWriteNext()
+                      : onRequestContract
+                        ? onRequestContract(selectedOutline.id)
+                        : onGenerateChapter(selectedOutline)
                   }
                 >
                   {busy === `chapter:${selectedOutline.id}` ? (
@@ -1088,6 +1096,8 @@ export function ChaptersReader({
                     "重试生成"
                   ) : selectedContent?.status === "done" ? (
                     "重新生成"
+                  ) : hideLegacyFlow ? (
+                    "写下一章"
                   ) : (
                     "生成本章"
                   )}
@@ -1112,6 +1122,26 @@ export function ChaptersReader({
                     {busy === "chapter_health" ? "体检中…" : "本章体检"}
                   </button>
                 ) : null}
+                {hideLegacyFlow && content.trim() ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={!!busy}
+                      onClick={() => onRerunReview?.(selectedOutline.id)}
+                    >
+                      重跑审稿
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={!!busy}
+                      onClick={() => onRerunSettle?.(selectedOutline.id)}
+                    >
+                      重跑结算
+                    </button>
+                  </>
+                ) : null}
                 {content.trim() && selectedContent?.reviewState === "reviewed" ? (
                   <button
                     type="button"
@@ -1124,7 +1154,7 @@ export function ChaptersReader({
                   >
                     标为未审
                   </button>
-                ) : content.trim() ? (
+                ) : content.trim() && !hideLegacyFlow ? (
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
