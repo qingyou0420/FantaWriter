@@ -15,6 +15,18 @@ import {
   formatSettings,
   formatTagBlock,
 } from "../prompts";
+import { formatEndingDirectionLine } from "../author-secrets";
+
+type OutlineInjectExtras = {
+  premise?: string;
+  includeEndingDirection?: boolean;
+  endingDirection?: string;
+};
+
+function outlinePremiseBlock(premise?: string): string {
+  const line = String(premise || "").trim();
+  return line ? `\n## 一句话前提\n${line}\n` : "";
+}
 
 export const GENERAL_CHAPTER_SYSTEM = `你是一位专业的类型/文学向虚构小说写作者与故事架构师。
 你协助用户创作常规长篇小说（奇幻、现实、悬疑、科幻等）。
@@ -42,9 +54,14 @@ export function generalOutlineUser(
   characters: Character[],
   background: StoryBackground,
   settings: GenerationSettings,
-  projectTags?: string[]
+  projectTags?: string[],
+  extras?: OutlineInjectExtras
 ): string {
   const tags = formatTagBlock(projectTags, undefined, "outline", "general");
+  const ending = formatEndingDirectionLine(
+    extras?.includeEndingDirection,
+    extras?.endingDirection
+  );
   return `请根据以下设定，生成一份可编辑的小说大纲。
 
 ## 人物设定
@@ -56,7 +73,7 @@ ${formatBackground(background)}
 ## 生成参数
 ${formatSettings(settings, "general")}
 建议章节数：约 ${settings.chapterCount} 章（可按故事需要 ±2）
-${tags ? `\n## 类型标签\n${tags}\n` : ""}
+${tags ? `\n## 类型标签\n${tags}\n` : ""}${outlinePremiseBlock(extras?.premise)}${ending ? `\n${ending}\n` : ""}
 ## 输出要求
 请严格输出如下 JSON（不要 markdown 代码块，不要其它说明文字）：
 {
@@ -410,6 +427,7 @@ export function generalRewriteUser(opts: {
   expandScale?: number;
   expandTargetChars?: number;
   verbatimAnchors?: string[];
+  chapterContractBlock?: string;
 }): string {
   const expand =
     opts.mode === "expand" || String(opts.mode).includes("扩写");
@@ -420,6 +438,7 @@ export function generalRewriteUser(opts: {
         ? "扩写目标：按选区加长，至少 1.5 倍，不要只改几个词。"
         : "";
   const memory = (opts.priorBlock || "").trim();
+  const contract = (opts.chapterContractBlock || "").trim();
   return `请对下列小说正文片段进行改写。
 
 ## 改写目标
@@ -436,7 +455,7 @@ ${formatBackground(opts.background)}
 
 ## 写作参数
 ${formatSettings(opts.settings, "general")}
-
+${contract ? `\n${contract}\n` : ""}
 ${opts.fullContext ? `## 所在章节上下文（选区前后滑窗，供连贯，勿重复输出全文）\n${opts.fullContext}\n` : ""}
 ## 待改写片段
 ${opts.selectedText}
@@ -508,12 +527,19 @@ export function generalPolishOutlineUser(opts: {
   chapter: OutlineChapter;
   projectTags?: string[];
   includeEndingDirection?: boolean;
+  endingDirection?: string;
+  premise?: string;
 }): string {
   const others = opts.outline.chapters
     .filter((c) => c.id !== opts.chapter.id)
     .sort((a, b) => a.order - b.order)
     .map((c) => `${c.order}. 《${c.title}》— ${c.summary}`)
     .join("\n");
+  const premise = (opts.premise || opts.outline.premise || "").trim();
+  const ending = formatEndingDirectionLine(
+    opts.includeEndingDirection,
+    opts.endingDirection
+  );
   return `请润色**单章大纲**（只改本章，保持与全书连贯）。
 
 ## 人物设定
@@ -526,12 +552,8 @@ ${formatBackground(opts.background)}
 ${formatSettings(opts.settings, "general")}
 
 ## 全书前提
-${opts.outline.premise}
-${
-  opts.includeEndingDirection && opts.outline.endingNote?.trim()
-    ? `结局方向（仅本次参考）：${opts.outline.endingNote.trim()}`
-    : ""
-}
+${premise}
+${ending}
 
 ## 其它章节（勿改，仅供连贯）
 ${others || "（无）"}
@@ -610,6 +632,9 @@ export function generalNextChaptersUser(opts: {
   openThreads?: string[];
   characterStates?: string;
   projectTags?: string[];
+  premise?: string;
+  includeEndingDirection?: boolean;
+  endingDirection?: string;
 }): string {
   const tags = formatTagBlock(opts.projectTags, undefined, "outline", "general");
   const n = Math.max(1, Math.min(20, opts.chapterCount || 10));
@@ -621,6 +646,10 @@ export function generalNextChaptersUser(opts: {
       )
       .join("\n") || "（无）";
   const threads = (opts.openThreads || []).join("\n") || "（无）";
+  const ending = formatEndingDirectionLine(
+    opts.includeEndingDirection,
+    opts.endingDirection
+  );
   const arc = [
     opts.volume.summary && `卷摘要：${opts.volume.summary}`,
     opts.volume.arcGoal && `本卷弧线目标：${opts.volume.arcGoal}`,
@@ -634,7 +663,7 @@ export function generalNextChaptersUser(opts: {
 标题：${opts.volume.title}
 ${arc || "（未填写弧线，请根据前情自拟本批走向）"}
 期望续排章数：${n} 章（可 ±2，上限 20）
-
+${outlinePremiseBlock(opts.premise)}${ending ? `\n${ending}\n` : ""}
 ## 最近章节实际摘要（优先 AI 摘要，不要当正文）
 ${summaries}
 
@@ -723,8 +752,10 @@ export function generalSceneChapterUser(opts: {
   lore?: string;
   priorBlock?: string;
   beatContractBlock?: string;
+  chapterContractBlock?: string;
 }): string {
   const memory = (opts.priorBlock || "").trim();
+  const contract = (opts.chapterContractBlock || "").trim();
   const anchors = opts.scene.verbatimAnchors?.filter(Boolean) || [];
   return `撰写本章中的**一个场景**正文（不是整章）。
 
@@ -750,7 +781,7 @@ ${opts.previousScenesText ? `## 本章已写场景（衔接）\n${opts.previousS
 ${memory ? `${memory}\n` : opts.previousChapterSnippet ? `## 上章结尾\n${opts.previousChapterSnippet}\n` : ""}
 ${!memory && opts.plotThreads ? `## 伏笔\n${opts.plotThreads}\n` : ""}
 ${!memory && opts.lore ? `## 世界观设定（关键词命中）\n${opts.lore}\n` : ""}
-${opts.beatContractBlock ? `${opts.beatContractBlock}\n` : ""}
+${contract ? `${contract}\n` : ""}${opts.beatContractBlock ? `${opts.beatContractBlock}\n` : ""}
 ${
   anchors.length
     ? `## 原句锚点（必须原样出现，润色不得改写）\n${anchors.map((a) => `- ${a}`).join("\n")}\n`

@@ -36,7 +36,10 @@ import {
 import { extractCharacterDialogue } from "@/lib/dialogue-excerpt";
 import type { CharacterStateDelta } from "@/lib/character-states";
 import { formatCharacterStateLedger } from "@/lib/character-states";
-import { formatChapterContract } from "@/lib/chapter-contract";
+import {
+  chapterAssembleExtras,
+  formatChapterContract,
+} from "@/lib/chapter-contract";
 import { globalForbidList } from "@/lib/author-secrets";
 import type { FinalizeProgress } from "@/lib/finalize-chapter";
 import type { PendingStateDelta } from "@/lib/types";
@@ -243,6 +246,12 @@ export function ChaptersReader({
 
   const selectedOutline = chapters.find((c) => c.id === selectedChapterId);
 
+  function chapterContractExtras() {
+    return selectedOutline
+      ? chapterAssembleExtras(project, selectedOutline)
+      : {};
+  }
+
   function persistContent(
     next: string,
     opts?: { pushVersion?: string; forceCanon?: boolean }
@@ -425,6 +434,7 @@ export function ChaptersReader({
               ? expandTargetChars(selectedChars, expandScale)
               : undefined,
           verbatimAnchors: collectChapterAnchors(selectedContent?.scenes),
+          ...chapterContractExtras(),
         }),
         {
           signal: ac.signal,
@@ -482,6 +492,7 @@ export function ChaptersReader({
           lore: prior.lore,
           priorBlock: prior.priorBlock,
           loreEntries: project.lore,
+          ...chapterContractExtras(),
         }),
         {
           signal: ac.signal,
@@ -593,6 +604,7 @@ export function ChaptersReader({
               prior.plotThreads ||
               formatPlotThreadsForPrompt(project.plotThreads),
             lore: prior.lore,
+            ...chapterContractExtras(),
           }),
           {
             signal: ac.signal,
@@ -656,6 +668,7 @@ export function ChaptersReader({
           lore: prior.lore,
           priorBlock: prior.priorBlock,
           loreEntries: project.lore,
+          ...chapterContractExtras(),
         }),
         {
           signal: ac.signal,

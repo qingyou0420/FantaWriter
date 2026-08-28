@@ -10,6 +10,8 @@ import { formatCharacters } from "./prompts";
 import {
   collectAuthorSecrets,
   flattenAuthorSecrets,
+  formatEndingDirectionLine,
+  injectableEndingDirection,
   secretHitsInText,
 } from "./author-secrets";
 import { chapterAssembleExtras } from "./chapter-contract";
@@ -35,6 +37,7 @@ const TRUTH_LINE = "TRUTH_LINE_绝不背叛师门";
 const DARK_TITLE = "DARK_TITLE_铜铃旧城令";
 const DARK_NOTE = "DARK_NOTE_血缘未揭读者不知";
 const DEST = "DEST_NOTE_第三卷才收这条暗线";
+const OLD_ENDING_NOTE = "OLD_ENDING_NOTE_should_not_inject";
 
 function secretProject() {
   const p = createEmptyProject("红线");
@@ -104,7 +107,7 @@ function secretProject() {
   };
   p.outline = {
     premise: "行人甲要在霜桥交还铜铃",
-    endingNote: ENDING,
+    endingNote: OLD_ENDING_NOTE,
     chapters: [ch1, ch2],
   };
   p.chapters = [
@@ -128,6 +131,22 @@ function expectClean(label: string, text: string, secrets: string[]) {
   const hits = secretHitsInText(text, secrets);
   expect(hits, `${label} leaked ${hits.join(" | ")}`).toEqual([]);
 }
+
+describe("ending-direction opt-in helpers", () => {
+  it("never falls back to endingNote and stays empty unless checked", () => {
+    const card = {
+      premise: "p",
+      theme: "",
+      endingDirection: ENDING,
+      forbidList: [],
+    };
+    expect(injectableEndingDirection(false, card)).toBe("");
+    expect(injectableEndingDirection(true, card)).toBe(ENDING);
+    expect(injectableEndingDirection(true, undefined)).toBe("");
+    expect(formatEndingDirectionLine(false, ENDING)).toBe("");
+    expect(formatEndingDirectionLine(true, ENDING)).toContain(ENDING);
+  });
+});
 
 describe("author-secret red line", () => {
   const project = secretProject();
@@ -178,6 +197,7 @@ describe("author-secret red line", () => {
     "expand_cast",
     "polish_chapter_outline",
     "volume_summary",
+    "optimize_settings",
   ] as const;
 
   it("collects every red-line field", () => {
@@ -219,6 +239,74 @@ describe("author-secret red line", () => {
       chapters: [{ order: 1, title: "一", summary: "离开北城。" }],
     });
     expectClean("consistency_check", consistency, secrets);
+  });
+
+  it("does not inject outline.endingNote even when the ending-direction checkbox is on", () => {
+    for (const task of [
+      "outline",
+      "outline_next",
+      "polish_chapter_outline",
+    ] as const) {
+      const on = assemble(task, "general", {
+        ...common,
+        includeEndingDirection: true,
+        endingDirection: ENDING,
+      });
+      expect(on.user).not.toContain(OLD_ENDING_NOTE);
+    }
+  });
+
+  it("injects premise-card ending direction only when the checkbox is on", () => {
+    for (const task of [
+      "outline",
+      "outline_next",
+      "polish_chapter_outline",
+    ] as const) {
+      const off = assemble(task, "general", { ...common });
+      expect(off.user, task).not.toContain(ENDING);
+      expect(off.user, task).not.toContain("结局方向（仅本次参考）");
+
+      const on = assemble(task, "general", {
+        ...common,
+        includeEndingDirection: true,
+        endingDirection: ENDING,
+      });
+      expect(on.user, task).toContain(ENDING);
+      expect(on.user, task).toContain("结局方向（仅本次参考）");
+      expectClean(`${task}+ending`, on.user, [
+        THEME,
+        CORE,
+        TRUTH_WANT,
+        TRUTH_NEED,
+        TRUTH_FLAW,
+        TRUTH_LINE,
+        DARK_TITLE,
+        DARK_NOTE,
+        DEST,
+      ]);
+    }
+  });
+
+  it("injects the one-sentence premise into outline and outline_next", () => {
+    const premise = "行人甲要在霜桥交还铜铃";
+    const full = assemble("outline", "general", { ...common, premise });
+    expect(full.user).toContain(premise);
+    const next = assemble("outline_next", "general", { ...common, premise });
+    expect(next.user).toContain(premise);
+  });
+
+  it("puts the same forbid contract into continue / rewrite / scene_chapter", () => {
+    const extras = chapterAssembleExtras(project, project.outline!.chapters[0]);
+    for (const task of ["continue", "rewrite", "scene_chapter"] as const) {
+      const { user } = assemble(task, "general", {
+        ...common,
+        chapter: project.outline!.chapters[0],
+        chapterContractBlock: extras.chapterContractBlock,
+      });
+      expect(user, task).toContain("禁止写：主角不许黑化");
+      expect(user, task).toContain("禁止写：不得暗示血缘");
+      expectClean(`${task}+contract`, user, secrets);
+    }
   });
 
   it("does not inject endingNote into chapter or continue prompts", () => {

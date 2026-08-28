@@ -86,6 +86,28 @@ export function injectablePremise(
   return (premiseCard?.premise || outline?.premise || "").trim();
 }
 
+/**
+ * 勾选「本次把结局方向给 AI 参考」时才返回前提卡的结局方向。
+ * 永不回落到 outline.endingNote。
+ */
+export function injectableEndingDirection(
+  include: boolean | undefined,
+  premiseCard?: PremiseCard | null
+): string {
+  if (!include) return "";
+  return String(premiseCard?.endingDirection || "").trim();
+}
+
+/** 勾选且前提卡有结局方向时才拼进提示词；默认空串 */
+export function formatEndingDirectionLine(
+  include?: boolean,
+  endingDirection?: string
+): string {
+  if (!include) return "";
+  const line = String(endingDirection || "").trim();
+  return line ? `结局方向（仅本次参考）：${line}` : "";
+}
+
 export function globalForbidList(premiseCard?: PremiseCard | null): string[] {
   return (premiseCard?.forbidList || []).map((s) => s.trim()).filter(Boolean);
 }

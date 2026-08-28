@@ -205,7 +205,12 @@ function assembleGeneral(
           payload.characters as never,
           payload.background as never,
           payload.settings as never,
-          payload.projectTags as string[] | undefined
+          payload.projectTags as string[] | undefined,
+          {
+            premise: payload.premise as string | undefined,
+            includeEndingDirection: Boolean(payload.includeEndingDirection),
+            endingDirection: payload.endingDirection as string | undefined,
+          }
         ),
       };
     case "outline_volume":
@@ -234,6 +239,9 @@ function assembleGeneral(
           openThreads: payload.openThreads as string[] | undefined,
           characterStates: payload.characterStates as string | undefined,
           projectTags: payload.projectTags as string[] | undefined,
+          premise: payload.premise as string | undefined,
+          includeEndingDirection: Boolean(payload.includeEndingDirection),
+          endingDirection: payload.endingDirection as string | undefined,
         }),
       };
     case "chapter":
@@ -341,6 +349,8 @@ function assembleGeneral(
           chapter: payload.chapter as never,
           projectTags: payload.projectTags as string[] | undefined,
           includeEndingDirection: Boolean(payload.includeEndingDirection),
+          endingDirection: payload.endingDirection as string | undefined,
+          premise: payload.premise as string | undefined,
         }),
       };
     case "extract_canon":

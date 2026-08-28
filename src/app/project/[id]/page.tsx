@@ -42,6 +42,8 @@ import {
 import { chapterAssembleExtras } from "@/lib/chapter-contract";
 import {
   formatOpenThreadsForOutline,
+  injectableEndingDirection,
+  injectablePremise,
   readerKnownOpenThreadTitles,
 } from "@/lib/author-secrets";
 import {
@@ -356,12 +358,12 @@ export default function ProjectPage() {
             background: project.background,
             settings: project.settings,
             projectTags: project.tags || [],
-            premise: project.premiseCard?.premise || project.outline?.premise,
+            premise: injectablePremise(project.premiseCard, project.outline),
             includeEndingDirection,
-            endingDirection: includeEndingDirection
-              ? project.premiseCard?.endingDirection ||
-                project.outline?.endingNote
-              : undefined,
+            endingDirection: injectableEndingDirection(
+              includeEndingDirection,
+              project.premiseCard
+            ),
           })
         ),
       });
@@ -541,10 +543,12 @@ export default function ProjectPage() {
             3
           ),
           projectTags: fresh.tags || [],
+          premise: injectablePremise(fresh.premiseCard, fresh.outline),
           includeEndingDirection,
-          endingDirection: includeEndingDirection
-            ? fresh.premiseCard?.endingDirection || fresh.outline?.endingNote
-            : undefined,
+          endingDirection: injectableEndingDirection(
+            includeEndingDirection,
+            fresh.premiseCard
+          ),
         })
       );
       if (res.parseError) setError(String(res.parseError));
@@ -1987,11 +1991,15 @@ export default function ProjectPage() {
                     outline: fresh.outline,
                     chapter: live,
                     projectTags: fresh.tags || [],
+                    premise: injectablePremise(
+                      fresh.premiseCard,
+                      fresh.outline
+                    ),
                     includeEndingDirection,
-                    endingDirection: includeEndingDirection
-                      ? fresh.premiseCard?.endingDirection ||
-                        fresh.outline?.endingNote
-                      : undefined,
+                    endingDirection: injectableEndingDirection(
+                      includeEndingDirection,
+                      fresh.premiseCard
+                    ),
                   })
                 );
                 const polished = data.chapter as {
