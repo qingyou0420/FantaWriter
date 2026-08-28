@@ -2,6 +2,25 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「幻想作家」，英文名 FantaWriter。
 
+## [1.6.0] - 2026-08-28
+
+安装包：`FantaWriter-Setup-1.6.0.exe`（同时上传 `Fantasy-Writer-Setup-1.6.0.exe` 别名）。
+
+### 新增
+
+- 有大纲的项目打开后直接进正文。
+- 「写下一章」先立本章契约：要写什么、绝不能写什么。续写、改写、按场景生成也会带上契约禁写。
+- 定稿要过摘要、账本、伏笔。
+- 前提卡与人物真相层：仅作者可见，不进提示词。结局方向默认不给 AI，勾选后才本次参考。
+- 新建项目连载默认开。
+- 账本条目可置顶。
+- 过卷向导：卷摘要、出卷人物快照、伏笔去向、时间线落点。
+- 未审章审阅同屏。
+
+### 修复
+
+- 仅作者暗线不再泄漏进生成路径。
+
 ## [1.5.1] - 2026-08-27
 
 安装包：`FantaWriter-Setup-1.5.1.exe`（同时上传 `Fantasy-Writer-Setup-1.5.1.exe` 别名）。
@@ -141,6 +160,7 @@
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[1.6.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.6.0
 [1.5.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.1
 [1.5.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.0
 [1.4.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.4.3
