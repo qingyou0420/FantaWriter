@@ -48,16 +48,16 @@ export function OnboardingCard({
     (project.premiseCard?.premise || project.outline?.premise || "").trim()
   );
   const steps = [
-    { id: "premise" as const, label: "填前提卡", done: premiseDone },
-    { id: "characters" as const, label: "写人物", done: named },
-    { id: "background" as const, label: "写背景", done: synopsis },
-    { id: "outline" as const, label: "生成大纲", done: outline },
-    { id: "chapters" as const, label: "写下一章", done: firstDone },
+    { id: "premise" as const, label: "资料库：确认意图", done: premiseDone },
+    { id: "characters" as const, label: "资料库：确认人物", done: named },
+    { id: "background" as const, label: "资料库：故事基础", done: synopsis },
+    { id: "outline" as const, label: "大纲：排章或让织卷起草", done: outline },
+    { id: "chapters" as const, label: "写下一章 → 审稿结算", done: firstDone },
   ];
   return (
     <EmptyState
       title="开写五步"
-      description="从前提卡到第一章。完成一项会打勾；老项目不会看到这张卡。"
+      description="先确认资产，再写章。织卷提案须经确认闸；落墨走写下一章管线。老项目不会看到这张卡。"
       action={
         <div className="space-y-3">
           <ol className="list-none p-0 m-0 space-y-2">

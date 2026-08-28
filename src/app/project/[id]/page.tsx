@@ -206,6 +206,8 @@ export default function ProjectPage() {
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [assistantSelection] = useState("");
   const [modelSummary, setModelSummary] = useState("模型设置");
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  const [keyPrefix, setKeyPrefix] = useState("");
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -326,6 +328,8 @@ export default function ProjectPage() {
           const main = data.env?.model || "主力档";
           const fine = data.env?.fineModel ? " · 精写已配" : "";
           setModelSummary(`${main}${fine}`);
+          setHasApiKey(Boolean(data.env?.hasKey));
+          setKeyPrefix(String(data.env?.keyPrefix || ""));
         })
         .catch(() => undefined);
     }, 0);
@@ -1317,6 +1321,7 @@ export default function ProjectPage() {
       bookJobRunning: Boolean(opts?.fromJob)
         ? false
         : live.bookJob?.status === "running",
+      hasApiKey: hasApiKey === null ? undefined : hasApiKey,
     });
     if (!pre.ok && !opts?.fromJob) {
       setError(pre.items.find((i) => i.level === "block")?.message || "写前检查未通过");
@@ -1543,6 +1548,7 @@ export default function ProjectPage() {
   const writePrecheck = writeDialog
     ? precheckWriteNext(project, writeDialog.chapter.id, {
         bookJobRunning: bookJob?.status === "running",
+        hasApiKey: hasApiKey === null ? undefined : hasApiKey,
       })
     : null;
   const showGuide =
@@ -2529,8 +2535,8 @@ export default function ProjectPage() {
               </button>
             </div>
             <AppSettingsMenu
-              hasKey={null}
-              keyPrefix=""
+              hasKey={hasApiKey}
+              keyPrefix={keyPrefix}
               onImportClick={() => setSettingsMenuOpen(false)}
               onHasKeyChange={() => {
                 void fetch("/api/config")
@@ -2541,6 +2547,8 @@ export default function ProjectPage() {
                       ? " · 精写已配"
                       : "";
                     setModelSummary(`${main}${fine}`);
+                    setHasApiKey(Boolean(data.env?.hasKey));
+                    setKeyPrefix(String(data.env?.keyPrefix || ""));
                   })
                   .catch(() => undefined);
               }}
