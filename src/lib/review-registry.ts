@@ -191,6 +191,14 @@ export function parseReviewPayload(raw: string): {
   }
 }
 
+/** 无 high 问题视为已审；有阻断问题保持 draft。跳过审稿不要走这里。 */
+export function reviewStateAfterIssues(
+  issues: { severity?: string }[] | undefined
+): "draft" | "reviewed" {
+  if ((issues || []).some((i) => i.severity === "high")) return "draft";
+  return "reviewed";
+}
+
 export function locateEvidenceOffset(content: string, evidence: string): number {
   const hay = content || "";
   const needle = (evidence || "").trim();

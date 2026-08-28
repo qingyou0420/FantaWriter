@@ -145,7 +145,16 @@ function normalizeWriteRuns(raw: WriteRun[] | undefined): WriteRun[] {
 
 function normalizeDrafts(raw: CanonDraft[] | undefined): CanonDraft[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((d): d is CanonDraft => Boolean(d && typeof d === "object"));
+  return raw
+    .filter((d): d is CanonDraft => Boolean(d && typeof d === "object"))
+    .map((d) => ({
+      ...d,
+      changes: Array.isArray(d.changes) ? d.changes : undefined,
+      patch:
+        d.patch && typeof d.patch === "object"
+          ? (d.patch as Record<string, unknown>)
+          : undefined,
+    }));
 }
 
 function normalizeSessions(raw: StudioSession[] | undefined): StudioSession[] {

@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   applyCanonProposal,
   createCanonConfirmation,
+  enqueueCanonDraft,
   markAuthorCanonEdit,
+  pendingCanonProposals,
+  proposalFromCanonDraft,
   proposalFromOutline,
+  proposalWithEditedAfters,
+  rejectCanonProposal,
 } from "./canon-gate";
 import { createEmptyProject, type Outline } from "./types";
 
@@ -66,6 +71,55 @@ describe("canon write gate", () => {
     expect(() => applyCanonProposal(project, proposal, confirm)).toThrow(
       /CANON_WRITE_REQUIRES_CONFIRMATION/
     );
+  });
+
+  it("persists the full proposal on the draft so refresh can reopen the gate", () => {
+    const project = createEmptyProject("刷新");
+    const outline: Outline = {
+      premise: "花钱生成的大纲",
+      endingNote: "",
+      chapters: [
+        {
+          id: "c-keep",
+          order: 1,
+          title: "开篇",
+          summary: "上路",
+          keyPoints: "",
+          tags: [],
+        },
+      ],
+    };
+    const proposal = proposalFromOutline({
+      kind: "outline",
+      before: project.outline,
+      after: outline,
+    });
+    const stored = enqueueCanonDraft(project, proposal);
+    expect(stored.canonDrafts?.[0].patch).toBeTruthy();
+    const reopened = proposalFromCanonDraft(stored.canonDrafts![0]);
+    expect(reopened?.patch.outline?.premise).toBe("花钱生成的大纲");
+    expect(pendingCanonProposals(stored)).toHaveLength(1);
+    const rejected = rejectCanonProposal(stored, reopened!);
+    expect(pendingCanonProposals(rejected)).toHaveLength(0);
+  });
+
+  it("edit-then-write applies field-level after values", () => {
+    const project = createEmptyProject("编辑");
+    const proposal = proposalFromOutline({
+      kind: "outline",
+      before: project.outline,
+      after: {
+        premise: "原稿",
+        endingNote: "",
+        chapters: [],
+      },
+    });
+    const edited = proposalWithEditedAfters(proposal, {
+      "outline.premise": "作者改过的前提",
+    });
+    expect(edited.patch.outline?.premise).toBe("作者改过的前提");
+    const next = applyCanonProposal(project, edited, createCanonConfirmation());
+    expect(next.outline?.premise).toBe("作者改过的前提");
   });
 
   it("author edits do not need a token", () => {

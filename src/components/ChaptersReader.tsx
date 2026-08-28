@@ -109,6 +109,10 @@ export function ChaptersReader({
   hideLegacyFlow = false,
   onRerunReview,
   onRerunSettle,
+  onSelectionChange,
+  focusOffset,
+  onUndoWriteRun,
+  canUndoWriteRun,
 }: {
   project: NovelProject;
   library: string[];
@@ -155,6 +159,10 @@ export function ChaptersReader({
   hideLegacyFlow?: boolean;
   onRerunReview?: (chapterId: string) => void;
   onRerunSettle?: (chapterId: string) => void;
+  onSelectionChange?: (text: string) => void;
+  focusOffset?: number | null;
+  onUndoWriteRun?: () => void;
+  canUndoWriteRun?: boolean;
 }) {
   const [metaOpen, setMetaOpen] = useState(false);
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadReaderPrefs());
@@ -364,6 +372,21 @@ export function ChaptersReader({
       };
     });
   }
+
+  useEffect(() => {
+    onSelectionChange?.(selection.text);
+  }, [selection.text, onSelectionChange]);
+
+  useEffect(() => {
+    if (focusOffset == null || focusOffset < 0) return;
+    const el = taRef.current;
+    if (!el) return;
+    el.focus();
+    const end = Math.min(el.value.length, focusOffset + 1);
+    el.setSelectionRange(focusOffset, end);
+    const ratio = el.value.length ? focusOffset / el.value.length : 0;
+    el.scrollTop = Math.max(0, el.scrollHeight * ratio - el.clientHeight / 3);
+  }, [focusOffset, selectedChapterId]);
 
   function jumpFind(dir: 1 | -1) {
     if (!findMatches.length || !selectedOutline) return;
@@ -1140,6 +1163,16 @@ export function ChaptersReader({
                     >
                       重跑结算
                     </button>
+                    {canUndoWriteRun ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={!!busy}
+                        onClick={() => onUndoWriteRun?.()}
+                      >
+                        撤销本次写章
+                      </button>
+                    ) : null}
                   </>
                 ) : null}
                 {content.trim() && selectedContent?.reviewState === "reviewed" ? (
@@ -1594,7 +1627,7 @@ export function ChaptersReader({
                     >
                       {busy === "scene_plan" ? "规划中…" : "AI 规划场景"}
                     </button>
-                    {allowsWholeBookGenerate(project) ? (
+                    {!hideLegacyFlow && allowsWholeBookGenerate(project) ? (
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"

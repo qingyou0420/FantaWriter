@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildCanonicalPacket, previewCanonicalPacket } from "./canonical-packet";
+import {
+  buildCanonicalPacket,
+  chapterPromptContext,
+  previewCanonicalPacket,
+} from "./canonical-packet";
 import { createEmptyProject } from "./types";
 
 describe("canonical packet", () => {
@@ -47,6 +51,10 @@ describe("canonical packet", () => {
     expect(packet.summaries.split("\n").length).toBeLessThanOrEqual(6);
     const preview = previewCanonicalPacket(p, "c10");
     expect(preview?.priorBlock).toBe(packet.priorBlock);
+    const ctx = chapterPromptContext(p, 10);
+    expect(ctx.priorBlock).toBe(packet.priorBlock);
+    expect(ctx.priorBlock).toContain("必须避免：无故痊愈");
+    expect(preview?.priorBlock).toContain("必须避免：无故痊愈");
   });
 });
 

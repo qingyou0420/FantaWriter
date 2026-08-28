@@ -6,6 +6,7 @@ import {
   parseReviewPayload,
   registerReviewDimension,
   resetReviewDimensions,
+  reviewStateAfterIssues,
   scoreFromIssues,
 } from "./review-registry";
 
@@ -42,6 +43,14 @@ describe("review registry", () => {
     expect(parsed.issues).toHaveLength(1);
     expect(parsed.score).toBe(80);
     expect(scoreFromIssues(parsed.issues)).toBeLessThan(100);
+  });
+
+  it("marks reviewed only when there is no high-severity issue", () => {
+    expect(reviewStateAfterIssues([])).toBe("reviewed");
+    expect(
+      reviewStateAfterIssues([{ severity: "medium" }, { severity: "low" }])
+    ).toBe("reviewed");
+    expect(reviewStateAfterIssues([{ severity: "high" }])).toBe("draft");
   });
 
   it("locates evidence in the manuscript", () => {

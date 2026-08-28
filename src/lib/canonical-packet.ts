@@ -119,6 +119,24 @@ export function buildCanonicalPacket(
   };
 }
 
+/** 写章请求体用的上下文块，与助手栏 dry-run 同一装配器。 */
+export function chapterPromptContext(
+  project: NovelProject,
+  currentOrder: number,
+  opts?: { chapterText?: string }
+) {
+  const packet = buildCanonicalPacket(project, currentOrder, opts);
+  return {
+    previousChapterSnippet: packet.previousTail,
+    previousSummaries: packet.summaries,
+    previousSummary: packet.summaries,
+    characterStateCard: packet.castCard,
+    priorBlock: packet.priorBlock,
+    plotThreads: packet.threads,
+    lore: packet.world,
+  };
+}
+
 export function previewCanonicalPacket(
   project: NovelProject,
   chapterId?: string | null

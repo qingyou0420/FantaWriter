@@ -1,7 +1,11 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { PLANNER_AGENT_LABEL } from "@/lib/brand";
-import type { CanonProposal } from "@/lib/canon-gate";
+import {
+  proposalWithEditedAfters,
+  type CanonProposal,
+} from "@/lib/canon-gate";
 
 export function DiffConfirmGate({
   proposal,
@@ -12,8 +16,21 @@ export function DiffConfirmGate({
   proposal: CanonProposal;
   onConfirm: () => void;
   onReject: () => void;
-  onEdit?: () => void;
+  onEdit?: (edited: CanonProposal) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [afters, setAfters] = useState<Record<string, string>>(() =>
+    Object.fromEntries(proposal.changes.map((c) => [c.path, c.after]))
+  );
+  const dirty = useMemo(
+    () => proposal.changes.some((c) => (afters[c.path] ?? c.after) !== c.after),
+    [afters, proposal.changes]
+  );
+
+  function editedProposal() {
+    return proposalWithEditedAfters(proposal, afters);
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/45">
       <div className="card max-w-3xl w-full max-h-[88vh] overflow-hidden flex flex-col">
@@ -40,9 +57,23 @@ export function DiffConfirmGate({
                   </div>
                   <div>
                     <div className="text-[0.7rem] text-[var(--text-muted)]">新值</div>
-                    <pre className="whitespace-pre-wrap m-0 text-[0.8rem]">
-                      {c.after || "（空）"}
-                    </pre>
+                    {editing ? (
+                      <textarea
+                        className="w-full mt-1 text-[0.8rem]"
+                        rows={4}
+                        value={afters[c.path] ?? c.after}
+                        onChange={(e) =>
+                          setAfters((prev) => ({
+                            ...prev,
+                            [c.path]: e.target.value,
+                          }))
+                        }
+                      />
+                    ) : (
+                      <pre className="whitespace-pre-wrap m-0 text-[0.8rem]">
+                        {(afters[c.path] ?? c.after) || "（空）"}
+                      </pre>
+                    )}
                   </div>
                 </div>
               </div>
@@ -56,11 +87,30 @@ export function DiffConfirmGate({
             放弃
           </button>
           {onEdit ? (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onEdit}>
-              编辑后写入
-            </button>
+            editing ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={!dirty}
+                onClick={() => onEdit(editedProposal())}
+              >
+                写入编辑后的值
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setEditing(true)}
+              >
+                编辑后写入
+              </button>
+            )
           ) : null}
-          <button type="button" className="btn btn-primary btn-sm" onClick={onConfirm}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={onConfirm}
+          >
             确认写入
           </button>
         </div>

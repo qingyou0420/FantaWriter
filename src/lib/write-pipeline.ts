@@ -256,6 +256,34 @@ export function commitWriteRun(project: NovelProject): NovelProject {
   });
 }
 
+export function latestUndoableWriteRun(
+  project: NovelProject,
+  chapterId?: string
+): WriteRun | undefined {
+  return (project.writeRuns || []).find(
+    (r) =>
+      r.status === "committed" &&
+      r.snapshot &&
+      (!chapterId || r.chapterId === chapterId)
+  );
+}
+
+/** 用写前快照撤销最近一次已提交写章（含账本/伏笔）。 */
+export function undoCommittedWriteRun(
+  project: NovelProject,
+  runId?: string
+): NovelProject {
+  const run = runId
+    ? (project.writeRuns || []).find((r) => r.id === runId)
+    : latestUndoableWriteRun(project);
+  if (!run?.snapshot || run.status !== "committed") return project;
+  return rollbackWriteRun(project, {
+    runId: run.id,
+    status: "rolled_back",
+    error: "作者撤销本次写章",
+  });
+}
+
 export function markSettlePending(
   project: NovelProject,
   error?: string

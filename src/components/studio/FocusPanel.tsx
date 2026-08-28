@@ -8,7 +8,7 @@ export function FocusPanel({
   onChange,
 }: {
   project: NovelProject;
-  onChange: (next: NovelProject) => void;
+  onChange: (updater: (p: NovelProject) => NovelProject) => void;
 }) {
   const focus = project.currentFocus || {
     stageGoal: "",
@@ -18,10 +18,14 @@ export function FocusPanel({
   };
 
   function patch(partial: Partial<CurrentFocus>) {
-    onChange(
+    onChange((p) =>
       markAuthorCanonEdit({
-        ...project,
-        currentFocus: { ...focus, ...partial, source: "author" },
+        ...p,
+        currentFocus: {
+          ...(p.currentFocus || focus),
+          ...partial,
+          source: "author",
+        },
       })
     );
   }

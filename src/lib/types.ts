@@ -474,6 +474,10 @@ export interface CanonDraft {
   status: "pending" | "accepted" | "rejected";
   summary: string;
   proposalId?: string;
+  /** 字段级 diff，刷新后重开闸要用 */
+  changes?: { path: string; label: string; before: string; after: string }[];
+  /** 确认后合并进项目的正典补丁 */
+  patch?: Record<string, unknown>;
 }
 
 export type StudioSessionKind = "planner" | "writer";

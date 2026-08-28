@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { WRITER_AGENT_LABEL } from "@/lib/brand";
 import { previewCanonicalPacket } from "@/lib/canonical-packet";
+import type { CanonicalPacket } from "@/lib/canonical-packet";
 import type { NovelProject } from "@/lib/types";
 
 type RailTab = "assistant" | "compass" | "context";
@@ -24,10 +25,15 @@ export function AssistantRail({
 }) {
   const [tab, setTab] = useState<RailTab>("assistant");
   const [q, setQ] = useState("");
-  const packet = useMemo(
-    () => previewCanonicalPacket(project, chapterId),
-    [project, chapterId]
-  );
+  const [packet, setPacket] = useState<CanonicalPacket | null>(null);
+
+  useEffect(() => {
+    if (collapsed || tab !== "context") return;
+    const timer = window.setTimeout(() => {
+      setPacket(previewCanonicalPacket(project, chapterId));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [collapsed, tab, project, chapterId]);
 
   if (collapsed) {
     return (

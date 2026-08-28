@@ -5,10 +5,12 @@ import {
   clearWriteLock,
   commitWriteRun,
   keepPartialDraft,
+  latestUndoableWriteRun,
   markSettlePending,
   precheckWriteNext,
   recoverStaleWriteRuns,
   rollbackWriteRun,
+  undoCommittedWriteRun,
 } from "./write-pipeline";
 import { createEmptyProject, type OutlineChapter } from "./types";
 
@@ -175,5 +177,47 @@ describe("snapshot / rollback / settle", () => {
     p = commitWriteRun(p);
     expect(p.writeRuns?.[0].status).toBe("committed");
     expect(precheckWriteNext(p, "c1", { hasApiKey: true }).ok).toBe(true);
+  });
+
+  it("undoes a committed run back to the write-front snapshot", () => {
+    let p = seeded();
+    p.chapters[0].content = "写前正文";
+    p = beginWriteRun(p, "c1");
+    p = {
+      ...p,
+      chapters: p.chapters.map((c) =>
+        c.chapterId === "c1" ? { ...c, content: "写后正文", summary: "新摘要" } : c
+      ),
+      characterStates: { 沈烬: [{ chapterOrder: 1, note: "不该留下" }] },
+    };
+    p = commitWriteRun(p);
+    expect(latestUndoableWriteRun(p, "c1")?.status).toBe("committed");
+    p = undoCommittedWriteRun(p);
+    expect(p.chapters[0].content).toBe("写前正文");
+    expect(p.characterStates?.["沈烬"]?.[0].note).toBe("在城门");
+    expect(p.writeRuns?.[0].status).toBe("rolled_back");
+    expect(latestUndoableWriteRun(p, "c1")).toBeUndefined();
+  });
+
+  it("re-settle replaces the same chapterOrder ledger row", () => {
+    let p = seeded();
+    p = applySettleToProject({
+      project: p,
+      chapterId: "c1",
+      chapterOrder: 1,
+      summary: "一",
+      deltas: [{ name: "沈烬", location: "南岸" }],
+    });
+    p = applySettleToProject({
+      project: p,
+      chapterId: "c1",
+      chapterOrder: 1,
+      summary: "二",
+      deltas: [{ name: "沈烬", location: "客栈" }],
+    });
+    const notes = p.characterStates?.["沈烬"] || [];
+    expect(notes.filter((n) => n.chapterOrder === 1)).toHaveLength(1);
+    expect(notes.find((n) => n.chapterOrder === 1)?.note).toContain("客栈");
+    expect(p.chapters[0].summary).toBe("二");
   });
 });

@@ -36,6 +36,7 @@ export function CharactersPanel({
   onChange,
   onCastGenerated,
   onProposeCast,
+  onProposeCharacter,
   onError,
 }: {
   characters: Character[];
@@ -51,6 +52,8 @@ export function CharactersPanel({
   onCastGenerated: (c: Character[], b: StoryBackground) => void;
   /** AI 群像写入走提案闸；提供后不再直接 onCastGenerated */
   onProposeCast?: (c: Character[], b: StoryBackground) => void;
+  /** 单人 AI 扩写/优化走提案闸，避免被记成作者手改 */
+  onProposeCharacter?: (c: Character[]) => void;
   onError: (msg: string) => void;
 }) {
   const list = Array.isArray(characters) ? characters : [];
@@ -154,7 +157,14 @@ export function CharactersPanel({
       });
       const fields = data.character as Omit<Character, "id">;
       assertCharactersRespectCanon([fields], canon);
-      patchDraft(fields);
+      const nextPerson = { ...person, ...fields, id: person.id };
+      if (onProposeCharacter) {
+        onProposeCharacter(
+          list.map((c) => (c.id === person.id ? nextPerson : c))
+        );
+      } else {
+        patchDraft(fields);
+      }
       setSeed("");
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -189,7 +199,14 @@ export function CharactersPanel({
       });
       const fields = data.character as Omit<Character, "id">;
       assertCharactersRespectCanon([fields], canon);
-      patchDraft(fields);
+      const nextPerson = { ...person, ...fields, id: person.id };
+      if (onProposeCharacter) {
+        onProposeCharacter(
+          list.map((c) => (c.id === person.id ? nextPerson : c))
+        );
+      } else {
+        patchDraft(fields);
+      }
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {

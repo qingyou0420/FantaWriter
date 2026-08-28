@@ -80,13 +80,11 @@ import {
   writeProjectTab,
   saveStyleLibraryFor,
 } from "@/lib/storage";
-import { awaitChapterSummary } from "@/lib/chapter-summary";
 import {
   buildConsistencyRows,
   toConsistencyReport,
 } from "@/lib/consistency";
 import {
-  buildPreviousContext,
   formatPlotThreadsForPrompt,
   postGenerate,
   streamGenerate,
@@ -121,6 +119,7 @@ import {
   createCanonConfirmation,
   enqueueCanonDraft,
   markAuthorCanonEdit,
+  pendingCanonProposals,
   proposalFromBackground,
   proposalFromCharacters,
   proposalFromOutline,
@@ -134,13 +133,17 @@ import {
   clearWriteLock,
   commitWriteRun,
   keepPartialDraft,
+  latestUndoableWriteRun,
   markSettlePending,
   precheckWriteNext,
   recoverStaleWriteRuns,
   rollbackWriteRun,
   setWriteRunPhase,
+  undoCommittedWriteRun,
 } from "@/lib/write-pipeline";
 import { syncOutlineTree } from "@/lib/outline-tree";
+import { chapterPromptContext } from "@/lib/canonical-packet";
+import { reviewStateAfterIssues } from "@/lib/review-registry";
 import { addBlankOutlineChapter } from "@/lib/outline-edit";
 import { chapterGoalText } from "@/lib/chapter-contract";
 import { globalForbidList } from "@/lib/author-secrets";
@@ -204,7 +207,8 @@ export default function ProjectPage() {
   } | null>(null);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
-  const [assistantSelection] = useState("");
+  const [assistantSelection, setAssistantSelection] = useState("");
+  const [focusOffset, setFocusOffset] = useState<number | null>(null);
   const [modelSummary, setModelSummary] = useState("模型设置");
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [keyPrefix, setKeyPrefix] = useState("");
@@ -345,6 +349,18 @@ export default function ProjectPage() {
     // 只在加载完成时归位一次，避免把正在跑的队列打断
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, project?.id]);
+
+  const pendingDraftKey = (project?.canonDrafts || [])
+    .filter((d) => d.status === "pending")
+    .map((d) => d.id)
+    .join(",");
+  useEffect(() => {
+    if (!project || pendingProposal) return;
+    const next = pendingCanonProposals(project)[0];
+    if (next) setPendingProposal(next);
+    // 只在项目切换或待确认条目集合变化时重开闸，避免每个键入重置弹窗
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, pendingDraftKey, pendingProposal]);
 
   // 大纲首章：选中章无效或不存在时回落到第一项（渲染期派生，避免 effect setState）
   const outlineFirstId = project?.outline?.chapters[0]?.id ?? null;
@@ -665,7 +681,7 @@ export default function ProjectPage() {
   async function generateChapter(
     chapter: OutlineChapter,
     force = false,
-    opts?: { fromJob?: boolean }
+    opts?: { fromJob?: boolean; skipAutoSummary?: boolean }
   ): Promise<"done" | "error" | "cancelled" | "skipped"> {
     const fromJob = opts?.fromJob;
     const liveProject = getLive();
@@ -720,7 +736,7 @@ export default function ProjectPage() {
       const fresh = getLive() || liveProject;
       const liveChapter =
         fresh.outline?.chapters.find((c) => c.id === chapter.id) || chapter;
-      const prior = buildPreviousContext(fresh, liveChapter.order);
+      const prior = chapterPromptContext(fresh, liveChapter.order);
       const extras = chapterAssembleExtras(fresh, liveChapter);
 
       const buildBody = (
@@ -735,9 +751,9 @@ export default function ProjectPage() {
           settings: fresh.settings,
           outline: fresh.outline,
           chapter: liveChapter,
-          previousChapterSnippet: prior.previousSnippet,
+          previousChapterSnippet: prior.previousChapterSnippet,
           previousSummaries: prior.previousSummaries,
-          previousSummary: prior.previousSummaries,
+          previousSummary: prior.previousSummary,
           characterStateCard: prior.characterStateCard,
           priorBlock: prior.priorBlock,
           plotThreads:
@@ -807,57 +823,61 @@ export default function ProjectPage() {
       }
       const canonWarnings = saveVerdict.violations;
 
-      const openThreads = readerKnownOpenThreadTitles(fresh.plotThreads);
-      const summaryPromise = postGenerate({
-        mode: "chapter_summary",
-        writingBoard: fresh.writingBoard,
-        content: text,
-        title: liveChapter.title,
-        openThreads,
-        settings: fresh.settings,
-      })
-        .then((sumRes) => {
-          const raw = String(sumRes.summary || "");
-          const touched = Array.isArray(sumRes.touchedThreads)
-            ? (sumRes.touchedThreads as string[])
-            : parseTouchedThreads(raw);
-          const deltas = Array.isArray(sumRes.characterStates)
-            ? sumRes.characterStates
-            : [];
-          update((p) => {
-            const chapters = [...p.chapters];
-            const idx = chapters.findIndex(
-              (c) => c.chapterId === liveChapter.id
-            );
-            if (idx < 0) return p;
-            chapters[idx] = {
-              ...chapters[idx],
-              summary: raw,
-              touchedThreads: touched,
-              summaryFailed: false,
-              pendingStateDeltas: deltas,
-            };
-            return {
-              ...p,
-              chapters,
-            };
-          });
+      if (opts?.skipAutoSummary) {
+        pendingSummaryRef.current = null;
+      } else {
+        const openThreads = readerKnownOpenThreadTitles(fresh.plotThreads);
+        const summaryPromise = postGenerate({
+          mode: "chapter_summary",
+          writingBoard: fresh.writingBoard,
+          content: text,
+          title: liveChapter.title,
+          openThreads,
+          settings: fresh.settings,
         })
-        .catch(() => {
-          update((p) => {
-            const chapters = [...p.chapters];
-            const idx = chapters.findIndex(
-              (c) => c.chapterId === liveChapter.id
-            );
-            if (idx < 0) return p;
-            chapters[idx] = {
-              ...chapters[idx],
-              summaryFailed: true,
-            };
-            return { ...p, chapters };
+          .then((sumRes) => {
+            const raw = String(sumRes.summary || "");
+            const touched = Array.isArray(sumRes.touchedThreads)
+              ? (sumRes.touchedThreads as string[])
+              : parseTouchedThreads(raw);
+            const deltas = Array.isArray(sumRes.characterStates)
+              ? sumRes.characterStates
+              : [];
+            update((p) => {
+              const chapters = [...p.chapters];
+              const idx = chapters.findIndex(
+                (c) => c.chapterId === liveChapter.id
+              );
+              if (idx < 0) return p;
+              chapters[idx] = {
+                ...chapters[idx],
+                summary: raw,
+                touchedThreads: touched,
+                summaryFailed: false,
+                pendingStateDeltas: deltas,
+              };
+              return {
+                ...p,
+                chapters,
+              };
+            });
+          })
+          .catch(() => {
+            update((p) => {
+              const chapters = [...p.chapters];
+              const idx = chapters.findIndex(
+                (c) => c.chapterId === liveChapter.id
+              );
+              if (idx < 0) return p;
+              chapters[idx] = {
+                ...chapters[idx],
+                summaryFailed: true,
+              };
+              return { ...p, chapters };
+            });
           });
-        });
-      pendingSummaryRef.current = summaryPromise;
+        pendingSummaryRef.current = summaryPromise;
+      }
 
       update((p) => {
         const chapters = [...p.chapters];
@@ -1083,7 +1103,6 @@ export default function ProjectPage() {
         }
 
         if (result === "done") {
-          await awaitChapterSummary(pendingSummaryRef.current);
           pendingSummaryRef.current = null;
           job = patchBookJobItem(job, item.chapterId, {
             status: "done",
@@ -1243,6 +1262,7 @@ export default function ProjectPage() {
           .join("\n"),
       });
       const issues = Array.isArray(data.issues) ? data.issues : [];
+      const reviewState = reviewStateAfterIssues(issues);
       update((p) => ({
         ...p,
         reviews: [
@@ -1256,6 +1276,9 @@ export default function ProjectPage() {
           },
           ...(p.reviews || []).filter((r) => r.chapterId !== chapterId),
         ],
+        chapters: p.chapters.map((c) =>
+          c.chapterId === chapterId ? { ...c, reviewState } : c
+        ),
       }));
       goWorkspace("review");
     } catch (e) {
@@ -1323,8 +1346,15 @@ export default function ProjectPage() {
         : live.bookJob?.status === "running",
       hasApiKey: hasApiKey === null ? undefined : hasApiKey,
     });
-    if (!pre.ok && !opts?.fromJob) {
-      setError(pre.items.find((i) => i.level === "block")?.message || "写前检查未通过");
+    const blocking = pre.items.filter((i) => i.level === "block");
+    const hardBlocks = blocking.filter(
+      (i) => i.id === "api" || i.id === "storage" || i.id === "lock" || i.id === "chapter"
+    );
+    if (!pre.ok && (!opts?.fromJob || hardBlocks.length)) {
+      setError(
+        (opts?.fromJob ? hardBlocks[0] : blocking[0])?.message ||
+          "写前检查未通过"
+      );
       return "error";
     }
     update((p) =>
@@ -1338,6 +1368,7 @@ export default function ProjectPage() {
     update((p) => setWriteRunPhase(p, "draft"));
     const draft = await generateChapter(chapter, Boolean(opts?.force), {
       fromJob: opts?.fromJob,
+      skipAutoSummary: true,
     });
     if (draft !== "done") {
       const partial = streamPreviewRef.current;
@@ -1606,6 +1637,16 @@ export default function ProjectPage() {
         onWriteNext={() => requestWriteNext()}
         onRerunReview={(id) => void runReviewForChapter(id)}
         onRerunSettle={(id) => void runSettleForChapter(id)}
+        onSelectionChange={setAssistantSelection}
+        focusOffset={focusOffset}
+        canUndoWriteRun={Boolean(
+          project &&
+            latestUndoableWriteRun(project, effectiveSelectedId || undefined)
+        )}
+        onUndoWriteRun={() => {
+          update((p) => undoCommittedWriteRun(p));
+          setInfo("已撤销本次写章，正文与账本已回到写前。");
+        }}
         contractChapterId={null}
         onRequestContract={() => requestWriteNext()}
         onPatchOutlineChapter={(chapterId, patch) => {
@@ -1944,6 +1985,25 @@ export default function ProjectPage() {
           </div>
         </div>
       ) : null}
+      {!pendingProposal && project && pendingCanonProposals(project).length ? (
+        <div className="px-4 pt-3">
+          <div className="card !py-2.5 text-sm flex justify-between gap-3 items-center">
+            <span>
+              待确认提案 {pendingCanonProposals(project).length} 条。刷新不会丢掉产物。
+            </span>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                const next = pendingCanonProposals(project)[0];
+                if (next) setPendingProposal(next);
+              }}
+            >
+              打开确认闸
+            </button>
+          </div>
+        </div>
+      ) : null}
       {stalePrompt ? (
         <div className="px-4 pt-3">
           <div className="card !py-2.5 text-sm">
@@ -2214,8 +2274,9 @@ export default function ProjectPage() {
           project={project}
           selectedChapterId={effectiveSelectedId}
           onSelectChapter={setSelectedChapterId}
-          onLocate={(chapterId) => {
+          onLocate={(chapterId, offset) => {
             setSelectedChapterId(chapterId);
+            setFocusOffset(offset);
             goWorkspace("manuscript");
           }}
           onReviewChapter={(cid) => void runReviewForChapter(cid)}
@@ -2248,7 +2309,7 @@ export default function ProjectPage() {
           {librarySection === "focus" ? (
             <FocusPanel
               project={project}
-              onChange={(next) => update(() => next)}
+              onChange={(fn) => update(fn)}
             />
           ) : null}
           {librarySection === "foundation" ? (
@@ -2298,6 +2359,15 @@ export default function ProjectPage() {
                   before: project.characters,
                   after: characters,
                   background,
+                });
+                update((p) => enqueueCanonDraft(p, proposal));
+                setPendingProposal(proposal);
+              }}
+              onProposeCharacter={(characters) => {
+                const proposal = proposalFromCharacters({
+                  kind: "character",
+                  before: project.characters,
+                  after: characters,
                 });
                 update((p) => enqueueCanonDraft(p, proposal));
                 setPendingProposal(proposal);
@@ -2480,7 +2550,7 @@ export default function ProjectPage() {
             update((p) => rejectCanonProposal(p, pendingProposal));
             setPendingProposal(null);
           }}
-          onEdit={() => applyPendingProposal()}
+          onEdit={(edited) => applyPendingProposal(edited)}
         />
       ) : null}
       {writeDialog && writePrecheck ? (

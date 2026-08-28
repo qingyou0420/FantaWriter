@@ -96,9 +96,91 @@ export function enqueueCanonDraft(
     status: "pending",
     summary: proposal.summary,
     proposalId: proposal.id,
+    changes: proposal.changes,
+    patch: proposal.patch as Record<string, unknown>,
   };
   const rest = (project.canonDrafts || []).filter((d) => d.id !== proposal.id);
   return { ...project, canonDrafts: [draft, ...rest] };
+}
+
+export function proposalFromCanonDraft(
+  draft: CanonDraft
+): CanonProposal | null {
+  if (!draft.patch || typeof draft.patch !== "object") return null;
+  return {
+    id: draft.proposalId || draft.id,
+    kind: draft.kind,
+    summary: draft.summary,
+    createdAt: draft.createdAt,
+    changes: Array.isArray(draft.changes) ? draft.changes : [],
+    patch: draft.patch as CanonProposal["patch"],
+  };
+}
+
+export function pendingCanonProposals(project: NovelProject): CanonProposal[] {
+  return (project.canonDrafts || [])
+    .filter((d) => d.status === "pending")
+    .map(proposalFromCanonDraft)
+    .filter((p): p is CanonProposal => Boolean(p));
+}
+
+function setPatchPath(
+  patch: CanonProposal["patch"],
+  path: string,
+  after: string
+) {
+  const segs = path.split(".");
+  if (segs[0] === "outline" && patch.outline) {
+    if (segs[1] === "premise") patch.outline.premise = after;
+    if (segs[1] === "endingNote") patch.outline.endingNote = after;
+    if (segs[1] === "chapters" && segs[2] && segs[3]) {
+      patch.outline.chapters = patch.outline.chapters.map((c) =>
+        c.id === segs[2] ? { ...c, [segs[3]]: after } : c
+      );
+    }
+  }
+  if (segs[0] === "premiseCard" && patch.premiseCard && segs[1]) {
+    if (segs[1] === "forbidList") {
+      patch.premiseCard.forbidList = after
+        .split(/[；;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else {
+      (patch.premiseCard as unknown as Record<string, unknown>)[segs[1]] = after;
+    }
+  }
+  if (segs[0] === "currentFocus" && patch.currentFocus && segs[1] === "stageGoal") {
+    patch.currentFocus.stageGoal = after;
+  }
+  if (segs[0] === "background" && patch.background && segs[1]) {
+    (patch.background as unknown as Record<string, unknown>)[segs[1]] = after;
+  }
+  if (segs[0] === "characters" && segs[1] && patch.characters) {
+    try {
+      const parsed = JSON.parse(after) as Character;
+      patch.characters = patch.characters.map((c) =>
+        c.id === segs[1] || c.id === parsed.id ? { ...c, ...parsed, id: c.id } : c
+      );
+    } catch {
+      /* 展示串改了但不是 JSON，保留原 patch 对象 */
+    }
+  }
+}
+
+/** 把闸上编辑过的「新值」写回 changes 与可识别的 patch 字段。 */
+export function proposalWithEditedAfters(
+  proposal: CanonProposal,
+  afters: Record<string, string>
+): CanonProposal {
+  const changes = proposal.changes.map((c) => ({
+    ...c,
+    after: afters[c.path] ?? c.after,
+  }));
+  const patch = structuredClone(proposal.patch);
+  for (const c of changes) {
+    setPatchPath(patch, c.path, c.after);
+  }
+  return { ...proposal, changes, patch };
 }
 
 export function settleCanonDraft(
