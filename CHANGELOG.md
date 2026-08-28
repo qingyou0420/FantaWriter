@@ -4,13 +4,17 @@
 
 ## [未发布]
 
+## [1.7.0] - 2026-08-28
+
+安装包：`FantaWriter-Setup-1.7.0.exe`（同时上传 `Fantasy-Writer-Setup-1.7.0.exe` 别名）。
+
 ### 新增
 
 - Studio 工作台：左侧七工作区（总览 / 大纲 / 正文 / 审稿 / 资料库 / AI 协作 / 工具与设置）+ 右侧创作助手。
 - 规划「织卷」与写作「落墨」分工；正典 AI 写入须经 diff 确认闸。
-- 写下一章管线：写前检查 → 有界 packet → 初稿 → 10 维审稿 → 结算 → 整章提交 / 回滚。
+- 写下一章管线：写前检查 → 有界 packet → 初稿 → 10 维审稿 → 结算 / 回滚。旧「写下一章」向导已退役。
 - 旧项目 schema v2 → v3 无损迁移（章序 / 正文 / 账本保留）。
-- 工作台信息架构借鉴 [OpenWrite](https://github.com/LiPu-jpg/Openwrite)（Apache-2.0，仅思路，未复制代码）。安装包文件名仍以 `FantaWriter-Setup-*` 为准，历史 `Fantasy-Writer-Setup-*` 别名口径不变。
+- 工作台信息架构借鉴 [OpenWrite](https://github.com/LiPu-jpg/Openwrite)（仅思路，未复制代码）。
 
 ## [1.6.0] - 2026-08-28
 
@@ -170,6 +174,7 @@
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[1.7.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.7.0
 [1.6.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.6.0
 [1.5.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.1
 [1.5.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.0
