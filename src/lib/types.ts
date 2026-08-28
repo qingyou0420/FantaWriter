@@ -1,3 +1,6 @@
+import type { OutlineTree } from "./outline-tree";
+import { applySchemaV3 } from "./studio-v3";
+
 /** 旧项目 JSON 可能带 1–5；本版不展示、不写入提示词 */
 export type EroticLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -19,7 +22,7 @@ export type WritingStyle =
 /** 本版只有常规小说。字段保留以便导入旧 JSON。 */
 export type WritingBoard = "general";
 
-export const CURRENT_SCHEMA_VERSION = 2 as const;
+export const CURRENT_SCHEMA_VERSION = 3 as const;
 
 export function defaultVolumeId(projectId: string): string {
   return `${projectId}:vol:1`;
@@ -155,6 +158,8 @@ export interface Character {
   speechStyle?: string;
   /** 真相层：仅作者，永不进提示词 */
   truth?: CharacterTruthLayer;
+  /** 作者已确认的正典人物；迁入旧数据视为已确认 */
+  confirmed?: boolean;
 }
 
 export interface StoryBackground {
@@ -372,6 +377,135 @@ export interface BookGenerationJob {
   maxChapters?: number;
 }
 
+export interface CurrentFocus {
+  stageGoal: string;
+  mustKeep: string[];
+  mustAvoid: string[];
+  /** 迁移占位文案需作者改定 */
+  source: "author" | "migrated";
+}
+
+export interface WordTargets {
+  book?: number;
+  byVolume?: Record<string, number>;
+}
+
+export type ReviewSeverity = "high" | "medium" | "low";
+
+export interface ChapterReviewIssue {
+  dimension: string;
+  severity: ReviewSeverity;
+  title: string;
+  evidence: string;
+  suggestion: string;
+  locatable: boolean;
+}
+
+export interface ChapterReview {
+  id: string;
+  chapterId: string;
+  at: string;
+  score: number;
+  issues: ChapterReviewIssue[];
+  source: "pipeline" | "legacy_consistency" | "legacy_reviewed";
+  skipped?: boolean;
+}
+
+export type WriteRunPhase =
+  | "precheck"
+  | "packet"
+  | "draft"
+  | "review"
+  | "revise"
+  | "settle"
+  | "commit";
+
+export type WriteRunStatus =
+  | "running"
+  | "committed"
+  | "rolled_back"
+  | "failed"
+  | "aborted"
+  | "settle_pending";
+
+export interface WriteRunSnapshot {
+  chapterId: string;
+  content: string;
+  summary?: string;
+  touchedThreads?: string[];
+  pendingStateDeltas?: PendingStateDelta[];
+  reviewState?: ChapterContent["reviewState"];
+  characterStates: CharacterStateLedger;
+  plotThreads: PlotThread[];
+  bookJob: BookGenerationJob | null;
+}
+
+export interface WriteRun {
+  id: string;
+  chapterId: string;
+  status: WriteRunStatus;
+  phase: WriteRunPhase;
+  startedAt: string;
+  endedAt?: string;
+  modelTier?: string;
+  error?: string;
+  snapshot?: WriteRunSnapshot;
+  charsOut?: number;
+  skipReview?: boolean;
+}
+
+export type CanonDraftKind =
+  | "outline"
+  | "outline_volume"
+  | "outline_next"
+  | "polish_chapter"
+  | "character"
+  | "cast"
+  | "world"
+  | "intent"
+  | "focus"
+  | "thread"
+  | "foundation";
+
+export interface CanonDraft {
+  id: string;
+  kind: CanonDraftKind;
+  createdAt: string;
+  status: "pending" | "accepted" | "rejected";
+  summary: string;
+  proposalId?: string;
+  /** 字段级 diff，刷新后重开闸要用 */
+  changes?: { path: string; label: string; before: string; after: string }[];
+  /** 确认后合并进项目的正典补丁 */
+  patch?: Record<string, unknown>;
+}
+
+export type StudioSessionKind = "planner" | "writer";
+
+export type StudioSessionEventKind =
+  | "message"
+  | "tool"
+  | "confirm"
+  | "error"
+  | "phase";
+
+export interface StudioSessionEvent {
+  id: string;
+  at: string;
+  kind: StudioSessionEventKind;
+  title: string;
+  detail?: string;
+}
+
+export interface StudioSession {
+  id: string;
+  kind: StudioSessionKind;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  events: StudioSessionEvent[];
+}
+
 export interface NovelProject {
   id: string;
   name: string;
@@ -409,6 +543,17 @@ export interface NovelProject {
   /** 手改摘要 / 置顶账本后的下游提示 */
   accountRepairMarks?: AccountRepairMark[];
   promptPackId?: string;
+  /** 创作罗盘 */
+  currentFocus?: CurrentFocus;
+  /** 卷→幕→节→章 分组视图；章数据仍在 outline.chapters */
+  outlineTree?: OutlineTree;
+  wordTargets?: WordTargets;
+  reviews?: ChapterReview[];
+  writeRuns?: WriteRun[];
+  canonDrafts?: CanonDraft[];
+  sessions?: StudioSession[];
+  /** 作者最近一次手改正典的时间（痕迹，非闸） */
+  lastAuthorCanonEditAt?: string;
 }
 
 /** 正文阅读偏好（全局） */
@@ -917,7 +1062,7 @@ export function normalizeProject(p: NovelProject): NovelProject {
   const writingBoard = resolveWritingBoard(p.writingBoard);
   const volumes = ensureVolumes(p.id, p.volumes);
   const defaultVolId = volumes[0]?.id || defaultVolumeId(p.id);
-  return {
+  const base: NovelProject = {
     ...p,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     writingBoard,
@@ -1020,7 +1165,16 @@ export function normalizeProject(p: NovelProject): NovelProject {
               : undefined,
         }
       : p.bookJob ?? null,
+    currentFocus: p.currentFocus,
+    outlineTree: p.outlineTree,
+    wordTargets: p.wordTargets,
+    reviews: p.reviews,
+    writeRuns: p.writeRuns,
+    canonDrafts: p.canonDrafts,
+    sessions: p.sessions,
+    lastAuthorCanonEditAt: p.lastAuthorCanonEditAt,
   };
+  return applySchemaV3(base);
 }
 
 export function assertWritingBoardImmutable(
@@ -1112,6 +1266,7 @@ export function createEmptyCharacter(): Character {
     aliases: [],
     speechStyle: "",
     truth: createEmptyTruthLayer(),
+    confirmed: true,
   };
 }
 
@@ -1137,6 +1292,7 @@ export function normalizeCharacter(
       : [],
     speechStyle: String(raw.speechStyle || ""),
     truth: normalizeTruthLayer(raw.truth),
+    confirmed: raw.confirmed !== false,
   };
 }
 
@@ -1191,7 +1347,7 @@ export function createEmptyProject(
 ): NovelProject {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  return {
+  const created: NovelProject = {
     id,
     name,
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1221,5 +1377,22 @@ export function createEmptyProject(
     bookJob: null,
     premiseCard: createEmptyPremiseCard(),
     accountRepairMarks: [],
+    currentFocus: createEmptyCurrentFocusSafe(),
+    outlineTree: undefined,
+    wordTargets: {},
+    reviews: [],
+    writeRuns: [],
+    canonDrafts: [],
+    sessions: [],
+  };
+  return applySchemaV3(created);
+}
+
+function createEmptyCurrentFocusSafe() {
+  return {
+    stageGoal: "",
+    mustKeep: [] as string[],
+    mustAvoid: [] as string[],
+    source: "author" as const,
   };
 }

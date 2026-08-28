@@ -48,7 +48,7 @@ describe("LENGTH_RANGES", () => {
 });
 
 describe("createEmptyProject / defaultVolumeId", () => {
-  it("defaults writingBoard to general and schemaVersion 2", () => {
+  it("defaults writingBoard to general and schemaVersion 3", () => {
     const p = createEmptyProject("测试");
     expect(p.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(p.writingBoard).toBe("general");
@@ -67,7 +67,7 @@ describe("createEmptyProject / defaultVolumeId", () => {
 });
 
 describe("normalizeProject", () => {
-  it("maps old payloads to general + schemaVersion 2 + deterministic volume", () => {
+  it("maps old payloads to general + schemaVersion 3 + deterministic volume", () => {
     const id = "proj-aaa";
     const raw = {
       id,
@@ -115,7 +115,7 @@ describe("normalizeProject", () => {
     const a = normalizeProject(raw);
     const b = normalizeProject(a);
     expect(a.writingBoard).toBe("general");
-    expect(a.schemaVersion).toBe(2);
+    expect(a.schemaVersion).toBe(3);
     expect(a.volumes?.[0]?.id).toBe("proj-aaa:vol:1");
     expect(a.outline?.chapters[0].volumeId).toBe("proj-aaa:vol:1");
     expect(a.outline?.chapters[0].intensityNote).toBe("紧张");

@@ -41,6 +41,7 @@ import {
   parseCanonFacts,
 } from "@/lib/original";
 import { parseStorySkeleton } from "@/lib/skeleton";
+import { parseReviewPayload, scoreFromIssues } from "@/lib/review-registry";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -133,6 +134,17 @@ type Body =
       mode: "volume_summary";
       volume?: Volume;
       chapterSummaries?: { order: number; title: string; summary: string }[];
+    })
+  | (BodyBase & {
+      mode: "review_chapter";
+      content?: string;
+      title?: string;
+      outlineSummary?: string;
+      previousHook?: string;
+      chapterHook?: string;
+      forbidList?: string[];
+      ledger?: string;
+      world?: string;
     });
 
 function asAssemblePayload(body: Body): Record<string, unknown> {
@@ -653,6 +665,30 @@ export async function POST(req: NextRequest) {
         );
       }
       return NextResponse.json({ ok: true, chapter: polished, raw: text });
+    }
+
+    if (body.mode === "review_chapter") {
+      const { system, user } = assemble(
+        "review_chapter",
+        writingBoard,
+        asAssemblePayload(body)
+      );
+      const text = await chatComplete(system, user, {
+        temperature: 0.3,
+        maxTokens: 2048,
+        mode: body.mode,
+      });
+      const parsed = parseReviewPayload(text);
+      const score =
+        parsed.issues.length && parsed.score === 0
+          ? scoreFromIssues(parsed.issues)
+          : parsed.score;
+      return NextResponse.json({
+        ok: true,
+        score,
+        issues: parsed.issues,
+        raw: text,
+      });
     }
 
     if (body.mode === "volume_summary") {

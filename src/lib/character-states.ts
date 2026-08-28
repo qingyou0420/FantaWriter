@@ -97,7 +97,10 @@ export function mergeCharacterStates(
     const row: CharacterStateNote = { chapterOrder, note };
     const prev = next[name] || [];
     const pinned = prev.filter((r) => r.pinned);
-    const unpinned = [...prev.filter((r) => !r.pinned), row].slice(-keep);
+    const unpinned = [
+      ...prev.filter((r) => !r.pinned && r.chapterOrder !== chapterOrder),
+      row,
+    ].slice(-keep);
     next[name] = [...pinned, ...unpinned].sort(
       (a, b) => a.chapterOrder - b.chapterOrder
     );

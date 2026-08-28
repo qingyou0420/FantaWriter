@@ -2,6 +2,16 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「幻想作家」，英文名 FantaWriter。
 
+## [未发布]
+
+### 新增
+
+- Studio 工作台：左侧七工作区（总览 / 大纲 / 正文 / 审稿 / 资料库 / AI 协作 / 工具与设置）+ 右侧创作助手。
+- 规划「织卷」与写作「落墨」分工；正典 AI 写入须经 diff 确认闸。
+- 写下一章管线：写前检查 → 有界 packet → 初稿 → 10 维审稿 → 结算 → 整章提交 / 回滚。
+- 旧项目 schema v2 → v3 无损迁移（章序 / 正文 / 账本保留）。
+- 工作台信息架构借鉴 [OpenWrite](https://github.com/LiPu-jpg/Openwrite)（Apache-2.0，仅思路，未复制代码）。安装包文件名仍以 `FantaWriter-Setup-*` 为准，历史 `Fantasy-Writer-Setup-*` 别名口径不变。
+
 ## [1.6.0] - 2026-08-28
 
 安装包：`FantaWriter-Setup-1.6.0.exe`（同时上传 `Fantasy-Writer-Setup-1.6.0.exe` 别名）。

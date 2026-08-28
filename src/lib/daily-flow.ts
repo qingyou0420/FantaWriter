@@ -10,7 +10,11 @@ import type {
   OutlineChapter,
   PlotThread,
 } from "./types";
-import { isProjectTab, type ProjectTab } from "./project-tabs";
+import {
+  resolveStudioWorkspace,
+  type ProjectTab,
+  type StudioWorkspace,
+} from "./project-tabs";
 
 export function listUnreviewedChapters(
   project: Pick<NovelProject, "outline" | "chapters">
@@ -147,24 +151,22 @@ export function pushAccountRepairMark(
   return next;
 }
 
+export function defaultOpeningWorkspace(
+  stored: string | null | undefined,
+  project: Pick<NovelProject, "outline" | "original">
+): StudioWorkspace {
+  const hasOutline = Boolean(project.outline?.chapters?.length);
+  if (!stored || stored === "characters") {
+    return hasOutline ? "manuscript" : "overview";
+  }
+  return resolveStudioWorkspace(stored);
+}
+
 export function defaultOpeningTab(
   stored: string | null | undefined,
   project: Pick<NovelProject, "outline" | "original">
 ): ProjectTab {
-  const hasOutline = Boolean(project.outline?.chapters?.length);
-  const hasOriginal = Boolean(
-    project.original &&
-      typeof project.original === "object" &&
-      (project.original.text || project.original.title)
-  );
-  if (!stored || stored === "characters") {
-    if (hasOutline) return "chapters";
-    return hasOriginal ? "original" : "premise";
-  }
-  if (stored === "premise") return "premise";
-  if (isProjectTab(stored)) return stored;
-  if (hasOutline) return "chapters";
-  return hasOriginal ? "original" : "premise";
+  return defaultOpeningWorkspace(stored, project);
 }
 
 export function threadSortRank(

@@ -28,6 +28,7 @@ import {
   injectOriginalGrounding,
 } from "../original";
 import { buildExtractSkeletonUserPrompt } from "../skeleton";
+import { buildReviewChapterPrompt } from "../review-registry";
 import {
   characterWithoutTruth,
   charactersWithoutTruth,
@@ -55,7 +56,8 @@ export type GenerateTaskMode =
   | "polish_chapter_outline"
   | "extract_canon"
   | "extract_skeleton"
-  | "volume_summary";
+  | "volume_summary"
+  | "review_chapter";
 
 export const GENERAL_BANNED_SUBSTRINGS = [
   "色情尺度",
@@ -369,6 +371,19 @@ function assembleGeneral(
           titleHint: String(payload.titleHint || payload.nameHint || ""),
         }),
       };
+    case "review_chapter":
+      return buildReviewChapterPrompt({
+        title: String(payload.title || ""),
+        content: String(payload.content || ""),
+        outlineSummary: String(payload.outlineSummary || ""),
+        previousHook: String(payload.previousHook || ""),
+        chapterHook: String(payload.chapterHook || ""),
+        forbidList: Array.isArray(payload.forbidList)
+          ? (payload.forbidList as string[])
+          : undefined,
+        ledger: String(payload.ledger || ""),
+        world: String(payload.world || ""),
+      });
     default:
       return { system: chapterSys, user: "" };
   }

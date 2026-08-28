@@ -37,6 +37,7 @@ const IDB_STORE = "kv";
 const IDB_PROJECT_INDEX = "project-ids";
 const IDB_PROJECT_PREFIX = "project:";
 const IDB_MIGRATION_V3 = "migration-backup-v3";
+const IDB_SCHEMA_V3_BACKUP = "migration-backup-schema-v3";
 const IDB_PRE_RESTORE = "pre-restore-backup";
 
 export type ProjectMeta = {
@@ -228,14 +229,45 @@ async function readLegacyIdbArray(name: string): Promise<NovelProject[] | null> 
   return Array.isArray(fromIdb) ? fromIdb : null;
 }
 
+async function maybeBackupPreSchemaV3(
+  raws: NovelProject[]
+): Promise<void> {
+  const needs = raws.some(
+    (p) =>
+      !p ||
+      typeof (p as { schemaVersion?: unknown }).schemaVersion !== "number" ||
+      Number((p as { schemaVersion?: number }).schemaVersion) < 3
+  );
+  if (!needs) return;
+  try {
+    const db = await getNewDb();
+    const existing = await idbGet(db, IDB_STORE, IDB_SCHEMA_V3_BACKUP);
+    if (existing) return;
+    await idbSet(
+      db,
+      IDB_STORE,
+      { at: new Date().toISOString(), projects: raws },
+      IDB_SCHEMA_V3_BACKUP
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 async function readIdbProjects(name: string): Promise<NovelProject[] | null> {
   const db = await openKv(name);
   const ids = await idbGet<string[]>(db, IDB_STORE, IDB_PROJECT_INDEX);
   if (Array.isArray(ids)) {
-    const list: NovelProject[] = [];
+    const raws: NovelProject[] = [];
     for (const id of ids) {
       const row = await idbGet<NovelProject>(db, IDB_STORE, projectIdbKey(id));
-      if (row && typeof row === "object") list.push(normalizeProject(row));
+      if (row && typeof row === "object") raws.push(row);
+      await yieldToInput();
+    }
+    if (name === NEW_IDB_NAME) await maybeBackupPreSchemaV3(raws);
+    const list: NovelProject[] = [];
+    for (const row of raws) {
+      list.push(normalizeProject(row));
       await yieldToInput();
     }
     return list;
@@ -245,10 +277,16 @@ async function readIdbProjects(name: string): Promise<NovelProject[] | null> {
     .map(String)
     .filter((k) => k.startsWith(IDB_PROJECT_PREFIX));
   if (projectKeys.length) {
-    const list: NovelProject[] = [];
+    const raws: NovelProject[] = [];
     for (const key of projectKeys) {
       const row = await idbGet<NovelProject>(db, IDB_STORE, key);
-      if (row && typeof row === "object") list.push(normalizeProject(row));
+      if (row && typeof row === "object") raws.push(row);
+      await yieldToInput();
+    }
+    if (name === NEW_IDB_NAME) await maybeBackupPreSchemaV3(raws);
+    const list: NovelProject[] = [];
+    for (const row of raws) {
+      list.push(normalizeProject(row));
       await yieldToInput();
     }
     return list;

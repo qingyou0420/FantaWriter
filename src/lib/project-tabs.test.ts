@@ -1,27 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { resolveProjectTab, setupTabs } from "./project-tabs";
+import {
+  resolveProjectTab,
+  resolveStudioWorkspace,
+  setupTabs,
+  STUDIO_NAV,
+} from "./project-tabs";
 
-describe("resolveProjectTab", () => {
-  it("maps deleted tab names to a live page", () => {
-    expect(resolveProjectTab("progress")).toBe("tools");
-    expect(resolveProjectTab("tags")).toBe("settings");
-    expect(resolveProjectTab("nope")).toBe("characters");
-    expect(resolveProjectTab(null)).toBe("characters");
-    expect(resolveProjectTab("chapters")).toBe("chapters");
+describe("resolveStudioWorkspace", () => {
+  it("maps deleted and old tab names to a live workspace", () => {
+    expect(resolveStudioWorkspace("progress")).toBe("tools");
+    expect(resolveStudioWorkspace("tags")).toBe("tools");
+    expect(resolveStudioWorkspace("nope")).toBe("overview");
+    expect(resolveStudioWorkspace(null)).toBe("overview");
+    expect(resolveStudioWorkspace("chapters")).toBe("manuscript");
+    expect(resolveStudioWorkspace("premise")).toBe("library");
+    expect(resolveStudioWorkspace("characters")).toBe("library");
+    expect(resolveStudioWorkspace("original")).toBe("tools");
+    expect(resolveStudioWorkspace("plot")).toBe("library");
+    expect(resolveStudioWorkspace("volumes")).toBe("outline");
+    expect(resolveProjectTab("manuscript")).toBe("manuscript");
   });
 
-  it("keeps the settings stage at most 7 tabs including original and premise", () => {
-    expect(setupTabs(true)).toHaveLength(7);
-    expect(setupTabs(false)).toHaveLength(6);
-    expect(setupTabs(false)).not.toContain("original");
-    expect(setupTabs(false)[0]).toBe("premise");
-    const all = [
-      ...setupTabs(true),
+  it("keeps seven studio workspaces", () => {
+    expect(STUDIO_NAV).toHaveLength(7);
+    expect(STUDIO_NAV.map((n) => n.id)).toEqual([
+      "overview",
       "outline",
-      "chapters",
-      "plot",
+      "manuscript",
+      "review",
+      "library",
+      "sessions",
       "tools",
-    ];
-    expect(all.length).toBeLessThanOrEqual(11);
+    ]);
+    expect(setupTabs(true)).toEqual(["library"]);
   });
 });

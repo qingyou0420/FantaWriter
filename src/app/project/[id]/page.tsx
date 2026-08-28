@@ -15,8 +15,20 @@ import { PlotThreadsPanel } from "@/components/PlotThreadsPanel";
 import { OnboardingCard, dismissOnboarding, isOnboardingDismissed, shouldShowOnboarding } from "@/components/OnboardingCard";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { TagsPanel } from "@/components/TagsPanel";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { ToolsPanel } from "@/components/ToolsPanel";
+import { StyleLearnPanel } from "@/components/StyleLearnPanel";
+import { AppSettingsMenu } from "@/components/AppSettingsMenu";
+import { StudioShell } from "@/components/studio/StudioShell";
+import { OverviewWorkspace } from "@/components/studio/OverviewWorkspace";
+import { OutlineWorkspace } from "@/components/studio/OutlineWorkspace";
+import { ReviewWorkspace } from "@/components/studio/ReviewWorkspace";
+import { LibraryWorkspace } from "@/components/studio/LibraryWorkspace";
+import { SessionsWorkspace } from "@/components/studio/SessionsWorkspace";
+import { ToolsWorkspace } from "@/components/studio/ToolsWorkspace";
+import { AssistantRail } from "@/components/studio/AssistantRail";
+import { DiffConfirmGate } from "@/components/studio/DiffConfirmGate";
+import { WriteNextDialog } from "@/components/studio/WriteNextDialog";
+import { FocusPanel } from "@/components/studio/FocusPanel";
 import { VolumesPanel } from "@/components/VolumesPanel";
 import { LorePanel } from "@/components/LorePanel";
 import { OriginalPanel } from "@/components/OriginalPanel";
@@ -47,7 +59,7 @@ import {
   readerKnownOpenThreadTitles,
 } from "@/lib/author-secrets";
 import {
-  defaultOpeningTab,
+  defaultOpeningWorkspace,
   findWriteNextChapter,
   listUnreviewedChapters,
   pushAccountRepairMark,
@@ -61,18 +73,18 @@ import {
 } from "@/lib/memory-pack";
 import { useProjectStore } from "@/hooks/useProjectStore";
 import { loadAppPrefs } from "@/lib/theme";
+import { scheduleDeferredWork } from "@/lib/schedule-idle";
 import {
   downloadFullBackup,
   readProjectTab,
   writeProjectTab,
+  saveStyleLibraryFor,
 } from "@/lib/storage";
-import { awaitChapterSummary } from "@/lib/chapter-summary";
 import {
   buildConsistencyRows,
   toConsistencyReport,
 } from "@/lib/consistency";
 import {
-  buildPreviousContext,
   formatPlotThreadsForPrompt,
   postGenerate,
   streamGenerate,
@@ -97,30 +109,65 @@ import {
   type OutlineChapter,
 } from "@/lib/types";
 import {
-  resolveProjectTab,
-  setupTabs,
-  stageOf,
-  type ProjectTab,
-  type StageId,
+  resolveStudioWorkspace,
+  type LibrarySection,
+  type StudioWorkspace,
+  type ToolsSection,
 } from "@/lib/project-tabs";
+import {
+  applyCanonProposal,
+  createCanonConfirmation,
+  enqueueCanonDraft,
+  markAuthorCanonEdit,
+  pendingCanonProposals,
+  proposalFromBackground,
+  proposalFromCharacters,
+  proposalFromOutline,
+  proposalFromPolishedChapter,
+  rejectCanonProposal,
+  type CanonProposal,
+} from "@/lib/canon-gate";
+import {
+  applySettleToProject,
+  beginWriteRun,
+  clearWriteLock,
+  commitWriteRun,
+  keepPartialDraft,
+  latestUndoableWriteRun,
+  markSettlePending,
+  precheckWriteNext,
+  recoverStaleWriteRuns,
+  rollbackWriteRun,
+  setWriteRunPhase,
+  undoCommittedWriteRun,
+} from "@/lib/write-pipeline";
+import { syncOutlineTree } from "@/lib/outline-tree";
+import { chapterPromptContext } from "@/lib/canonical-packet";
+import { reviewStateAfterIssues } from "@/lib/review-registry";
+import { addBlankOutlineChapter } from "@/lib/outline-edit";
+import { chapterGoalText } from "@/lib/chapter-contract";
+import { globalForbidList } from "@/lib/author-secrets";
+import { formatLoreBlock, selectLoreForPrompt } from "@/lib/lore";
+import { appendStudioSessionEvent } from "@/lib/studio-session";
+import { PLANNER_AGENT_LABEL, WRITER_AGENT_LABEL } from "@/lib/brand";
 import { createThrottledTextSink } from "@/lib/stream-throttle";
 import { isTransientAiError, sleep, splitErrorForDisplay } from "@/lib/user-error";
 import { parseTouchedThreads } from "@/lib/prompts";
 
-type Tab = ProjectTab;
+const LIBRARY_FROM_LEGACY: Record<string, LibrarySection> = {
+  premise: "intent",
+  characters: "characters",
+  background: "foundation",
+  lore: "world",
+  plot: "threads",
+};
 
-const TAB_LABEL: Record<Tab, string> = {
-  original: "原作焕新",
-  premise: "前提卡",
-  characters: "人物设定",
-  background: "故事背景",
-  settings: "生成参数",
-  volumes: "分卷",
-  lore: "世界观",
-  outline: "大纲",
-  chapters: "正文",
-  plot: "伏笔",
-  tools: "工具",
+const TOOLS_FROM_LEGACY: Record<string, ToolsSection> = {
+  settings: "settings",
+  original: "migrate",
+  tags: "tags",
+  tools: "tools",
+  progress: "tools",
 };
 
 
@@ -133,21 +180,39 @@ export default function ProjectPage() {
     update,
     saveHint,
     saveError,
-    storageWarning,
+    storageWarning: _storageWarning,
     tagLibrary,
     styleLibrary,
     ready,
     getLive,
   } = useProjectStore(id);
 
-  const [tab, setTab] = useState<Tab>(() =>
-    resolveProjectTab(readProjectTab(id)) === "characters"
-      ? "premise"
-      : resolveProjectTab(readProjectTab(id))
+  const [workspace, setWorkspace] = useState<StudioWorkspace>(() =>
+    resolveStudioWorkspace(readProjectTab(id))
   );
-  const [stage, setStage] = useState<StageId>(() =>
-    stageOf(resolveProjectTab(readProjectTab(id)))
+  const [librarySection, setLibrarySection] = useState<LibrarySection>("intent");
+  const [toolsSection, setToolsSection] = useState<ToolsSection>("tools");
+  const [pendingProposal, setPendingProposal] = useState<CanonProposal | null>(
+    null
   );
+  const [writeDialog, setWriteDialog] = useState<{
+    chapter: OutlineChapter;
+    goal: string;
+    hook: string;
+    skipReview: boolean;
+  } | null>(null);
+  const [stalePrompt, setStalePrompt] = useState<{
+    runId: string;
+    chapterId: string;
+  } | null>(null);
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [assistantSelection, setAssistantSelection] = useState("");
+  const [focusOffset, setFocusOffset] = useState<number | null>(null);
+  const [modelSummary, setModelSummary] = useState("模型设置");
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  const [keyPrefix, setKeyPrefix] = useState("");
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [errorDiagnostic, setErrorDiagnostic] = useState("");
@@ -156,20 +221,11 @@ export default function ProjectPage() {
   const [guideOpen, setGuideOpen] = useState(
     () => !isOnboardingDismissed(id)
   );
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [saveDiagOpen, setSaveDiagOpen] = useState(false);
   const [volumeSummaryDraft, setVolumeSummaryDraft] = useState<{
     volumeId: string;
     text: string;
   } | null>(null);
-  const [volumeSummaryHint, setVolumeSummaryHint] = useState<{
-    volumeId: string;
-    title: string;
-  } | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
-    null
-  );
-  const [contractChapterId, setContractChapterId] = useState<string | null>(
     null
   );
   const [includeEndingDirection, setIncludeEndingDirection] = useState(false);
@@ -199,20 +255,28 @@ export default function ProjectPage() {
   useEffect(() => {
     if (!ready || !project) return;
     const stored = readProjectTab(id);
-    const next = defaultOpeningTab(stored, project);
+    const next = defaultOpeningWorkspace(stored, project);
     const firstUnreviewed = listUnreviewedChapters(project)[0];
+    const stale = recoverStaleWriteRuns(project).stale[0];
     queueMicrotask(() => {
-      setTab(next);
-      setStage(stageOf(next));
+      setWorkspace(next);
+      if (stored && LIBRARY_FROM_LEGACY[stored]) {
+        setLibrarySection(LIBRARY_FROM_LEGACY[stored]);
+      }
+      if (stored && TOOLS_FROM_LEGACY[stored]) {
+        setToolsSection(TOOLS_FROM_LEGACY[stored]);
+      }
       if (firstUnreviewed) setSelectedChapterId(firstUnreviewed.id);
+      if (stale) {
+        setStalePrompt({ runId: stale.id, chapterId: stale.chapterId });
+      }
     });
     // 只在打开项目时归位一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, project?.id]);
 
-  function goTab(next: Tab) {
-    setTab(next);
-    setStage(stageOf(next));
+  function goWorkspace(next: StudioWorkspace) {
+    setWorkspace(next);
     try {
       writeProjectTab(id, next);
     } catch {
@@ -220,13 +284,11 @@ export default function ProjectPage() {
     }
   }
 
-  function goStage(next: StageId) {
-    setStage(next);
-    const group = STAGES.find((s) => s.id === next);
-    if (!group) return;
-    if (!group.tabs.includes(tab)) {
-      goTab(group.tabs[0]);
-    }
+  function goTab(next: string) {
+    const ws = resolveStudioWorkspace(next);
+    goWorkspace(ws);
+    if (LIBRARY_FROM_LEGACY[next]) setLibrarySection(LIBRARY_FROM_LEGACY[next]);
+    if (TOOLS_FROM_LEGACY[next]) setToolsSection(TOOLS_FROM_LEGACY[next]);
   }
 
   // 快捷键：Ctrl+1/2/3 阶段；Ctrl+S 提示已自动保存
@@ -248,19 +310,35 @@ export default function ProjectPage() {
       if (typing) return;
       if (e.key === "1") {
         e.preventDefault();
-        goStage("setup");
+        goWorkspace("overview");
       } else if (e.key === "2") {
         e.preventDefault();
-        goStage("write");
+        goWorkspace("manuscript");
       } else if (e.key === "3") {
         e.preventDefault();
-        goStage("review");
+        goWorkspace("review");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, id]);
+  }, [workspace, id]);
+
+  useEffect(() => {
+    const stop = scheduleDeferredWork(() => {
+      void fetch("/api/config")
+        .then((r) => r.json())
+        .then((data) => {
+          const main = data.env?.model || "主力档";
+          const fine = data.env?.fineModel ? " · 精写已配" : "";
+          setModelSummary(`${main}${fine}`);
+          setHasApiKey(Boolean(data.env?.hasKey));
+          setKeyPrefix(String(data.env?.keyPrefix || ""));
+        })
+        .catch(() => undefined);
+    }, 0);
+    return stop;
+  }, []);
 
   useEffect(() => {
     if (!ready || !project?.bookJob) return;
@@ -271,6 +349,18 @@ export default function ProjectPage() {
     // 只在加载完成时归位一次，避免把正在跑的队列打断
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, project?.id]);
+
+  const pendingDraftKey = (project?.canonDrafts || [])
+    .filter((d) => d.status === "pending")
+    .map((d) => d.id)
+    .join(",");
+  useEffect(() => {
+    if (!project || pendingProposal) return;
+    const next = pendingCanonProposals(project)[0];
+    if (next) setPendingProposal(next);
+    // 只在项目切换或待确认条目集合变化时重开闸，避免每个键入重置弹窗
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, pendingDraftKey, pendingProposal]);
 
   // 大纲首章：选中章无效或不存在时回落到第一项（渲染期派生，避免 effect setState）
   const outlineFirstId = project?.outline?.chapters[0]?.id ?? null;
@@ -375,27 +465,23 @@ export default function ProjectPage() {
         ...ch,
         tags: Array.isArray(ch.tags) ? ch.tags : [],
       }));
-      update((p) => {
-        const kept = p.chapters.filter((c) => c.content?.trim());
-        const keptIds = new Set(kept.map((c) => c.chapterId));
-        const fresh = outline.chapters
-          .filter((ch) => !keptIds.has(ch.id))
-          .map((ch) => ({
-            chapterId: ch.id,
-            title: ch.title,
-            content: "",
-            status: "idle" as const,
-            updatedAt: new Date().toISOString(),
-          }));
-        return {
-          ...p,
-          outline,
-          chapters: [...kept, ...fresh],
-          bookJob: null,
-        };
+      const proposal = proposalFromOutline({
+        kind: "outline",
+        before: project.outline,
+        after: outline,
+        summary: `全书大纲：${outline.chapters.length} 章`,
       });
+      update((p) =>
+        appendStudioSessionEvent(
+          enqueueCanonDraft(p, proposal),
+          undefined,
+          { kind: "confirm", title: "织卷提交全书大纲，等待确认" },
+          { kind: "planner", title: PLANNER_AGENT_LABEL }
+        )
+      );
+      setPendingProposal(proposal);
       if (outline.chapters[0]) setSelectedChapterId(outline.chapters[0].id);
-      setTab("outline");
+      goWorkspace("outline");
     } catch (e) {
       reportError(e, () => void generateOutline());
     } finally {
@@ -442,34 +528,28 @@ export default function ProjectPage() {
         tags: Array.isArray(ch.tags) ? ch.tags : [],
         volumeId,
       }));
-      update((p) => {
-        const nextChapters = mergeVolumeChapters(
-          p.outline?.chapters || [],
-          incoming.chapters,
-          volumeId,
-          p.volumes
-        );
-        const outline: Outline = {
-          premise: p.outline?.premise || incoming.premise || "",
-          endingNote: p.outline?.endingNote || incoming.endingNote || "",
-          chapters: nextChapters,
-          raw: incoming.raw,
-        };
-        const chapters = nextChapters.map((ch) => {
-          const old = p.chapters.find((c) => c.chapterId === ch.id);
-          return (
-            old || {
-              chapterId: ch.id,
-              title: ch.title,
-              content: "",
-              status: "idle" as const,
-              updatedAt: new Date().toISOString(),
-            }
-          );
-        });
-        return { ...p, outline, chapters };
+      const live = getLive() || project;
+      const nextChapters = mergeVolumeChapters(
+        live.outline?.chapters || [],
+        incoming.chapters,
+        volumeId,
+        live.volumes
+      );
+      const outline: Outline = {
+        premise: live.outline?.premise || incoming.premise || "",
+        endingNote: live.outline?.endingNote || incoming.endingNote || "",
+        chapters: nextChapters,
+        raw: incoming.raw,
+      };
+      const proposal = proposalFromOutline({
+        kind: "outline_volume",
+        before: live.outline,
+        after: outline,
+        summary: `本卷大纲：${incoming.chapters.length} 章`,
       });
-      setTab("outline");
+      update((p) => enqueueCanonDraft(p, proposal));
+      setPendingProposal(proposal);
+      goWorkspace("outline");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -511,8 +591,7 @@ export default function ProjectPage() {
           "开卷前请先重定本卷弧线目标与出卷局面。现在去分卷页填写？\n点「取消」仍继续续排。"
         );
         if (fill) {
-          setTab("volumes");
-          setStage("setup");
+          goTab("volumes");
           setBusy(null);
           return;
         }
@@ -558,34 +637,28 @@ export default function ProjectPage() {
         tags: Array.isArray(ch.tags) ? ch.tags : [],
         volumeId,
       }));
-      update((p) => {
-        const nextChapters = appendVolumeChapters(
-          p.outline?.chapters || [],
-          incoming.chapters,
-          volumeId,
-          p.volumes
-        );
-        const outline: Outline = {
-          premise: p.outline?.premise || incoming.premise || "",
-          endingNote: p.outline?.endingNote || incoming.endingNote || "",
-          chapters: nextChapters,
-          raw: incoming.raw,
-        };
-        const chapters = nextChapters.map((ch) => {
-          const old = p.chapters.find((c) => c.chapterId === ch.id);
-          return (
-            old || {
-              chapterId: ch.id,
-              title: ch.title,
-              content: "",
-              status: "idle" as const,
-              updatedAt: new Date().toISOString(),
-            }
-          );
-        });
-        return { ...p, outline, chapters };
+      const liveAfter = getLive() || fresh;
+      const nextChapters = appendVolumeChapters(
+        liveAfter.outline?.chapters || [],
+        incoming.chapters,
+        volumeId,
+        liveAfter.volumes
+      );
+      const outline: Outline = {
+        premise: liveAfter.outline?.premise || incoming.premise || "",
+        endingNote: liveAfter.outline?.endingNote || incoming.endingNote || "",
+        chapters: nextChapters,
+        raw: incoming.raw,
+      };
+      const proposal = proposalFromOutline({
+        kind: "outline_next",
+        before: liveAfter.outline,
+        after: outline,
+        summary: `续排 ${incoming.chapters.length} 章`,
       });
-      setTab("outline");
+      update((p) => enqueueCanonDraft(p, proposal));
+      setPendingProposal(proposal);
+      goWorkspace("outline");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -608,7 +681,7 @@ export default function ProjectPage() {
   async function generateChapter(
     chapter: OutlineChapter,
     force = false,
-    opts?: { fromJob?: boolean }
+    opts?: { fromJob?: boolean; skipAutoSummary?: boolean }
   ): Promise<"done" | "error" | "cancelled" | "skipped"> {
     const fromJob = opts?.fromJob;
     const liveProject = getLive();
@@ -625,7 +698,7 @@ export default function ProjectPage() {
     if (!fromJob) setBusy(`chapter:${chapter.id}`);
     setSelectedChapterId(chapter.id);
     setStreamPreview("");
-    if (!fromJob) setTab("chapters");
+    if (!fromJob) goWorkspace("manuscript");
 
     abortRef.current?.abort();
     const ac = new AbortController();
@@ -663,7 +736,7 @@ export default function ProjectPage() {
       const fresh = getLive() || liveProject;
       const liveChapter =
         fresh.outline?.chapters.find((c) => c.id === chapter.id) || chapter;
-      const prior = buildPreviousContext(fresh, liveChapter.order);
+      const prior = chapterPromptContext(fresh, liveChapter.order);
       const extras = chapterAssembleExtras(fresh, liveChapter);
 
       const buildBody = (
@@ -678,9 +751,9 @@ export default function ProjectPage() {
           settings: fresh.settings,
           outline: fresh.outline,
           chapter: liveChapter,
-          previousChapterSnippet: prior.previousSnippet,
+          previousChapterSnippet: prior.previousChapterSnippet,
           previousSummaries: prior.previousSummaries,
-          previousSummary: prior.previousSummaries,
+          previousSummary: prior.previousSummary,
           characterStateCard: prior.characterStateCard,
           priorBlock: prior.priorBlock,
           plotThreads:
@@ -750,57 +823,61 @@ export default function ProjectPage() {
       }
       const canonWarnings = saveVerdict.violations;
 
-      const openThreads = readerKnownOpenThreadTitles(fresh.plotThreads);
-      const summaryPromise = postGenerate({
-        mode: "chapter_summary",
-        writingBoard: fresh.writingBoard,
-        content: text,
-        title: liveChapter.title,
-        openThreads,
-        settings: fresh.settings,
-      })
-        .then((sumRes) => {
-          const raw = String(sumRes.summary || "");
-          const touched = Array.isArray(sumRes.touchedThreads)
-            ? (sumRes.touchedThreads as string[])
-            : parseTouchedThreads(raw);
-          const deltas = Array.isArray(sumRes.characterStates)
-            ? sumRes.characterStates
-            : [];
-          update((p) => {
-            const chapters = [...p.chapters];
-            const idx = chapters.findIndex(
-              (c) => c.chapterId === liveChapter.id
-            );
-            if (idx < 0) return p;
-            chapters[idx] = {
-              ...chapters[idx],
-              summary: raw,
-              touchedThreads: touched,
-              summaryFailed: false,
-              pendingStateDeltas: deltas,
-            };
-            return {
-              ...p,
-              chapters,
-            };
-          });
+      if (opts?.skipAutoSummary) {
+        pendingSummaryRef.current = null;
+      } else {
+        const openThreads = readerKnownOpenThreadTitles(fresh.plotThreads);
+        const summaryPromise = postGenerate({
+          mode: "chapter_summary",
+          writingBoard: fresh.writingBoard,
+          content: text,
+          title: liveChapter.title,
+          openThreads,
+          settings: fresh.settings,
         })
-        .catch(() => {
-          update((p) => {
-            const chapters = [...p.chapters];
-            const idx = chapters.findIndex(
-              (c) => c.chapterId === liveChapter.id
-            );
-            if (idx < 0) return p;
-            chapters[idx] = {
-              ...chapters[idx],
-              summaryFailed: true,
-            };
-            return { ...p, chapters };
+          .then((sumRes) => {
+            const raw = String(sumRes.summary || "");
+            const touched = Array.isArray(sumRes.touchedThreads)
+              ? (sumRes.touchedThreads as string[])
+              : parseTouchedThreads(raw);
+            const deltas = Array.isArray(sumRes.characterStates)
+              ? sumRes.characterStates
+              : [];
+            update((p) => {
+              const chapters = [...p.chapters];
+              const idx = chapters.findIndex(
+                (c) => c.chapterId === liveChapter.id
+              );
+              if (idx < 0) return p;
+              chapters[idx] = {
+                ...chapters[idx],
+                summary: raw,
+                touchedThreads: touched,
+                summaryFailed: false,
+                pendingStateDeltas: deltas,
+              };
+              return {
+                ...p,
+                chapters,
+              };
+            });
+          })
+          .catch(() => {
+            update((p) => {
+              const chapters = [...p.chapters];
+              const idx = chapters.findIndex(
+                (c) => c.chapterId === liveChapter.id
+              );
+              if (idx < 0) return p;
+              chapters[idx] = {
+                ...chapters[idx],
+                summaryFailed: true,
+              };
+              return { ...p, chapters };
+            });
           });
-        });
-      pendingSummaryRef.current = summaryPromise;
+        pendingSummaryRef.current = summaryPromise;
+      }
 
       update((p) => {
         const chapters = [...p.chapters];
@@ -910,7 +987,7 @@ export default function ProjectPage() {
       return;
     }
 
-    setTab("chapters");
+    goWorkspace("manuscript");
     setError("");
     let completedThisRun = 0;
 
@@ -939,11 +1016,15 @@ export default function ProjectPage() {
             const live = getLive();
             if (live && finished.volumeId && volumeNeedsSummaryPrompt(live, finished.volumeId)) {
               const vol = (live.volumes || []).find((v) => v.id === finished.volumeId);
-              if (vol) setVolumeSummaryHint({ volumeId: vol.id, title: vol.title });
+              if (vol) {
+                setVolumeWizardId(vol.id);
+                goWorkspace("outline");
+              }
             } else if (live) {
               for (const vol of live.volumes || []) {
                 if (volumeNeedsSummaryPrompt(live, vol.id)) {
-                  setVolumeSummaryHint({ volumeId: vol.id, title: vol.title });
+                  setVolumeWizardId(vol.id);
+                  goWorkspace("outline");
                   break;
                 }
               }
@@ -978,7 +1059,10 @@ export default function ProjectPage() {
           } as OutlineChapter);
 
         jobControlRef.current.skip = false;
-        let result = await generateChapter(outlineCh, true, { fromJob: true });
+        let result = await runWritePipeline(outlineCh, {
+          fromJob: true,
+          force: true,
+        });
         if (result === "error") {
           const failMsg =
             getLive()?.chapters.find((c) => c.chapterId === item.chapterId)
@@ -986,7 +1070,10 @@ export default function ProjectPage() {
           if (isTransientAiError(failMsg)) {
             await sleep(4000);
             if (!jobControlRef.current.pause && !jobControlRef.current.skip) {
-              result = await generateChapter(outlineCh, true, { fromJob: true });
+              result = await runWritePipeline(outlineCh, {
+                fromJob: true,
+                force: true,
+              });
             }
           }
         }
@@ -1016,7 +1103,6 @@ export default function ProjectPage() {
         }
 
         if (result === "done") {
-          await awaitChapterSummary(pendingSummaryRef.current);
           pendingSummaryRef.current = null;
           job = patchBookJobItem(job, item.chapterId, {
             status: "done",
@@ -1068,26 +1154,260 @@ export default function ProjectPage() {
 
   function requestWriteNext() {
     if (!project) return;
-    const unreviewed = listUnreviewedChapters(project);
-    if (unreviewed.length) {
-      const go = confirm(
-        `还有 ${unreviewed.length} 章未审，先审再写？\n确定 = 去最早未审章；取消 = 仍要写。`
-      );
-      if (go) {
-        setSelectedChapterId(unreviewed[0].id);
-        goTab("chapters");
-        setContractChapterId(null);
-        return;
-      }
-    }
-    const next = findWriteNextChapter(project, effectiveSelectedId);
+    const live = getLive() || project;
+    const next = findWriteNextChapter(live, effectiveSelectedId);
     if (!next) {
       setError("没有可写的下一章，请先排大纲。");
+      goWorkspace("outline");
       return;
     }
     setSelectedChapterId(next.id);
-    goTab("chapters");
-    setContractChapterId(next.id);
+    setWriteDialog({
+      chapter: next,
+      goal: chapterGoalText(next),
+      hook: next.hook || "",
+      skipReview: false,
+    });
+  }
+
+  function applyPendingProposal(edited?: CanonProposal) {
+    const proposal = edited || pendingProposal;
+    if (!proposal) return;
+    const confirm = createCanonConfirmation();
+    update((p) => {
+      let next = applyCanonProposal(p, proposal, confirm);
+      if (proposal.patch.outline) {
+        const outline = proposal.patch.outline;
+        const chapters = outline.chapters.map((ch) => {
+          const old = next.chapters.find((c) => c.chapterId === ch.id);
+          return (
+            old || {
+              chapterId: ch.id,
+              title: ch.title,
+              content: "",
+              status: "idle" as const,
+              updatedAt: new Date().toISOString(),
+            }
+          );
+        });
+        const fallback = next.volumes?.[0]?.id || `${next.id}:vol:1`;
+        next = {
+          ...next,
+          chapters: chapters.map((c) => {
+            const ch = outline.chapters.find((x) => x.id === c.chapterId);
+            return ch ? { ...c, title: ch.title } : c;
+          }),
+          outlineTree: syncOutlineTree(
+            next.outlineTree,
+            next.volumes,
+            outline.chapters,
+            fallback
+          ),
+        };
+      }
+      if (proposal.patch.characters) {
+        next = {
+          ...next,
+          characters: proposal.patch.characters.map((c) => ({
+            ...c,
+            confirmed: true,
+          })),
+        };
+      }
+      return appendStudioSessionEvent(next, undefined, {
+        kind: "confirm",
+        title: `已确认写入：${proposal.summary}`,
+      });
+    });
+    setPendingProposal(null);
+  }
+
+  async function runReviewForChapter(chapterId: string) {
+    const live = getLive() || project;
+    if (!live) return;
+    const ch = live.outline?.chapters.find((c) => c.id === chapterId);
+    const row = live.chapters.find((c) => c.chapterId === chapterId);
+    if (!ch || !row?.content?.trim()) {
+      setError("没有可审的正文。");
+      return;
+    }
+    setBusy(`review:${chapterId}`);
+    try {
+      const prev = [...(live.outline?.chapters || [])]
+        .filter((c) => c.order < ch.order)
+        .sort((a, b) => a.order - b.order)
+        .at(-1);
+      const names = (live.characters || []).map((c) => c.name).filter(Boolean);
+      const data = await postGenerate({
+        mode: "review_chapter",
+        writingBoard: live.writingBoard,
+        title: ch.title,
+        content: row.content,
+        outlineSummary: [ch.summary, ch.keyPoints].filter(Boolean).join("\n"),
+        previousHook: prev?.hook || "",
+        chapterHook: ch.hook || "",
+        forbidList: [
+          ...globalForbidList(live.premiseCard),
+          ...(ch.forbidList || []),
+        ],
+        ledger: formatCharacterStateLedger(live.characterStates, names, 3),
+        world: [
+          formatLoreBlock(selectLoreForPrompt(live, row.content)),
+          (live.canon || [])
+            .filter((f) => f.locked)
+            .map((f) => `${f.name}：${f.statement}`)
+            .join("\n"),
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+      const issues = Array.isArray(data.issues) ? data.issues : [];
+      const reviewState = reviewStateAfterIssues(issues);
+      update((p) => ({
+        ...p,
+        reviews: [
+          {
+            id: crypto.randomUUID(),
+            chapterId,
+            at: new Date().toISOString(),
+            score: Number(data.score) || 0,
+            issues,
+            source: "pipeline" as const,
+          },
+          ...(p.reviews || []).filter((r) => r.chapterId !== chapterId),
+        ],
+        chapters: p.chapters.map((c) =>
+          c.chapterId === chapterId ? { ...c, reviewState } : c
+        ),
+      }));
+      goWorkspace("review");
+    } catch (e) {
+      reportError(e, () => void runReviewForChapter(chapterId));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runSettleForChapter(chapterId: string) {
+    const live = getLive() || project;
+    if (!live) return;
+    const ch = live.outline?.chapters.find((c) => c.id === chapterId);
+    const row = live.chapters.find((c) => c.chapterId === chapterId);
+    if (!ch || !row?.content?.trim()) {
+      setError("没有可结算的正文。");
+      return;
+    }
+    setBusy(`settle:${chapterId}`);
+    try {
+      const openThreads = readerKnownOpenThreadTitles(live.plotThreads);
+      const sumRes = await postGenerate({
+        mode: "chapter_summary",
+        writingBoard: live.writingBoard,
+        content: row.content,
+        title: ch.title,
+        openThreads,
+        settings: live.settings,
+      });
+      const raw = String(sumRes.summary || "");
+      const touched = Array.isArray(sumRes.touchedThreads)
+        ? (sumRes.touchedThreads as string[])
+        : parseTouchedThreads(raw);
+      const deltas = Array.isArray(sumRes.characterStates)
+        ? sumRes.characterStates
+        : [];
+      update((p) =>
+        applySettleToProject({
+          project: p,
+          chapterId,
+          chapterOrder: ch.order,
+          summary: raw,
+          deltas,
+          touchedThreads: touched,
+        })
+      );
+      setInfo("本章入账：摘要已存，状态与伏笔已更新。可在正文页一键撤销本次写章。");
+    } catch (e) {
+      update((p) => markSettlePending(p, e instanceof Error ? e.message : String(e)));
+      setError("结算未完成，正文已保留。可点「重跑结算」。");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runWritePipeline(
+    chapter: OutlineChapter,
+    opts?: { fromJob?: boolean; skipReview?: boolean; force?: boolean }
+  ): Promise<"done" | "error" | "cancelled" | "skipped"> {
+    const live = getLive() || project;
+    if (!live) return "error";
+    const pre = precheckWriteNext(live, chapter.id, {
+      bookJobRunning: Boolean(opts?.fromJob)
+        ? false
+        : live.bookJob?.status === "running",
+      hasApiKey: hasApiKey === null ? undefined : hasApiKey,
+    });
+    const blocking = pre.items.filter((i) => i.level === "block");
+    const hardBlocks = blocking.filter(
+      (i) => i.id === "api" || i.id === "storage" || i.id === "lock" || i.id === "chapter"
+    );
+    if (!pre.ok && (!opts?.fromJob || hardBlocks.length)) {
+      setError(
+        (opts?.fromJob ? hardBlocks[0] : blocking[0])?.message ||
+          "写前检查未通过"
+      );
+      return "error";
+    }
+    update((p) =>
+      appendStudioSessionEvent(
+        beginWriteRun(p, chapter.id, { skipReview: opts?.skipReview }),
+        undefined,
+        { kind: "phase", title: `写章开始：${chapter.title}` },
+        { kind: "writer", title: WRITER_AGENT_LABEL }
+      )
+    );
+    update((p) => setWriteRunPhase(p, "draft"));
+    const draft = await generateChapter(chapter, Boolean(opts?.force), {
+      fromJob: opts?.fromJob,
+      skipAutoSummary: true,
+    });
+    if (draft !== "done") {
+      const partial = streamPreviewRef.current;
+      if (draft === "cancelled" || draft === "skipped") {
+        update((p) =>
+          rollbackWriteRun(p, { status: "aborted", error: draft })
+        );
+      } else if (partial) {
+        update((p) => keepPartialDraft(p, chapter.id, partial, "draft failed"));
+      } else {
+        update((p) => rollbackWriteRun(p, { status: "failed", error: "draft failed" }));
+      }
+      return draft;
+    }
+    if (!opts?.skipReview) {
+      update((p) => setWriteRunPhase(p, "review"));
+      await runReviewForChapter(chapter.id);
+    } else {
+      update((p) => ({
+        ...p,
+        reviews: [
+          {
+            id: crypto.randomUUID(),
+            chapterId: chapter.id,
+            at: new Date().toISOString(),
+            score: 0,
+            issues: [],
+            source: "pipeline" as const,
+            skipped: true,
+          },
+          ...(p.reviews || []),
+        ],
+      }));
+    }
+    update((p) => setWriteRunPhase(p, "settle"));
+    await runSettleForChapter(chapter.id);
+    update((p) => commitWriteRun(p));
+    goWorkspace("manuscript");
+    return "done";
   }
 
   function startBookJob(
@@ -1255,24 +1575,264 @@ export default function ProjectPage() {
     );
   }
 
-  const hasOriginal = Boolean(project.original || project.canon?.length);
-  const visibleTab = tab === "original" ? "original" : resolveProjectTab(tab);
-  const shellMax =
-    visibleTab === "chapters" ||
-    visibleTab === "tools" ||
-    visibleTab === "plot" ||
-    visibleTab === "outline"
-      ? "max-w-[1680px]"
-      : "max-w-6xl";
-
   const bookJob = project.bookJob as BookJob | null | undefined;
-  const STAGES: { id: StageId; label: string; tabs: Tab[] }[] = [
-    { id: "setup", label: "设定", tabs: setupTabs(hasOriginal) },
-    { id: "write", label: "创作", tabs: ["outline", "chapters"] },
-    { id: "review", label: "检视", tabs: ["plot", "tools"] },
-  ];
+  const writePrecheck = writeDialog
+    ? precheckWriteNext(project, writeDialog.chapter.id, {
+        bookJobRunning: bookJob?.status === "running",
+        hasApiKey: hasApiKey === null ? undefined : hasApiKey,
+      })
+    : null;
   const showGuide =
     guideOpen && shouldShowOnboarding(project) && !isOnboardingDismissed(id);
+
+  const manuscript = (
+    <>
+      <div className="mb-2 px-3 pt-3">
+        <DailyStatusBar
+          project={project}
+          onJumpUnreviewed={(chapterId) => {
+            setSelectedChapterId(chapterId);
+            goWorkspace("review");
+          }}
+          onJumpOverdue={() => {
+            setLibrarySection("threads");
+            goWorkspace("library");
+          }}
+          onJumpCheckup={() => {
+            setToolsSection("tools");
+            goWorkspace("tools");
+          }}
+          onJumpVolumeClose={(volumeId) => {
+            setVolumeWizardId(volumeId);
+            goWorkspace("outline");
+          }}
+        />
+      </div>
+      {(workspace === "manuscript" || bookJob) && (
+        <div className="px-3">
+          <BookJobBar
+            job={bookJob}
+            busy={!!busy?.startsWith("chapter") && !!bookJob}
+            onPause={pauseBookJob}
+            onResume={resumeBookJob}
+            onRetryErrors={retryJobErrors}
+            onDismiss={dismissBookJob}
+            onSkipCurrent={skipCurrentInJob}
+            onSelectChapter={(chapterId) => {
+              setSelectedChapterId(chapterId);
+              goWorkspace("manuscript");
+            }}
+          />
+        </div>
+      )}
+      <ChaptersReader
+        project={project}
+        library={tagLibrary}
+        selectedChapterId={effectiveSelectedId}
+        selectedContent={selectedContent}
+        busy={busy}
+        hideLegacyFlow
+        onSelect={setSelectedChapterId}
+        onGenerateChapter={(ch) => void runWritePipeline(ch)}
+        onWriteNext={() => requestWriteNext()}
+        onRerunReview={(id) => void runReviewForChapter(id)}
+        onRerunSettle={(id) => void runSettleForChapter(id)}
+        onSelectionChange={setAssistantSelection}
+        focusOffset={focusOffset}
+        canUndoWriteRun={Boolean(
+          project &&
+            latestUndoableWriteRun(project, effectiveSelectedId || undefined)
+        )}
+        onUndoWriteRun={() => {
+          update((p) => undoCommittedWriteRun(p));
+          setInfo("已撤销本次写章，正文与账本已回到写前。");
+        }}
+        contractChapterId={null}
+        onRequestContract={() => requestWriteNext()}
+        onPatchOutlineChapter={(chapterId, patch) => {
+          update((p) => {
+            if (!p.outline) return p;
+            return markAuthorCanonEdit({
+              ...p,
+              outline: {
+                ...p.outline,
+                chapters: p.outline.chapters.map((c) =>
+                  c.id === chapterId ? { ...c, ...patch } : c
+                ),
+              },
+            });
+          });
+        }}
+        onFinalizeChapter={(payload) => {
+          update((p) => {
+            const next = projectAfterFinalize({
+              project: p,
+              chapterId: payload.chapterId,
+              chapterOrder: payload.chapterOrder,
+              summary: payload.summary,
+              deltas: payload.deltas,
+              pinnedNames: payload.pinnedNames,
+              threadActions: payload.threadActions,
+              newThreadTitle: payload.newThreadTitle,
+            });
+            const ch = next.outline?.chapters.find(
+              (c) => c.id === payload.chapterId
+            );
+            const volId = ch?.volumeId || next.volumes?.[0]?.id;
+            if (volId && volumeNeedsSummaryPrompt(next, volId)) {
+              queueMicrotask(() => setVolumeWizardId(volId));
+            }
+            return next;
+          });
+        }}
+        onHandEditSummary={(_id, order) => {
+          update((p) => ({
+            ...p,
+            accountRepairMarks: pushAccountRepairMark(
+              p.accountRepairMarks,
+              order,
+              "summary"
+            ),
+          }));
+        }}
+        onJumpPlot={() => {
+          setLibrarySection("threads");
+          goWorkspace("library");
+        }}
+        onJumpTools={() => goWorkspace("tools")}
+        onOpenSettings={() => {
+          setToolsSection("settings");
+          goWorkspace("tools");
+        }}
+        onCancel={cancelGeneration}
+        onBusy={setBusy}
+        onError={setError}
+        onUpdateChapterMeta={(chapterId, patch) => {
+          update((p) => {
+            const chapters = [...p.chapters];
+            const idx = chapters.findIndex((c) => c.chapterId === chapterId);
+            const base: ChapterContent =
+              idx >= 0
+                ? chapters[idx]
+                : {
+                    chapterId,
+                    title: "",
+                    content: "",
+                    status: "idle",
+                    updatedAt: new Date().toISOString(),
+                  };
+            const row = { ...base, ...patch, chapterId };
+            if (idx >= 0) chapters[idx] = row;
+            else chapters.push(row);
+            return { ...p, chapters };
+          });
+        }}
+        onCharacterStatesChange={(characterStates) =>
+          update((p) => ({
+            ...p,
+            characterStates,
+          }))
+        }
+        onContentChange={(chapterId, content, opts) => {
+          const live = getLive() || project;
+          const verdict = evaluateRenewalSave(content, {
+            original: live.original,
+            canon: live.canon,
+            force: opts?.forceCanon,
+          });
+          if (!verdict.allowed) {
+            return { ok: false, violations: verdict.violations };
+          }
+          update((p) => {
+            const chapters = [...p.chapters];
+            const idx = chapters.findIndex((c) => c.chapterId === chapterId);
+            let row: ChapterContent =
+              idx >= 0
+                ? chapters[idx]
+                : {
+                    chapterId,
+                    title: "",
+                    content: "",
+                    status: "idle",
+                    updatedAt: new Date().toISOString(),
+                  };
+            if (opts?.pushVersion && row.content?.trim()) {
+              row = pushChapterVersion(row, opts.pushVersion);
+            }
+            row = {
+              ...row,
+              content,
+              status: content ? "done" : "idle",
+              updatedAt: new Date().toISOString(),
+              canonWarnings: verdict.violations.length
+                ? verdict.violations
+                : undefined,
+              reviewState: opts?.pushVersion ? "draft" : row.reviewState,
+            };
+            if (idx >= 0) chapters[idx] = row;
+            else chapters.push(row);
+            return { ...p, chapters };
+          });
+          return { ok: true, violations: verdict.violations };
+        }}
+        onCommitBeatDeltas={(chapterId, deltas: BeatCommitDeltas) => {
+          update((p) => {
+            const row = p.chapters.find((c) => c.chapterId === chapterId);
+            const accepted = (row?.scenes || []).filter(
+              (s) => s.status === "accepted"
+            );
+            const last = accepted[accepted.length - 1];
+            const applied = applyBeatDeltasToProject({
+              chapters: p.chapters,
+              lore: p.lore,
+              threads: p.plotThreads,
+              chapterId,
+              deltas,
+              scene: last,
+            });
+            return {
+              ...p,
+              chapters: applied.chapters,
+              lore: applied.lore,
+              canon: mergeCanonFacts(p.canon || [], deltas.canonProposals),
+            };
+          });
+        }}
+        onChapterTagsChange={(chapterId, tags) => {
+          update((p) => {
+            if (!p.outline) return p;
+            return {
+              ...p,
+              outline: {
+                ...p.outline,
+                chapters: p.outline.chapters.map((c) =>
+                  c.id === chapterId ? { ...c, tags } : c
+                ),
+              },
+            };
+          });
+        }}
+        onChapterCastChange={(chapterId, castIds) => {
+          update((p) => {
+            if (!p.outline) return p;
+            return {
+              ...p,
+              outline: {
+                ...p.outline,
+                chapters: p.outline.chapters.map((c) =>
+                  c.id === chapterId ? { ...c, castIds } : c
+                ),
+              },
+            };
+          });
+        }}
+        onGenerateAll={() => {
+          setToolsSection("jobs");
+          goWorkspace("tools");
+        }}
+      />
+    </>
+  );
 
   async function generateVolumeSummary(volumeId: string) {
     const live = getLive() || project;
@@ -1314,267 +1874,67 @@ export default function ProjectPage() {
   }
 
   return (
-    <main className="flex-1 flex flex-col min-h-0 h-full">
-      <header className="border-b border-[var(--border-soft)] bg-[var(--bg-elevated)]/90 backdrop-blur sticky top-0 z-20 shrink-0">
-        <div
-          className={`${shellMax} mx-auto px-4 py-3 flex flex-wrap items-center gap-2`}
-        >
-          <Link href="/" className="btn btn-ghost btn-sm">
-            ← 项目
-          </Link>
-          <div className="flex-1 min-w-[10rem]">
-            <input
-              className="!border-transparent !bg-transparent !text-base !font-semibold !px-1 !py-0.5 focus:!border-[var(--border)] focus:!bg-[var(--bg)]"
-              value={project.name}
-              onChange={(e) => update({ name: e.target.value })}
-              placeholder="项目名称"
-            />
-          </div>
-          <span
-            className={`status-pill ${
-              saveError
-                ? "status-pill-error"
-                : saveHint
-                  ? "status-pill-saving"
-                  : ""
-            }`}
-            title={saveError || busy || saveHint || ""}
-          >
-            {busy ? (
-              <>
-                <span className="spinner" /> 生成中
-              </>
-            ) : saveError ? (
-              <button
-                type="button"
-                className="status-pill-error-btn"
-                onClick={() => setSaveDiagOpen((v) => !v)}
-              >
-                保存失败
-              </button>
-            ) : saveHint ? (
-              saveHint
-            ) : (
-              ""
-            )}
-          </span>
-          <ThemeToggle />
-          {busy ? (
+    <StudioShell
+      project={project}
+      workspace={workspace}
+      onWorkspace={goWorkspace}
+      saveHint={saveHint}
+      saveError={saveError}
+      busy={busy}
+      onWriteNext={requestWriteNext}
+      onOpenModelSettings={() => setSettingsMenuOpen(true)}
+      modelSummary={modelSummary}
+      onCancel={cancelGeneration}
+      onNameChange={(name) => update({ name })}
+      onSelectChapter={(chapterId) => {
+        setSelectedChapterId(chapterId);
+        goWorkspace("manuscript");
+      }}
+      navCollapsed={navCollapsed}
+      onToggleNav={() => setNavCollapsed((v) => !v)}
+      rail={
+        <AssistantRail
+          project={project}
+          chapterId={effectiveSelectedId}
+          selection={assistantSelection}
+          collapsed={railCollapsed}
+          onToggle={() => setRailCollapsed((v) => !v)}
+          onAsk={(question, selection) => {
+            update((p) =>
+              appendStudioSessionEvent(
+                p,
+                undefined,
+                {
+                  kind: "message",
+                  title: question,
+                  detail: selection ? `选区：${selection.slice(0, 200)}` : undefined,
+                },
+                { kind: "writer", title: WRITER_AGENT_LABEL }
+              )
+            );
+            setInfo("已记入 AI 协作。P0 助手提问先落会话，不自动改稿。");
+            goWorkspace("sessions");
+          }}
+        />
+      }
+    >
+      {saveError ? (
+        <div className="px-4 pt-3">
+          <div className="card !py-2.5 text-sm text-[var(--danger-text)]">
+            {saveError}
             <button
               type="button"
-              className="btn btn-danger btn-sm"
-              onClick={cancelGeneration}
+              className="btn btn-primary btn-sm ml-2"
+              onClick={() => downloadFullBackup()}
             >
-              停止
+              下载完整备份
             </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={!!busy}
-            onClick={generateOutline}
-          >
-            {busy === "outline" ? (
-              <>
-                <span className="spinner" /> 大纲…
-              </>
-            ) : (
-              "生成大纲"
-            )}
-          </button>
-          {allowsWholeBookGenerate(project) && project.settings.serialMode ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={!!busy || !project.outline?.chapters.length}
-              onClick={() => requestWriteNext()}
-              title="先立本章契约，再写下一章"
-            >
-              {busy?.startsWith("chapter") && bookJob?.status === "running" ? (
-                <>
-                  <span className="spinner" /> 队列中
-                </>
-              ) : (
-                "写下一章"
-              )}
-            </button>
-          ) : allowsWholeBookGenerate(project) ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={!!busy || !project.outline?.chapters.length}
-              onClick={() => startBookJob("missing")}
-              title="跳过已有正文，只生成未完成章"
-            >
-              {busy?.startsWith("chapter") && bookJob?.status === "running" ? (
-                <>
-                  <span className="spinner" /> 队列中
-                </>
-              ) : (
-                "一键生成正文"
-              )}
-            </button>
-          ) : (
-            <span
-              className="text-xs text-[var(--text-muted)]"
-              title={wholeBookGenerateBlockedReason()}
-            >
-              焕新请按拍扩写
-            </span>
-          )}
-          <div className="menu-wrap">
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              aria-expanded={moreOpen}
-              onClick={() => setMoreOpen((v) => !v)}
-            >
-              更多 ▾
-            </button>
-            {moreOpen ? (
-              <>
-                <button
-                  type="button"
-                  className="fixed inset-0 z-30 cursor-default bg-transparent border-0"
-                  aria-label="关闭菜单"
-                  onClick={() => setMoreOpen(false)}
-                />
-                <div className="menu-dropdown">
-                  {allowsWholeBookGenerate(project) ? (
-                    <>
-                      {project.settings.serialMode ? (
-                        <button
-                          type="button"
-                          className="menu-item"
-                          disabled={!!busy || !project.outline?.chapters.length}
-                          onClick={() => {
-                            setMoreOpen(false);
-                            if (
-                              confirm(
-                                "连载的正路是一章一契约，确定批量生成？"
-                              )
-                            ) {
-                              startBookJob("missing");
-                            }
-                          }}
-                        >
-                          一键生成正文
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="menu-item menu-item-danger"
-                        disabled={!!busy || !project.outline?.chapters.length}
-                        onClick={() => {
-                          setMoreOpen(false);
-                          if (
-                            !project.settings.serialMode ||
-                            confirm(
-                              "连载的正路是一章一契约，确定批量生成？"
-                            )
-                          ) {
-                            startBookJob("all");
-                          }
-                        }}
-                      >
-                        强制全量重写
-                      </button>
-                    </>
-                  ) : null}
-                  <div className="menu-sep" />
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      goTab("tools");
-                    }}
-                  >
-                    打开工具与进度
-                  </button>
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-        <div className={`${shellMax} mx-auto px-4 pb-3 stage-nav`}>
-          <div className="stage-tabs" role="tablist" aria-label="创作阶段">
-            {STAGES.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                role="tab"
-                aria-selected={stage === s.id}
-                className={`stage-tab ${stage === s.id ? "active" : ""}`}
-                onClick={() => goStage(s.id)}
-                title={
-                  s.id === "setup"
-                    ? "Ctrl+1"
-                    : s.id === "write"
-                      ? "Ctrl+2"
-                      : "Ctrl+3"
-                }
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-          <div className="tabs">
-            {(STAGES.find((s) => s.id === stage)?.tabs || []).map((tid) => (
-              <button
-                key={tid}
-                type="button"
-                className={`tab ${visibleTab === tid ? "active" : ""}`}
-                onClick={() => goTab(tid)}
-              >
-                {TAB_LABEL[tid]}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      {saveDiagOpen && saveError ? (
-        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
-          <div className="card !py-2.5 !px-3 text-sm border-[color-mix(in_srgb,var(--danger)_40%,transparent)] text-[var(--danger-text)]">
-            <p className="m-0 mb-2">{saveError}</p>
-            {storageWarning ? (
-              <p className="m-0 mb-2 text-xs text-[var(--text-muted)]">
-                {storageWarning}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => {
-                  downloadFullBackup();
-                  setSaveDiagOpen(false);
-                }}
-              >
-                立即下载完整备份
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setSaveDiagOpen(false)}
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : storageWarning && !saveError ? (
-        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
-          <div className="card !py-2.5 !px-3 text-sm text-[var(--warning)]">
-            {storageWarning}
           </div>
         </div>
       ) : null}
-
       {error ? (
-        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
-          <div className="card !py-2.5 !px-3 text-sm border-[color-mix(in_srgb,var(--danger)_40%,transparent)] text-[var(--danger-text)] flex justify-between gap-3">
+        <div className="px-4 pt-3">
+          <div className="card !py-2.5 text-sm text-[var(--danger-text)] flex justify-between gap-3">
             <div className="min-w-0">
               <div>{error}</div>
               {errorDiagnostic ? (
@@ -1615,293 +1975,478 @@ export default function ProjectPage() {
           </div>
         </div>
       ) : null}
-
       {info ? (
-        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
-          <div className="card !py-2.5 !px-3 text-sm border-[color-mix(in_srgb,var(--accent)_35%,transparent)] text-[var(--text)] flex justify-between gap-3">
+        <div className="px-4 pt-3">
+          <div className="card !py-2.5 text-sm flex justify-between gap-3">
             <span>{info}</span>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => setInfo("")}
-            >
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setInfo("")}>
               关闭
             </button>
           </div>
         </div>
       ) : null}
-
-      {volumeSummaryHint ? (
-        <div className={`${shellMax} mx-auto w-full px-4 pt-3 shrink-0`}>
-          <div className="card !py-2.5 !px-3 text-sm border-[color-mix(in_srgb,var(--accent)_35%,transparent)] flex flex-wrap items-center justify-between gap-3">
+      {!pendingProposal && project && pendingCanonProposals(project).length ? (
+        <div className="px-4 pt-3">
+          <div className="card !py-2.5 text-sm flex justify-between gap-3 items-center">
             <span>
-              《{volumeSummaryHint.title}》已全部完成，生成卷摘要以进入长期记忆？
+              待确认提案 {pendingCanonProposals(project).length} 条。刷新不会丢掉产物。
             </span>
-            <div className="flex gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                const next = pendingCanonProposals(project)[0];
+                if (next) setPendingProposal(next);
+              }}
+            >
+              打开确认闸
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {stalePrompt ? (
+        <div className="px-4 pt-3">
+          <div className="card !py-2.5 text-sm">
+            上次写章未完成。
+            <div className="flex gap-2 mt-2">
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                disabled={!!busy}
                 onClick={() => {
-                  const id = volumeSummaryHint.volumeId;
-                  setVolumeSummaryHint(null);
-                  goTab("volumes");
-                  void generateVolumeSummary(id);
+                  update((p) => rollbackWriteRun(p, { runId: stalePrompt.runId }));
+                  setStalePrompt(null);
                 }}
               >
-                生成卷摘要
+                还原快照
               </button>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => setVolumeSummaryHint(null)}
+                onClick={() => {
+                  update((p) => clearWriteLock(p, stalePrompt.runId));
+                  setStalePrompt(null);
+                }}
               >
-                稍后
+                保留现状并清锁
               </button>
             </div>
           </div>
         </div>
       ) : null}
+      {showGuide ? (
+        <div className="px-4 pt-3">
+          <OnboardingCard
+            project={project}
+            onGo={(step) => {
+              goTab(step);
+              if (step === "characters") {
+                setCharacterEditorRequest((n) => n + 1);
+              }
+            }}
+            onDismiss={() => {
+              dismissOnboarding(id);
+              setGuideOpen(false);
+            }}
+          />
+        </div>
+      ) : null}
 
-      <div
-        className={`flex-1 ${shellMax} mx-auto w-full min-h-0 flex flex-col ${
-          visibleTab === "chapters" ? "px-3 py-3" : "px-4 py-5 overflow-y-auto"
-        }`}
-      >
-        {showGuide ? (
-          <div className="mb-4">
-            <OnboardingCard
-              project={project}
-              onGo={(step) => {
-                goTab(step);
-                if (step === "characters") {
-                  setCharacterEditorRequest((n) => n + 1);
-                }
-              }}
-              onDismiss={() => {
-                dismissOnboarding(id);
-                setGuideOpen(false);
-              }}
-            />
-          </div>
-        ) : null}
-        {(visibleTab === "chapters" || bookJob) && (
-          <BookJobBar
-            job={bookJob}
-            busy={!!busy?.startsWith("chapter") && !!bookJob}
-            onPause={pauseBookJob}
-            onResume={resumeBookJob}
-            onRetryErrors={retryJobErrors}
-            onDismiss={dismissBookJob}
-            onSkipCurrent={skipCurrentInJob}
-            onSelectChapter={(chapterId) => {
+      {workspace === "overview" ? (
+        <OverviewWorkspace
+          project={project}
+          onOpenChapter={(cid) => {
+            setSelectedChapterId(cid);
+            goWorkspace("manuscript");
+          }}
+          onWriteNext={requestWriteNext}
+        />
+      ) : null}
+
+      {workspace === "outline" ? (
+        <OutlineWorkspace
+          project={project}
+          selectedId={effectiveSelectedId}
+          onSelect={setSelectedChapterId}
+          onAddSibling={(afterId) => {
+            update((p) => {
+              const { project: next, chapterId } = addBlankOutlineChapter(
+                p,
+                afterId
+              );
               setSelectedChapterId(chapterId);
-              goTab("chapters");
-            }}
-          />
-        )}
-
-        {visibleTab === "premise" && (
-          <PremisePanel
-            project={project}
-            onChange={(premiseCard, extra) =>
-              update((p) => ({
-                ...p,
-                premiseCard,
-                outline: p.outline
-                  ? { ...p.outline, premise: premiseCard.premise }
-                  : p.outline,
-                settings: extra?.serialMode == null
-                  ? p.settings
-                  : { ...p.settings, serialMode: extra.serialMode },
-              }))
-            }
-          />
-        )}
-        {visibleTab === "original" && (
-          <OriginalPanel
-            original={project.original}
-            canon={project.canon || []}
-            writingBoard={project.writingBoard}
-            onOriginalChange={(original) =>
-              update((p) => ({ ...p, original }))
-            }
-            onCanonChange={(canon) => update((p) => ({ ...p, canon }))}
-            onApplySkeleton={(skeleton) =>
-              update((p) => mapSkeletonToProject(p, skeleton))
-            }
-            onError={setError}
-          />
-        )}
-        {visibleTab === "characters" && (
-          <CharactersPanel
-            characters={project.characters}
-            background={project.background}
-            writingBoard={project.writingBoard}
-            original={project.original}
-            canon={project.canon}
-            characterStates={project.characterStates}
-            onCharacterStatesChange={(characterStates) =>
-              update((p) => {
-                const prev = p.characterStates || {};
-                let pinOrder = 0;
-                for (const [name, rows] of Object.entries(characterStates)) {
-                  for (const row of rows) {
-                    const old = (prev[name] || []).find(
-                      (r) =>
-                        r.chapterOrder === row.chapterOrder &&
-                        r.note === row.note
-                    );
-                    if (row.pinned && !old?.pinned) {
-                      pinOrder = Math.max(pinOrder, row.chapterOrder);
-                    }
+              return next;
+            });
+          }}
+          onAddFirst={() => {
+            update((p) => {
+              const { project: next, chapterId } = addBlankOutlineChapter(p);
+              setSelectedChapterId(chapterId);
+              return next;
+            });
+          }}
+          onCreateManuscript={(chapterId) => {
+            setSelectedChapterId(chapterId);
+            goWorkspace("manuscript");
+          }}
+          onLocate={(chapterId) => {
+            setSelectedChapterId(chapterId);
+            goWorkspace("manuscript");
+          }}
+          extra={
+            <div className="space-y-4">
+              {volumeWizardId ? (
+                <VolumeCloseWizard
+                  project={project}
+                  volumeId={volumeWizardId}
+                  busy={!!busy}
+                  onRequestSummary={() => void generateVolumeSummary(volumeWizardId)}
+                  onChangeVolume={(vid, patch) =>
+                    update((p) => ({
+                      ...p,
+                      volumes: (p.volumes || []).map((v) =>
+                        v.id === vid ? { ...v, ...patch } : v
+                      ),
+                    }))
                   }
+                  onChangeThreads={(plotThreads) =>
+                    update((p) => ({ ...p, plotThreads }))
+                  }
+                />
+              ) : null}
+              <VolumesPanel
+                project={project}
+                onChange={(volumes, outline) =>
+                  update((p) =>
+                    markAuthorCanonEdit({
+                      ...p,
+                      volumes,
+                      outline: outline ?? p.outline,
+                    })
+                  )
                 }
-                return {
-                  ...p,
-                  characterStates,
-                  accountRepairMarks: pinOrder
-                    ? pushAccountRepairMark(
-                        p.accountRepairMarks,
-                        pinOrder,
-                        "ledger"
-                      )
-                    : p.accountRepairMarks,
-                };
-              })
-            }
-            openEditorRequest={characterEditorRequest}
-            onChange={(charactersOrFn) =>
-              update((p) => ({
-                ...p,
-                characters:
-                  typeof charactersOrFn === "function"
-                    ? charactersOrFn(p.characters)
-                    : charactersOrFn,
-              }))
-            }
-            onCastGenerated={(characters, background) =>
-              update((p) => ({ ...p, characters, background }))
-            }
-            onError={setError}
-          />
-        )}
-        {visibleTab === "background" && (
-          <BackgroundPanel
-            background={project.background}
-            characters={project.characters}
-            writingBoard={project.writingBoard}
-            original={project.original}
-            canon={project.canon}
-            onChange={(backgroundOrFn) =>
-              update((p) => ({
-                ...p,
-                background:
-                  typeof backgroundOrFn === "function"
-                    ? backgroundOrFn(p.background)
-                    : backgroundOrFn,
-              }))
-            }
-            onError={setError}
-          />
-        )}
-        {visibleTab === "lore" && (
-          <LorePanel
-            project={project}
-            onChange={(lore) => update((p) => ({ ...p, lore }))}
-          />
-        )}
-        {visibleTab === "volumes" && volumeWizardId ? (
-          <div className="mb-4">
-            <VolumeCloseWizard
+                hideWholeVolumeGenerate={!allowsWholeBookGenerate(project)}
+                onGenerateNext={(volumeId, n) => void generateNextChapters(volumeId, n)}
+                onGenerateVolume={(volumeId) => {
+                  setToolsSection("jobs");
+                  startBookJob("missing", volumeId);
+                }}
+                onGenerateVolumeOutline={(volumeId, n) =>
+                  void generateVolumeOutline(volumeId, n)
+                }
+                onGenerateVolumeSummary={(volumeId) =>
+                  void generateVolumeSummary(volumeId)
+                }
+                onOpenCloseWizard={(volumeId) => setVolumeWizardId(volumeId)}
+                summaryDraft={volumeSummaryDraft}
+                onSaveSummaryDraft={() => {
+                  if (!volumeSummaryDraft) return;
+                  const { volumeId, text } = volumeSummaryDraft;
+                  update((p) => ({
+                    ...p,
+                    volumes: (p.volumes || []).map((v) =>
+                      v.id === volumeId ? { ...v, summary: text.trim() } : v
+                    ),
+                  }));
+                  setVolumeSummaryDraft(null);
+                }}
+                onDiscardSummaryDraft={() => setVolumeSummaryDraft(null)}
+                onEditSummaryDraft={(text) =>
+                  setVolumeSummaryDraft((prev) =>
+                    prev ? { ...prev, text } : prev
+                  )
+                }
+                busy={busy}
+              />
+              <OutlinePanel
+                includeEndingDirection={includeEndingDirection}
+                onIncludeEndingDirection={setIncludeEndingDirection}
+                outline={project.outline}
+                projectTags={project.tags || []}
+                library={tagLibrary}
+                writingBoard={project.writingBoard}
+                volumes={project.volumes}
+                characters={project.characters}
+                busy={busy}
+                hideRollingOutline={!allowsWholeBookGenerate(project)}
+                planChapterCount={project.settings.chapterCount}
+                onGenerateNext={(volumeId, n) =>
+                  void generateNextChapters(volumeId, n)
+                }
+                onGenerate={generateOutline}
+                onChange={(outline) => {
+                  update((p) => {
+                    const chapters = outline.chapters.map((ch) => {
+                      const old = p.chapters.find((c) => c.chapterId === ch.id);
+                      return (
+                        old || {
+                          chapterId: ch.id,
+                          title: ch.title,
+                          content: "",
+                          status: "idle" as const,
+                          updatedAt: new Date().toISOString(),
+                        }
+                      );
+                    });
+                    const fallback = p.volumes?.[0]?.id || `${p.id}:vol:1`;
+                    return markAuthorCanonEdit({
+                      ...p,
+                      outline,
+                      chapters: chapters.map((c) => {
+                        const ch = outline.chapters.find((x) => x.id === c.chapterId);
+                        return ch ? { ...c, title: ch.title } : c;
+                      }),
+                      outlineTree: syncOutlineTree(
+                        p.outlineTree,
+                        p.volumes,
+                        outline.chapters,
+                        fallback
+                      ),
+                    });
+                  });
+                }}
+                onGenerateChapter={(ch) => {
+                  setSelectedChapterId(ch.id);
+                  requestWriteNext();
+                }}
+                onPolishChapter={async (ch) => {
+                  setError("");
+                  setBusy(`polish:${ch.id}`);
+                  try {
+                    const fresh = getLive() || project;
+                    const live =
+                      fresh.outline?.chapters.find((c) => c.id === ch.id) || ch;
+                    const data = await postGenerate(
+                      attachOriginalContext(fresh, {
+                        mode: "polish_chapter_outline",
+                        writingBoard: fresh.writingBoard,
+                        characters: fresh.characters,
+                        background: fresh.background,
+                        settings: fresh.settings,
+                        outline: fresh.outline,
+                        chapter: live,
+                        projectTags: fresh.tags || [],
+                        premise: injectablePremise(
+                          fresh.premiseCard,
+                          fresh.outline
+                        ),
+                        includeEndingDirection,
+                        endingDirection: injectableEndingDirection(
+                          includeEndingDirection,
+                          fresh.premiseCard
+                        ),
+                      })
+                    );
+                    const polished = data.chapter as {
+                      title: string;
+                      summary: string;
+                      keyPoints: string;
+                      intensityNote?: string;
+                    };
+                    const liveOutline = (getLive() || project).outline;
+                    if (liveOutline) {
+                      const proposal = proposalFromPolishedChapter({
+                        outline: liveOutline,
+                        chapterId: ch.id,
+                        beforeTitle: live.title,
+                        after: polished,
+                      });
+                      update((p) => enqueueCanonDraft(p, proposal));
+                      setPendingProposal(proposal);
+                    }
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : String(e));
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              />
+            </div>
+          }
+        />
+      ) : null}
+
+      {workspace === "manuscript" ? (
+        <div className="flex-1 min-h-0 flex flex-col px-3 py-3">{manuscript}</div>
+      ) : null}
+
+      {workspace === "review" ? (
+        <ReviewWorkspace
+          project={project}
+          selectedChapterId={effectiveSelectedId}
+          onSelectChapter={setSelectedChapterId}
+          onLocate={(chapterId, offset) => {
+            setSelectedChapterId(chapterId);
+            setFocusOffset(offset);
+            goWorkspace("manuscript");
+          }}
+          onReviewChapter={(cid) => void runReviewForChapter(cid)}
+          busy={!!busy}
+        />
+      ) : null}
+
+      {workspace === "library" ? (
+        <LibraryWorkspace section={librarySection} onSection={setLibrarySection}>
+          {librarySection === "intent" ? (
+            <PremisePanel
               project={project}
-              volumeId={volumeWizardId}
-              busy={!!busy}
-              onRequestSummary={() =>
-                void generateVolumeSummary(volumeWizardId)
-              }
-              onChangeVolume={(id, patch) =>
-                update((p) => ({
-                  ...p,
-                  volumes: (p.volumes || []).map((v) =>
-                    v.id === id ? { ...v, ...patch } : v
-                  ),
-                }))
-              }
-              onChangeThreads={(plotThreads) =>
-                update((p) => ({ ...p, plotThreads }))
+              onChange={(premiseCard, extra) =>
+                update((p) =>
+                  markAuthorCanonEdit({
+                    ...p,
+                    premiseCard,
+                    outline: p.outline
+                      ? { ...p.outline, premise: premiseCard.premise }
+                      : p.outline,
+                    settings:
+                      extra?.serialMode == null
+                        ? p.settings
+                        : { ...p.settings, serialMode: extra.serialMode },
+                  })
+                )
               }
             />
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm mt-2"
-              onClick={() => setVolumeWizardId(null)}
-            >
-              收起过卷向导
-            </button>
-          </div>
-        ) : null}
-        {visibleTab === "volumes" && (
-          <VolumesPanel
-            project={project}
-            onChange={(volumes, outline) =>
-              update((p) => ({
-                ...p,
-                volumes,
-                outline: outline ?? p.outline,
-              }))
-            }
-            hideWholeVolumeGenerate={!allowsWholeBookGenerate(project)}
-            onGenerateNext={(volumeId, n) =>
-              void generateNextChapters(volumeId, n)
-            }
-            onGenerateVolume={(volumeId) =>
-              startBookJob("missing", volumeId)
-            }
-            onGenerateVolumeOutline={(volumeId, n) =>
-              void generateVolumeOutline(volumeId, n)
-            }
-            onGenerateVolumeSummary={(volumeId) =>
-              void generateVolumeSummary(volumeId)
-            }
-            onOpenCloseWizard={(volumeId) => setVolumeWizardId(volumeId)}
-            summaryDraft={volumeSummaryDraft}
-            onSaveSummaryDraft={() => {
-              if (!volumeSummaryDraft) return;
-              const { volumeId, text } = volumeSummaryDraft;
-              update((p) => ({
-                ...p,
-                volumes: (p.volumes || []).map((v) =>
-                  v.id === volumeId ? { ...v, summary: text.trim() } : v
-                ),
-              }));
-              setVolumeSummaryDraft(null);
-            }}
-            onDiscardSummaryDraft={() => setVolumeSummaryDraft(null)}
-            onEditSummaryDraft={(text) =>
-              setVolumeSummaryDraft((prev) =>
-                prev ? { ...prev, text } : prev
-              )
-            }
-            busy={busy}
-          />
-        )}
-        {visibleTab === "settings" && (
-          <div className="space-y-4">
-            {!hasOriginal ? (
-              <div className="card max-w-4xl !py-3">
-                <p className="text-sm m-0 mb-2">
-                  从旧稿开写？可挂载原作底稿并锁定事实。
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => goTab("original")}
-                >
-                  挂载原作底稿…
-                </button>
-              </div>
-            ) : null}
+          ) : null}
+          {librarySection === "focus" ? (
+            <FocusPanel
+              project={project}
+              onChange={(fn) => update(fn)}
+            />
+          ) : null}
+          {librarySection === "foundation" ? (
+            <BackgroundPanel
+              background={project.background}
+              characters={project.characters}
+              writingBoard={project.writingBoard}
+              original={project.original}
+              canon={project.canon}
+              onProposeBackground={(background) => {
+                const proposal = proposalFromBackground({
+                  before: project.background,
+                  after: background,
+                });
+                update((p) => enqueueCanonDraft(p, proposal));
+                setPendingProposal(proposal);
+              }}
+              onChange={(backgroundOrFn) =>
+                update((p) =>
+                  markAuthorCanonEdit({
+                    ...p,
+                    background:
+                      typeof backgroundOrFn === "function"
+                        ? backgroundOrFn(p.background)
+                        : backgroundOrFn,
+                  })
+                )
+              }
+              onError={setError}
+            />
+          ) : null}
+          {librarySection === "characters" ? (
+            <CharactersPanel
+              characters={project.characters}
+              background={project.background}
+              writingBoard={project.writingBoard}
+              original={project.original}
+              canon={project.canon}
+              characterStates={project.characterStates}
+              onCharacterStatesChange={(characterStates) =>
+                update((p) => ({ ...p, characterStates }))
+              }
+              openEditorRequest={characterEditorRequest}
+              onProposeCast={(characters, background) => {
+                const proposal = proposalFromCharacters({
+                  kind: "cast",
+                  before: project.characters,
+                  after: characters,
+                  background,
+                });
+                update((p) => enqueueCanonDraft(p, proposal));
+                setPendingProposal(proposal);
+              }}
+              onProposeCharacter={(characters) => {
+                const proposal = proposalFromCharacters({
+                  kind: "character",
+                  before: project.characters,
+                  after: characters,
+                });
+                update((p) => enqueueCanonDraft(p, proposal));
+                setPendingProposal(proposal);
+              }}
+              onChange={(charactersOrFn) =>
+                update((p) =>
+                  markAuthorCanonEdit({
+                    ...p,
+                    characters:
+                      typeof charactersOrFn === "function"
+                        ? charactersOrFn(p.characters)
+                        : charactersOrFn,
+                  })
+                )
+              }
+              onCastGenerated={(characters, background) =>
+                update((p) =>
+                  markAuthorCanonEdit({ ...p, characters, background })
+                )
+              }
+              onError={setError}
+            />
+          ) : null}
+          {librarySection === "world" ? (
+            <LorePanel
+              project={project}
+              onChange={(lore) =>
+                update((p) => markAuthorCanonEdit({ ...p, lore }))
+              }
+            />
+          ) : null}
+          {librarySection === "threads" ? (
+            <PlotThreadsPanel
+              project={project}
+              onChange={(plotThreads) =>
+                update((p) => markAuthorCanonEdit({ ...p, plotThreads }))
+              }
+            />
+          ) : null}
+        </LibraryWorkspace>
+      ) : null}
+
+      {workspace === "sessions" ? <SessionsWorkspace project={project} /> : null}
+
+      {workspace === "tools" ? (
+        <ToolsWorkspace section={toolsSection} onSection={setToolsSection}>
+          {toolsSection === "tools" ? (
+            <ToolsPanel
+              project={project}
+              busy={busy}
+              onBusy={setBusy}
+              onError={setError}
+              onProjectUpdate={update}
+            />
+          ) : null}
+          {toolsSection === "settings" ? (
+            <div className="space-y-4">
+            <div className="card max-w-xl">
+              <h3 className="text-sm font-semibold m-0 mb-2">字数规划</h3>
+              <label className="block text-sm">
+                全书目标字数
+                <input
+                  className="mt-1 w-full"
+                  type="number"
+                  min={0}
+                  value={project.wordTargets?.book || ""}
+                  onChange={(e) => {
+                    const book = Number(e.target.value);
+                    update((p) => ({
+                      ...p,
+                      wordTargets: {
+                        ...p.wordTargets,
+                        book: Number.isFinite(book) && book > 0 ? book : undefined,
+                      },
+                    }));
+                  }}
+                />
+              </label>
+            </div>
             <SettingsPanel
               settings={project.settings}
               styleLibrary={styleLibrary}
@@ -1915,411 +2460,172 @@ export default function ProjectPage() {
               onClearStyle={clearLearnedStyle}
               onError={setError}
             />
+            </div>
+          ) : null}
+          {toolsSection === "tags" ? (
             <TagsPanel
               projectTags={project.tags || []}
               library={tagLibrary}
               writingBoard={project.writingBoard}
               onProjectTagsChange={(tags) => update((p) => ({ ...p, tags }))}
             />
-          </div>
-        )}
-        {visibleTab === "outline" && (
-          <OutlinePanel
-            includeEndingDirection={includeEndingDirection}
-            onIncludeEndingDirection={setIncludeEndingDirection}
-            outline={project.outline}
-            projectTags={project.tags || []}
-            library={tagLibrary}
-            writingBoard={project.writingBoard}
-            volumes={project.volumes}
-            characters={project.characters}
-            busy={busy}
-            hideRollingOutline={!allowsWholeBookGenerate(project)}
-            planChapterCount={project.settings.chapterCount}
-            onGenerateNext={(volumeId, n) =>
-              void generateNextChapters(volumeId, n)
-            }
-            onGenerate={generateOutline}
-            onChange={(outline) => {
-              update((p) => {
-                const chapters = outline.chapters
-                  .map((ch) => {
-                    const old = p.chapters.find((c) => c.chapterId === ch.id);
-                    return (
-                      old || {
-                        chapterId: ch.id,
-                        title: ch.title,
-                        content: "",
-                        status: "idle" as const,
-                        updatedAt: new Date().toISOString(),
-                      }
-                    );
-                  })
-                  .map((c) => {
-                    const ch = outline.chapters.find(
-                      (x) => x.id === c.chapterId
-                    );
-                    return ch ? { ...c, title: ch.title } : c;
-                  });
-                return { ...p, outline, chapters };
-              });
-            }}
-            onGenerateChapter={(ch) => {
-              setSelectedChapterId(ch.id);
-              goTab("chapters");
-              setContractChapterId(ch.id);
-            }}
-            onPolishChapter={async (ch) => {
-              setError("");
-              setBusy(`polish:${ch.id}`);
-              try {
-                const fresh = getLive() || project;
-                const live =
-                  fresh.outline?.chapters.find((c) => c.id === ch.id) || ch;
-                if (!(live.tags || []).length && !(fresh.tags || []).length) {
-                  throw new Error(
-                    "请先勾选本章标签（或本书标签），再点击「优化大纲」"
-                  );
-                }
-                const data = await postGenerate(
-                  attachOriginalContext(fresh, {
-                    mode: "polish_chapter_outline",
-                    writingBoard: fresh.writingBoard,
-                    characters: fresh.characters,
-                    background: fresh.background,
-                    settings: fresh.settings,
-                    outline: fresh.outline,
-                    chapter: live,
-                    projectTags: fresh.tags || [],
-                    premise: injectablePremise(
-                      fresh.premiseCard,
-                      fresh.outline
-                    ),
-                    includeEndingDirection,
-                    endingDirection: injectableEndingDirection(
-                      includeEndingDirection,
-                      fresh.premiseCard
-                    ),
-                  })
-                );
-                const polished = data.chapter as {
-                  title: string;
-                  summary: string;
-                  keyPoints: string;
-                  intensityNote?: string;
-                };
-                update((p) => {
-                  if (!p.outline) return p;
-                  return {
-                    ...p,
-                    outline: {
-                      ...p.outline,
-                      chapters: p.outline.chapters.map((c) =>
-                        c.id === ch.id
-                          ? {
-                              ...c,
-                              title: polished.title || c.title,
-                              summary: polished.summary || c.summary,
-                              keyPoints: polished.keyPoints || c.keyPoints,
-                              intensityNote:
-                                polished.intensityNote || c.intensityNote,
-                            }
-                          : c
-                      ),
-                    },
-                  };
-                });
-              } catch (e) {
-                setError(e instanceof Error ? e.message : String(e));
-              } finally {
-                setBusy(null);
+          ) : null}
+          {toolsSection === "jobs" ? (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--text-muted)] m-0">
+                批量任务已从主 CTA 降到这里。每一章仍走写前检查 → 落墨 → 审稿 → 结算。
+              </p>
+              <BookJobBar
+                job={bookJob}
+                busy={!!busy?.startsWith("chapter") && !!bookJob}
+                onPause={pauseBookJob}
+                onResume={resumeBookJob}
+                onRetryErrors={retryJobErrors}
+                onDismiss={dismissBookJob}
+                onSkipCurrent={skipCurrentInJob}
+                onSelectChapter={(chapterId) => {
+                  setSelectedChapterId(chapterId);
+                  goWorkspace("manuscript");
+                }}
+              />
+              {allowsWholeBookGenerate(project) ? (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!!busy}
+                    onClick={() => startBookJob("missing")}
+                  >
+                    补写未完成章
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={!!busy}
+                    onClick={() => startBookJob("all")}
+                  >
+                    强制全量重写
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--text-muted)]">焕新项目请按拍扩写。</p>
+              )}
+            </div>
+          ) : null}
+          {toolsSection === "migrate" ? (
+            <OriginalPanel
+              original={project.original}
+              canon={project.canon || []}
+              writingBoard={project.writingBoard}
+              onOriginalChange={(original) =>
+                update((p) => ({ ...p, original }))
               }
-            }}
-          />
-        )}
-        {visibleTab === "plot" && (
-          <PlotThreadsPanel
-            project={project}
-            onChange={(plotThreads) =>
-              update((p) => ({ ...p, plotThreads }))
-            }
-          />
-        )}
-        {visibleTab === "tools" && (
-          <ToolsPanel
-            project={project}
-            busy={busy}
-            onBusy={setBusy}
-            onError={setError}
-            onProjectUpdate={update}
-          />
-        )}
-        {visibleTab === "chapters" && (
-          <div className="mb-2">
-            <DailyStatusBar
-              project={project}
-              onJumpUnreviewed={(chapterId) => {
-                setSelectedChapterId(chapterId);
-                setContractChapterId(null);
-              }}
-              onJumpOverdue={() => goTab("plot")}
-              onJumpCheckup={() => goTab("tools")}
-              onJumpVolumeClose={(volumeId) => {
-                setVolumeWizardId(volumeId);
-                goTab("volumes");
+              onCanonChange={(canon) => update((p) => ({ ...p, canon }))}
+              onApplySkeleton={(skeleton) =>
+                update((p) => mapSkeletonToProject(p, skeleton))
+              }
+              onError={setError}
+            />
+          ) : null}
+          {toolsSection === "styles" ? (
+            <StyleLearnPanel
+              styles={styleLibrary}
+              onStylesChange={(s) => saveStyleLibraryFor("general", s)}
+              writingBoard={project.writingBoard}
+              onError={setError}
+              onApply={applyLearnedStyle}
+              onClear={clearLearnedStyle}
+              activeId={project.settings.learnedStyleId}
+              activeName={project.settings.learnedStyleName}
+            />
+          ) : null}
+        </ToolsWorkspace>
+      ) : null}
+
+      {pendingProposal ? (
+        <DiffConfirmGate
+          proposal={pendingProposal}
+          onConfirm={() => applyPendingProposal()}
+          onReject={() => {
+            update((p) => rejectCanonProposal(p, pendingProposal));
+            setPendingProposal(null);
+          }}
+          onEdit={(edited) => applyPendingProposal(edited)}
+        />
+      ) : null}
+      {writeDialog && writePrecheck ? (
+        <WriteNextDialog
+          chapter={writeDialog.chapter}
+          precheck={writePrecheck}
+          goal={writeDialog.goal}
+          hook={writeDialog.hook}
+          skipReview={writeDialog.skipReview}
+          busy={!!busy}
+          onGoal={(goal) => setWriteDialog({ ...writeDialog, goal })}
+          onHook={(hook) => setWriteDialog({ ...writeDialog, hook })}
+          onSkipReview={(skipReview) =>
+            setWriteDialog({ ...writeDialog, skipReview })
+          }
+          onCancel={() => setWriteDialog(null)}
+          onStart={() => {
+            const dlg = writeDialog;
+            update((p) => {
+              if (!p.outline) return p;
+              return markAuthorCanonEdit({
+                ...p,
+                outline: {
+                  ...p.outline,
+                  chapters: p.outline.chapters.map((c) =>
+                    c.id === dlg.chapter.id
+                      ? { ...c, summary: dlg.goal, hook: dlg.hook }
+                      : c
+                  ),
+                },
+              });
+            });
+            setWriteDialog(null);
+            void runWritePipeline(
+              { ...dlg.chapter, summary: dlg.goal, hook: dlg.hook },
+              { skipReview: dlg.skipReview }
+            );
+          }}
+        />
+      ) : null}
+      {settingsMenuOpen ? (
+        <div className="fixed inset-0 z-40 flex items-start justify-end p-4 bg-black/30">
+          <div className="card max-w-md w-full mt-10">
+            <div className="flex justify-between mb-2">
+              <strong>模型设置</strong>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setSettingsMenuOpen(false)}
+              >
+                关闭
+              </button>
+            </div>
+            <AppSettingsMenu
+              hasKey={hasApiKey}
+              keyPrefix={keyPrefix}
+              onImportClick={() => setSettingsMenuOpen(false)}
+              onHasKeyChange={() => {
+                void fetch("/api/config")
+                  .then((r) => r.json())
+                  .then((data) => {
+                    const main = data.env?.model || "主力档";
+                    const fine = data.env?.fineModel
+                      ? " · 精写已配"
+                      : "";
+                    setModelSummary(`${main}${fine}`);
+                    setHasApiKey(Boolean(data.env?.hasKey));
+                    setKeyPrefix(String(data.env?.keyPrefix || ""));
+                  })
+                  .catch(() => undefined);
               }}
             />
           </div>
-        )}
-        {visibleTab === "chapters" && (
-          <ChaptersReader
-            project={project}
-            library={tagLibrary}
-            selectedChapterId={effectiveSelectedId}
-            selectedContent={selectedContent}
-            busy={busy}
-            onSelect={setSelectedChapterId}
-            onGenerateChapter={(ch) => void generateChapter(ch)}
-            contractChapterId={contractChapterId}
-            onRequestContract={(id) => {
-              if (id) {
-                const unreviewed = listUnreviewedChapters(project);
-                if (
-                  unreviewed.length &&
-                  !unreviewed.some((c) => c.id === id)
-                ) {
-                  const go = confirm(
-                    `还有 ${unreviewed.length} 章未审，先审再写？\n确定 = 去最早未审章；取消 = 仍要写。`
-                  );
-                  if (go) {
-                    setSelectedChapterId(unreviewed[0].id);
-                    setContractChapterId(null);
-                    return;
-                  }
-                }
-                setSelectedChapterId(id);
-              }
-              setContractChapterId(id);
-            }}
-            onPatchOutlineChapter={(chapterId, patch) => {
-              update((p) => {
-                if (!p.outline) return p;
-                return {
-                  ...p,
-                  outline: {
-                    ...p.outline,
-                    chapters: p.outline.chapters.map((c) =>
-                      c.id === chapterId ? { ...c, ...patch } : c
-                    ),
-                  },
-                };
-              });
-            }}
-            onFinalizeChapter={(payload) => {
-              update((p) => {
-                const next = projectAfterFinalize({
-                  project: p,
-                  chapterId: payload.chapterId,
-                  chapterOrder: payload.chapterOrder,
-                  summary: payload.summary,
-                  deltas: payload.deltas,
-                  pinnedNames: payload.pinnedNames,
-                  threadActions: payload.threadActions,
-                  newThreadTitle: payload.newThreadTitle,
-                });
-                const ch = next.outline?.chapters.find(
-                  (c) => c.id === payload.chapterId
-                );
-                const volId = ch?.volumeId || next.volumes?.[0]?.id;
-                if (volId && volumeNeedsSummaryPrompt(next, volId)) {
-                  queueMicrotask(() => setVolumeWizardId(volId));
-                }
-                return next;
-              });
-            }}
-            onHandEditSummary={(_id, order) => {
-              update((p) => ({
-                ...p,
-                accountRepairMarks: pushAccountRepairMark(
-                  p.accountRepairMarks,
-                  order,
-                  "summary"
-                ),
-              }));
-            }}
-            onJumpPlot={() => goTab("plot")}
-            onJumpTools={() => goTab("tools")}
-            onOpenSettings={() => goTab("settings")}
-            onCancel={cancelGeneration}
-            onBusy={setBusy}
-            onError={setError}
-            onUpdateChapterMeta={(chapterId, patch) => {
-              update((p) => {
-                const chapters = [...p.chapters];
-                const idx = chapters.findIndex(
-                  (c) => c.chapterId === chapterId
-                );
-                const base: ChapterContent =
-                  idx >= 0
-                    ? chapters[idx]
-                    : {
-                        chapterId,
-                        title: "",
-                        content: "",
-                        status: "idle",
-                        updatedAt: new Date().toISOString(),
-                      };
-                const row = { ...base, ...patch, chapterId };
-                if (idx >= 0) chapters[idx] = row;
-                else chapters.push(row);
-                const next = { ...p, chapters };
-                if (patch.reviewState === "reviewed") {
-                  const ch = next.outline?.chapters.find((c) => c.id === chapterId);
-                  const volId = ch?.volumeId || next.volumes?.[0]?.id;
-                  if (volId && volumeNeedsSummaryPrompt(next, volId)) {
-                    const vol = (next.volumes || []).find((v) => v.id === volId);
-                    if (vol) {
-                      queueMicrotask(() =>
-                        setVolumeSummaryHint({
-                          volumeId: vol.id,
-                          title: vol.title,
-                        })
-                      );
-                    }
-                  }
-                }
-                return next;
-              });
-            }}
-            onWriteNext={() => requestWriteNext()}
-            onCharacterStatesChange={(characterStates) =>
-              update((p) => {
-                const prev = p.characterStates || {};
-                let pinOrder = 0;
-                for (const [name, rows] of Object.entries(characterStates)) {
-                  for (const row of rows) {
-                    const old = (prev[name] || []).find(
-                      (r) =>
-                        r.chapterOrder === row.chapterOrder &&
-                        r.note === row.note
-                    );
-                    if (row.pinned && !old?.pinned) {
-                      pinOrder = Math.max(pinOrder, row.chapterOrder);
-                    }
-                  }
-                }
-                return {
-                  ...p,
-                  characterStates,
-                  accountRepairMarks: pinOrder
-                    ? pushAccountRepairMark(
-                        p.accountRepairMarks,
-                        pinOrder,
-                        "ledger"
-                      )
-                    : p.accountRepairMarks,
-                };
-              })
-            }
-            onContentChange={(chapterId, content, opts) => {
-              const live = getLive() || project;
-              const verdict = evaluateRenewalSave(content, {
-                original: live.original,
-                canon: live.canon,
-                force: opts?.forceCanon,
-              });
-              if (!verdict.allowed) {
-                return { ok: false, violations: verdict.violations };
-              }
-              update((p) => {
-                const chapters = [...p.chapters];
-                const idx = chapters.findIndex(
-                  (c) => c.chapterId === chapterId
-                );
-                let row: ChapterContent =
-                  idx >= 0
-                    ? chapters[idx]
-                    : {
-                        chapterId,
-                        title: "",
-                        content: "",
-                        status: "idle",
-                        updatedAt: new Date().toISOString(),
-                      };
-                if (opts?.pushVersion && row.content?.trim()) {
-                  row = pushChapterVersion(row, opts.pushVersion);
-                }
-                row = {
-                  ...row,
-                  content,
-                  status: content ? "done" : "idle",
-                  updatedAt: new Date().toISOString(),
-                  canonWarnings: verdict.violations.length
-                    ? verdict.violations
-                    : undefined,
-                  reviewState: opts?.pushVersion ? "draft" : row.reviewState,
-                };
-                if (idx >= 0) chapters[idx] = row;
-                else chapters.push(row);
-                return { ...p, chapters };
-              });
-              return { ok: true, violations: verdict.violations };
-            }}
-            onCommitBeatDeltas={(chapterId, deltas: BeatCommitDeltas) => {
-              update((p) => {
-                const row = p.chapters.find((c) => c.chapterId === chapterId);
-                const accepted = (row?.scenes || []).filter(
-                  (s) => s.status === "accepted"
-                );
-                const last = accepted[accepted.length - 1];
-                const applied = applyBeatDeltasToProject({
-                  chapters: p.chapters,
-                  lore: p.lore,
-                  threads: p.plotThreads,
-                  chapterId,
-                  deltas,
-                  scene: last,
-                });
-                return {
-                  ...p,
-                  chapters: applied.chapters,
-                  lore: applied.lore,
-                  canon: mergeCanonFacts(p.canon || [], deltas.canonProposals),
-                };
-              });
-            }}
-            onChapterTagsChange={(chapterId, tags) => {
-              update((p) => {
-                if (!p.outline) return p;
-                return {
-                  ...p,
-                  outline: {
-                    ...p.outline,
-                    chapters: p.outline.chapters.map((c) =>
-                      c.id === chapterId ? { ...c, tags } : c
-                    ),
-                  },
-                };
-              });
-            }}
-            onChapterCastChange={(chapterId, castIds) => {
-              update((p) => {
-                if (!p.outline) return p;
-                return {
-                  ...p,
-                  outline: {
-                    ...p.outline,
-                    chapters: p.outline.chapters.map((c) =>
-                      c.id === chapterId ? { ...c, castIds } : c
-                    ),
-                  },
-                };
-              });
-            }}
-            onGenerateAll={() => startBookJob("missing")}
-          />
-        )}
-      </div>
-    </main>
+        </div>
+      ) : null}
+    </StudioShell>
   );
 }
