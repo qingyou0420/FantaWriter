@@ -15,6 +15,7 @@ import {
   type BeatCommitDeltas,
 } from "@/lib/beat-contract";
 import { attachOriginalContext } from "@/lib/original";
+import { chapterAssembleExtras } from "@/lib/chapter-contract";
 import type { ChapterPersistResult } from "@/lib/renewal";
 import type {
   ChapterContent,
@@ -115,6 +116,7 @@ export function BeatWorkbench({
             formatPlotThreadsForPrompt(project.plotThreads),
           lore: prior.lore,
           beatContractBlock: formatBeatContract(contract, project.plotThreads),
+          ...chapterAssembleExtras(project, outlineChapter),
         }),
         {
           onDelta: (_d, full) => setPreview(full),

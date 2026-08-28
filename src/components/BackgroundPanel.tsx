@@ -146,7 +146,10 @@ export function BackgroundPanel({
           rows={3}
         />
       </Field>
-      <Field label="主题">
+      <Field
+        label="主题"
+        hint="此栏会注入。你只给自己看的主题一句，请写在前提卡。"
+      >
         <input
           value={background.themes}
           onChange={(e) => patch({ themes: e.target.value })}

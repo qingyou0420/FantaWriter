@@ -23,13 +23,26 @@ import {
 import { parseTouchedThreads, sliceAroundSelection } from "@/lib/prompts";
 import { createThrottledTextSink } from "@/lib/stream-throttle";
 import { BeatWorkbench } from "@/components/BeatWorkbench";
+import { ChapterContractPanel } from "@/components/ChapterContractPanel";
+import { FinalizePanel } from "@/components/FinalizePanel";
 import { EmptyState } from "@/components/EmptyState";
 import { collectChapterAnchors } from "@/lib/beat-contract";
 import type { BeatCommitDeltas } from "@/lib/beat-contract";
+import { readerKnownOpenThreadTitles } from "@/lib/author-secrets";
 import {
-  mergeCharacterStates,
-  type CharacterStateDelta,
-} from "@/lib/character-states";
+  chapterHasUpstreamRepair,
+  sortChaptersForDailyNav,
+} from "@/lib/daily-flow";
+import { extractCharacterDialogue } from "@/lib/dialogue-excerpt";
+import type { CharacterStateDelta } from "@/lib/character-states";
+import { formatCharacterStateLedger } from "@/lib/character-states";
+import {
+  chapterAssembleExtras,
+  formatChapterContract,
+} from "@/lib/chapter-contract";
+import { globalForbidList } from "@/lib/author-secrets";
+import type { FinalizeProgress } from "@/lib/finalize-chapter";
+import type { PendingStateDelta } from "@/lib/types";
 import { buildChapterHealth, type ChapterHealth } from "@/lib/chapter-health";
 import { hasOriginalText } from "@/lib/original";
 import { allowsWholeBookGenerate } from "@/lib/renewal";
@@ -85,7 +98,14 @@ export function ChaptersReader({
   onError,
   onOpenSettings,
   onWriteNext,
-  onCharacterStatesChange,
+  onCharacterStatesChange: _onCharacterStatesChange,
+  contractChapterId,
+  onRequestContract,
+  onPatchOutlineChapter,
+  onFinalizeChapter,
+  onHandEditSummary,
+  onJumpPlot: _onJumpPlot,
+  onJumpTools: _onJumpTools,
 }: {
   project: NovelProject;
   library: string[];
@@ -113,6 +133,22 @@ export function ChaptersReader({
   onOpenSettings?: () => void;
   onWriteNext?: () => void;
   onCharacterStatesChange?: (states: CharacterStateLedger) => void;
+  contractChapterId?: string | null;
+  onRequestContract?: (chapterId: string | null) => void;
+  onPatchOutlineChapter?: (chapterId: string, patch: Partial<OutlineChapter>) => void;
+  onFinalizeChapter?: (payload: {
+    chapterId: string;
+    chapterOrder: number;
+    summary: string;
+    deltas: PendingStateDelta[];
+    pinnedNames: string[];
+    threadActions: { title: string; action: "active" | "resolved" | "keep" }[];
+    newThreadTitle: string;
+    skipped: FinalizeProgress;
+  }) => void;
+  onHandEditSummary?: (chapterId: string, chapterOrder: number) => void;
+  onJumpPlot?: () => void;
+  onJumpTools?: () => void;
 }) {
   const [metaOpen, setMetaOpen] = useState(false);
   const [prefs, setPrefs] = useState<ReaderPrefs>(() => loadReaderPrefs());
@@ -137,6 +173,9 @@ export function ChaptersReader({
   const [chapterHealth, setChapterHealth] = useState<ChapterHealth | null>(
     null
   );
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [summaryOnly, setSummaryOnly] = useState(false);
+  const [voiceName, setVoiceName] = useState("");
   const [summaryUiKey, setSummaryUiKey] = useState(selectedChapterId);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -148,6 +187,11 @@ export function ChaptersReader({
   const chapters = project.outline?.chapters
     ? [...project.outline.chapters].sort((a, b) => a.order - b.order)
     : [];
+  const navChapters = sortChaptersForDailyNav(chapters, project.chapters);
+  const contractChapter =
+    contractChapterId
+      ? chapters.find((c) => c.id === contractChapterId) || null
+      : null;
 
   const persistPrefs = useCallback((next: ReaderPrefs) => {
     setPrefs(next);
@@ -202,6 +246,12 @@ export function ChaptersReader({
 
   const selectedOutline = chapters.find((c) => c.id === selectedChapterId);
 
+  function chapterContractExtras() {
+    return selectedOutline
+      ? chapterAssembleExtras(project, selectedOutline)
+      : {};
+  }
+
   function persistContent(
     next: string,
     opts?: { pushVersion?: string; forceCanon?: boolean }
@@ -227,11 +277,12 @@ export function ChaptersReader({
       if (!(e.ctrlKey || e.metaKey) || e.key !== "Enter") return;
       if (!selectedOutline || busy) return;
       e.preventDefault();
-      onGenerateChapter(selectedOutline);
+      if (onRequestContract) onRequestContract(selectedOutline.id);
+      else onGenerateChapter(selectedOutline);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedOutline, busy, onGenerateChapter]);
+  }, [selectedOutline, busy, onGenerateChapter, onRequestContract]);
   const content = selectedContent?.content || "";
   const wordCount = countChapterChars(content);
   const lengthRange = lengthRangeFor(
@@ -383,6 +434,7 @@ export function ChaptersReader({
               ? expandTargetChars(selectedChars, expandScale)
               : undefined,
           verbatimAnchors: collectChapterAnchors(selectedContent?.scenes),
+          ...chapterContractExtras(),
         }),
         {
           signal: ac.signal,
@@ -440,6 +492,7 @@ export function ChaptersReader({
           lore: prior.lore,
           priorBlock: prior.priorBlock,
           loreEntries: project.lore,
+          ...chapterContractExtras(),
         }),
         {
           signal: ac.signal,
@@ -551,6 +604,7 @@ export function ChaptersReader({
               prior.plotThreads ||
               formatPlotThreadsForPrompt(project.plotThreads),
             lore: prior.lore,
+            ...chapterContractExtras(),
           }),
           {
             signal: ac.signal,
@@ -614,6 +668,7 @@ export function ChaptersReader({
           lore: prior.lore,
           priorBlock: prior.priorBlock,
           loreEntries: project.lore,
+          ...chapterContractExtras(),
         }),
         {
           signal: ac.signal,
@@ -647,9 +702,7 @@ export function ChaptersReader({
         writingBoard: project.writingBoard,
         content,
         title: selectedOutline.title,
-        openThreads: (project.plotThreads || [])
-          .filter((t) => t.status !== "resolved" && t.title.trim())
-          .map((t) => t.title.trim()),
+        openThreads: readerKnownOpenThreadTitles(project.plotThreads),
         settings: project.settings,
       });
       const raw = String(data.summary || "").trim();
@@ -662,16 +715,8 @@ export function ChaptersReader({
         touchedThreads: Array.isArray(data.touchedThreads)
           ? data.touchedThreads
           : parseTouchedThreads(raw),
+        pendingStateDeltas: deltas,
       });
-      if (deltas.length && onCharacterStatesChange) {
-        onCharacterStatesChange(
-          mergeCharacterStates(
-            project.characterStates,
-            selectedOutline.order,
-            deltas
-          )
-        );
-      }
       setEditingSummary(false);
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -782,6 +827,13 @@ export function ChaptersReader({
             章节（{chapters.length}）
             {unreviewedCount ? ` · ${unreviewedCount} 章未审` : ""}
           </span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setSummaryOnly((v) => !v)}
+          >
+            {summaryOnly ? "看目录" : "只看摘要"}
+          </button>
           {allowsWholeBookGenerate(project) ? (
             <button
               type="button"
@@ -809,14 +861,52 @@ export function ChaptersReader({
           </button>
         ) : null}
         <ul className="list-none p-0 m-0 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
-          {(project.volumes || []).length > 1
+          {summaryOnly
+            ? navChapters.map((ch) => {
+                const c = project.chapters.find((x) => x.chapterId === ch.id);
+                return (
+                  <li key={ch.id}>
+                    <button
+                      type="button"
+                      className={`w-full text-left px-2 py-2 rounded-lg border-0 text-xs ${
+                        ch.id === selectedChapterId
+                          ? "bg-[var(--bg-hover)]"
+                          : "bg-transparent text-[var(--text-muted)]"
+                      }`}
+                      onClick={() => onSelect(ch.id)}
+                    >
+                      <div className="font-medium">
+                        {ch.order}. {ch.title}
+                        {chapterHasUpstreamRepair(
+                          ch.order,
+                          project.accountRepairMarks
+                        ) && c?.content?.trim()
+                          ? " · 上游账已修"
+                          : ""}
+                      </div>
+                      <textarea
+                        rows={3}
+                        className="mt-1 w-full text-xs"
+                        value={c?.summary || ch.summary || ""}
+                        onChange={(e) => {
+                          onUpdateChapterMeta(ch.id, {
+                            summary: e.target.value,
+                          });
+                          onHandEditSummary?.(ch.id, ch.order);
+                        }}
+                      />
+                    </button>
+                  </li>
+                );
+              })
+            : (project.volumes || []).length > 1
             ? chaptersGroupedByVolume(project).map(({ volume, chapters: volChs }) => (
                 <li key={volume.id}>
                   <div className="text-xs font-medium text-[var(--text-muted)] px-2 py-1">
                     {volume.title}
                   </div>
                   <ul className="list-none p-0 m-0 space-y-0.5">
-                    {volChs.map((ch) => {
+                    {sortChaptersForDailyNav(volChs, project.chapters).map((ch) => {
                       const c = project.chapters.find((x) => x.chapterId === ch.id);
                       return (
                         <ChapterNavItem
@@ -830,6 +920,13 @@ export function ChaptersReader({
                             Boolean(c?.content?.trim()) &&
                             c?.reviewState !== "reviewed"
                           }
+                          repaired={
+                            Boolean(c?.content?.trim()) &&
+                            chapterHasUpstreamRepair(
+                              ch.order,
+                              project.accountRepairMarks
+                            )
+                          }
                           onSelect={onSelect}
                         />
                       );
@@ -837,7 +934,7 @@ export function ChaptersReader({
                   </ul>
                 </li>
               ))
-            : chapters.map((ch) => {
+            : navChapters.map((ch) => {
                 const c = project.chapters.find((x) => x.chapterId === ch.id);
                 return (
                   <ChapterNavItem
@@ -850,6 +947,13 @@ export function ChaptersReader({
                     unreviewed={
                       Boolean(c?.content?.trim()) &&
                       c?.reviewState !== "reviewed"
+                    }
+                    repaired={
+                      Boolean(c?.content?.trim()) &&
+                      chapterHasUpstreamRepair(
+                        ch.order,
+                        project.accountRepairMarks
+                      )
                     }
                     onSelect={onSelect}
                   />
@@ -905,7 +1009,40 @@ export function ChaptersReader({
       </aside>
 
       <div className="card reader-panel flex flex-col min-h-0 overflow-hidden !p-0">
-        {selectedOutline ? (
+        {contractChapter && onPatchOutlineChapter ? (
+          <div className="p-4 overflow-y-auto">
+            <ChapterContractPanel
+              project={project}
+              chapter={contractChapter}
+              busy={!!busy}
+              onPatchChapter={(patch) =>
+                onPatchOutlineChapter(contractChapter.id, patch)
+              }
+              onCancel={() => onRequestContract?.(null)}
+              onGenerate={() => {
+                onRequestContract?.(null);
+                onGenerateChapter(contractChapter);
+              }}
+            />
+          </div>
+        ) : finalizeOpen && selectedOutline && selectedContent ? (
+          <div className="p-4 overflow-y-auto">
+            <FinalizePanel
+              project={project}
+              chapter={selectedOutline}
+              content={selectedContent}
+              onClose={() => setFinalizeOpen(false)}
+              onCommit={(payload) => {
+                onFinalizeChapter?.({
+                  chapterId: selectedOutline.id,
+                  chapterOrder: selectedOutline.order,
+                  ...payload,
+                });
+                setFinalizeOpen(false);
+              }}
+            />
+          </div>
+        ) : selectedOutline ? (
           <>
             <div
               className={`shrink-0 px-4 sm:px-5 pt-3.5 pb-2.5 border-b border-[var(--border-soft)] ${
@@ -937,7 +1074,11 @@ export function ChaptersReader({
                   type="button"
                   className="btn btn-primary btn-sm"
                   disabled={!!busy}
-                  onClick={() => onGenerateChapter(selectedOutline)}
+                  onClick={() =>
+                    onRequestContract
+                      ? onRequestContract(selectedOutline.id)
+                      : onGenerateChapter(selectedOutline)
+                  }
                 >
                   {busy === `chapter:${selectedOutline.id}` ? (
                     <>
@@ -971,23 +1112,25 @@ export function ChaptersReader({
                     {busy === "chapter_health" ? "体检中…" : "本章体检"}
                   </button>
                 ) : null}
-                {content.trim() ? (
+                {content.trim() && selectedContent?.reviewState === "reviewed" ? (
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      const next =
-                        selectedContent?.reviewState === "reviewed"
-                          ? "draft"
-                          : "reviewed";
+                    onClick={() =>
                       onUpdateChapterMeta(selectedOutline.id, {
-                        reviewState: next,
-                      });
-                    }}
+                        reviewState: "draft",
+                      })
+                    }
                   >
-                    {selectedContent?.reviewState === "reviewed"
-                      ? "标为未审"
-                      : "标为已审"}
+                    标为未审
+                  </button>
+                ) : content.trim() ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setFinalizeOpen(true)}
+                  >
+                    定稿…
                   </button>
                 ) : null}
                 {content.trim() ? (
@@ -1081,6 +1224,10 @@ export function ChaptersReader({
                             summary: summaryDraft.trim(),
                             summaryFailed: false,
                           });
+                          onHandEditSummary?.(
+                            selectedOutline.id,
+                            selectedOutline.order
+                          );
                           setEditingSummary(false);
                         }}
                       >
@@ -1585,21 +1732,34 @@ export function ChaptersReader({
                 <span className="spinner" /> AI 正在撰写正文…
               </div>
             ) : (
-              <div className="reader-textarea-wrap flex-1 min-h-0 flex flex-col">
-                <textarea
-                  ref={taRef}
-                  className="reader-textarea"
-                  value={displayContent}
-                  onSelect={captureSelection}
-                  onMouseUp={captureSelection}
-                  onKeyUp={captureSelection}
-                  onChange={(e) => {
-                    if (busy) return;
-                    persistContent(e.target.value);
-                  }}
-                  readOnly={!!busy}
-                  spellCheck={false}
-                />
+              <div className="flex-1 min-h-0 flex">
+                <div className="reader-textarea-wrap flex-1 min-h-0 flex flex-col">
+                  <textarea
+                    ref={taRef}
+                    className="reader-textarea"
+                    value={displayContent}
+                    onSelect={captureSelection}
+                    onMouseUp={captureSelection}
+                    onKeyUp={captureSelection}
+                    onChange={(e) => {
+                      if (busy) return;
+                      persistContent(e.target.value);
+                    }}
+                    readOnly={!!busy}
+                    spellCheck={false}
+                  />
+                </div>
+                {content.trim() &&
+                selectedContent?.reviewState !== "reviewed" ? (
+                  <ReviewSidebar
+                    project={project}
+                    chapter={selectedOutline}
+                    content={content}
+                    summary={selectedContent?.summary || ""}
+                    voiceName={voiceName}
+                    onVoiceName={setVoiceName}
+                  />
+                ) : null}
               </div>
             )}
             {selectedContent?.status === "error" ? (
@@ -1609,7 +1769,11 @@ export function ChaptersReader({
                   type="button"
                   className="btn btn-primary btn-sm"
                   disabled={!!busy}
-                  onClick={() => onGenerateChapter(selectedOutline)}
+                  onClick={() =>
+                    onRequestContract
+                      ? onRequestContract(selectedOutline.id)
+                      : onGenerateChapter(selectedOutline)
+                  }
                 >
                   重试生成
                 </button>
@@ -1655,6 +1819,7 @@ function ChapterNavItem({
   selected,
   touched,
   unreviewed,
+  repaired,
   onSelect,
 }: {
   ch: OutlineChapter;
@@ -1663,6 +1828,7 @@ function ChapterNavItem({
   selected: boolean;
   touched?: string[];
   unreviewed?: boolean;
+  repaired?: boolean;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -1681,6 +1847,11 @@ function ChapterNavItem({
             {ch.order}. {ch.title}
           </span>
           <span className="inline-flex items-center gap-1 shrink-0">
+            {repaired ? (
+              <span className="text-[10px] text-[var(--warning)]" title="上游账已修">
+                修
+              </span>
+            ) : null}
             {unreviewed ? (
               <span
                 className="inline-block w-2 h-2 rounded-full bg-[var(--warning)]"
@@ -1700,6 +1871,83 @@ function ChapterNavItem({
         ) : null}
       </button>
     </li>
+  );
+}
+
+function ReviewSidebar({
+  project,
+  chapter,
+  content,
+  summary,
+  voiceName,
+  onVoiceName,
+}: {
+  project: NovelProject;
+  chapter: OutlineChapter;
+  content: string;
+  summary: string;
+  voiceName: string;
+  onVoiceName: (name: string) => void;
+}) {
+  const castIds = chapter.castIds || [];
+  const cast = castIds.length
+    ? project.characters.filter((c) => castIds.includes(c.id))
+    : project.characters;
+  const names = cast.map((c) => c.name).filter(Boolean);
+  const who = voiceName || names[0] || "";
+  const sample = cast.find((c) => c.name === who)?.speechStyle || "";
+  const lines = extractCharacterDialogue(content, who);
+  const contract = formatChapterContract({
+    chapter,
+    globalForbid: globalForbidList(project.premiseCard),
+    ledger: project.characterStates,
+    characters: project.characters,
+  });
+  const ledger = formatCharacterStateLedger(project.characterStates, names, 3);
+  return (
+    <aside className="w-[220px] shrink-0 border-l border-[var(--border-soft)] overflow-y-auto p-2 text-xs space-y-2">
+      <div className="font-medium">审阅侧栏</div>
+      <p className="text-[var(--text-muted)] m-0">
+        三遍读：读者遍看正文；事实遍对契约；声音遍对样本。
+      </p>
+      <details open>
+        <summary className="cursor-pointer">本章契约</summary>
+        <pre className="whitespace-pre-wrap m-0 mt-1 text-[10px]">{contract}</pre>
+      </details>
+      <details open>
+        <summary className="cursor-pointer">账本与声音样本</summary>
+        <pre className="whitespace-pre-wrap m-0 mt-1 text-[10px]">
+          {ledger || "（无账本）"}
+        </pre>
+        <p className="mt-1 mb-0">说话风格：{sample || "（未填）"}</p>
+        <select
+          className="mt-1"
+          value={who}
+          onChange={(e) => onVoiceName(e.target.value)}
+        >
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        {lines.length ? (
+          <ul className="mt-1 mb-0 pl-4">
+            {lines.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-[var(--text-muted)] mt-1 mb-0">
+            抽本章对话：正文里还没有带引号的台词。
+          </p>
+        )}
+      </details>
+      <details open>
+        <summary className="cursor-pointer">本章摘要</summary>
+        <p className="whitespace-pre-wrap mt-1 mb-0">{summary || "（无）"}</p>
+      </details>
+    </aside>
   );
 }
 

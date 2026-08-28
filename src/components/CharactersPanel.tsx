@@ -13,6 +13,7 @@ import {
   type CharacterEditorState,
 } from "@/lib/character-editor";
 import { assertCharactersRespectCanon, hasOriginalGrounding } from "@/lib/original";
+import { togglePinnedStateNote } from "@/lib/character-states";
 import {
   createEmptyCharacter,
   type Character,
@@ -395,7 +396,7 @@ export function CharactersPanel({
         <div className="card">
           <h2 className="card-title">当前人物状态</h2>
           <p className="text-xs text-[var(--text-muted)] mt-0 mb-3">
-            手改账本会进入下一章记忆包。每人保留最近 6 条。
+            手改账本会进入下一章记忆包。未置顶每人保留最近 6 条；图钉写死的永远注入。
           </p>
           {(() => {
             const names = Array.from(
@@ -419,6 +420,38 @@ export function CharactersPanel({
                   return (
                     <li key={name}>
                       <Field label={name}>
+                        {rows.length ? (
+                          <ul className="list-none p-0 m-0 space-y-1 mb-2">
+                            {rows.map((row) => (
+                              <li
+                                key={`${row.chapterOrder}-${row.note}`}
+                                className="flex items-start gap-2 text-xs"
+                              >
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm !px-1"
+                                  title={row.pinned ? "取消置顶" : "置顶写死"}
+                                  onClick={() =>
+                                    onCharacterStatesChange(
+                                      togglePinnedStateNote(
+                                        characterStates,
+                                        name,
+                                        row.chapterOrder,
+                                        row.note
+                                      )
+                                    )
+                                  }
+                                >
+                                  {row.pinned ? "📌" : "📍"}
+                                </button>
+                                <span className="text-[var(--text-muted)] shrink-0">
+                                  第{row.chapterOrder}章
+                                </span>
+                                <span className="flex-1">{row.note}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         <textarea
                           rows={2}
                           value={latest?.note || ""}
@@ -568,12 +601,15 @@ export function CharactersPanel({
                 placeholder="例如：阿宁，宁宁"
               />
             </Field>
-            <Field label="说话风格">
+            <Field
+              label="说话风格"
+              hint="三句他会说的话，作为声音样本（会注入）。"
+            >
               <textarea
                 value={draft.speechStyle || ""}
                 onChange={(e) => patchDraft({ speechStyle: e.target.value })}
-                rows={2}
-                placeholder="例如：短句、少修饰、爱用反问"
+                rows={3}
+                placeholder="例如：短句、少修饰、爱用反问。写三句他会说的话。"
               />
             </Field>
             <Field label="备注（癖好 / 禁忌 / 口癖等）">
@@ -583,6 +619,79 @@ export function CharactersPanel({
                 rows={2}
               />
             </Field>
+            <details className="author-only-box mt-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                真相层（仅作者 · 永不进提示词）
+                <span className="badge badge-lock ml-2">锁</span>
+              </summary>
+              <p className="text-xs text-[var(--text-muted)] mt-2 mb-2">
+                日常写作只注入当前状态。真相层留在你的档案里，不进任何生成路径。
+              </p>
+              <Field label="表面欲望">
+                <textarea
+                  rows={2}
+                  value={draft.truth?.surfaceWant || ""}
+                  onChange={(e) =>
+                    patchDraft({
+                      truth: {
+                        surfaceWant: e.target.value,
+                        realNeed: draft.truth?.realNeed || "",
+                        fatalFlaw: draft.truth?.fatalFlaw || "",
+                        bottomLine: draft.truth?.bottomLine || "",
+                      },
+                    })
+                  }
+                />
+              </Field>
+              <Field label="真实需要">
+                <textarea
+                  rows={2}
+                  value={draft.truth?.realNeed || ""}
+                  onChange={(e) =>
+                    patchDraft({
+                      truth: {
+                        surfaceWant: draft.truth?.surfaceWant || "",
+                        realNeed: e.target.value,
+                        fatalFlaw: draft.truth?.fatalFlaw || "",
+                        bottomLine: draft.truth?.bottomLine || "",
+                      },
+                    })
+                  }
+                />
+              </Field>
+              <Field label="致命缺陷">
+                <textarea
+                  rows={2}
+                  value={draft.truth?.fatalFlaw || ""}
+                  onChange={(e) =>
+                    patchDraft({
+                      truth: {
+                        surfaceWant: draft.truth?.surfaceWant || "",
+                        realNeed: draft.truth?.realNeed || "",
+                        fatalFlaw: e.target.value,
+                        bottomLine: draft.truth?.bottomLine || "",
+                      },
+                    })
+                  }
+                />
+              </Field>
+              <Field label="底线">
+                <textarea
+                  rows={2}
+                  value={draft.truth?.bottomLine || ""}
+                  onChange={(e) =>
+                    patchDraft({
+                      truth: {
+                        surfaceWant: draft.truth?.surfaceWant || "",
+                        realNeed: draft.truth?.realNeed || "",
+                        fatalFlaw: draft.truth?.fatalFlaw || "",
+                        bottomLine: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </Field>
+            </details>
 
             <div className="flex flex-wrap justify-end gap-2 mt-3">
               <button

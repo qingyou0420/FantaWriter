@@ -34,12 +34,63 @@ export interface Volume {
   arcGoal?: string;
   /** 出卷时的局面 */
   exitState?: string;
+  /** 出卷时逐人状态快照（作者改定） */
+  exitSnapshots?: VolumeExitSnapshot[];
+  /** 卷末时间线落点，如「故事此刻是何年何月」 */
+  timelineAnchor?: string;
+}
+
+/** 出卷人物快照：一人一行 */
+export interface VolumeExitSnapshot {
+  name: string;
+  note: string;
+}
+
+/** 阶段〇前提卡。theme / endingDirection / coreConflict 仅作者，永不进提示词 */
+export interface PremiseCard {
+  /** 一句话前提；可注入 */
+  premise: string;
+  /** 主题一句；仅作者 */
+  theme: string;
+  /** 结局方向；仅作者 */
+  endingDirection: string;
+  /** 全书禁写清单，一行一条；以禁令形式进契约 */
+  forbidList: string[];
+  /** 核心对抗（P2）；仅作者 */
+  coreConflict?: string;
+}
+
+/** 人物真相层；仅作者，永不进提示词 */
+export interface CharacterTruthLayer {
+  surfaceWant: string;
+  realNeed: string;
+  fatalFlaw: string;
+  bottomLine: string;
+}
+
+/** 手改摘要或置顶账本后，给下游章的修账痕迹 */
+export interface AccountRepairMark {
+  afterChapterOrder: number;
+  at: string;
+  kind: "summary" | "ledger";
 }
 
 /** 人物状态账本：按人名滚动追加的本章变化 */
 export interface CharacterStateNote {
   chapterOrder: number;
   note: string;
+  /** 写死条目：不参与最近 N 条淘汰，始终注入 */
+  pinned?: boolean;
+}
+
+/** 摘要解析出的人物状态增量（确认前挂在章上） */
+export interface PendingStateDelta {
+  name: string;
+  location?: string;
+  injury?: string;
+  relationsDelta?: string;
+  addressDelta?: string;
+  goal?: string;
 }
 
 export type CharacterStateLedger = Record<string, CharacterStateNote[]>;
@@ -100,8 +151,10 @@ export interface Character {
   notes: string;
   /** 可选别名，生成时一并注入 */
   aliases?: string[];
-  /** 可选说话风格 */
+  /** 可选说话风格（声音样本，会注入） */
   speechStyle?: string;
+  /** 真相层：仅作者，永不进提示词 */
+  truth?: CharacterTruthLayer;
 }
 
 export interface StoryBackground {
@@ -165,8 +218,10 @@ export interface GenerationSettings {
   extraInstructions: string;
   /** 写入 assemble system 末尾的用户附加规则；空则只用内置 pack */
   extraRules?: string;
-  /** 连载模式：章末钩子、开头接上章悬念；默认关 */
+  /** 连载模式：章末钩子、开头接上章悬念；新建从零项目默认开，老项目不动 */
   serialMode?: boolean;
+  /** 默认关：正文只注入本卷大纲。打开则恢复全书大纲全量注入 */
+  injectFullOutline?: boolean;
   /** 自定义章节字数档；设置后优先于 length 三档 */
   customLength?: { min: number; max: number };
 }
@@ -189,6 +244,10 @@ export interface OutlineChapter {
   castIds?: string[];
   /** 章末钩子：本章结尾要悬着的事 */
   hook?: string;
+  /** 本章禁写清单（增补）；全书禁写来自前提卡 */
+  forbidList?: string[];
+  /** 时间与地点 */
+  timePlace?: string;
 }
 
 export interface Outline {
@@ -235,6 +294,8 @@ export interface ChapterContent {
   summary?: string;
   /** 摘要解析出的「本章触及」伏笔标题，不改 plotThreads 状态 */
   touchedThreads?: string[];
+  /** 摘要附带的人物状态增量；确认前不入账本 */
+  pendingStateDeltas?: PendingStateDelta[];
   /** 正文与锁定设定的可能冲突（只提示，不阻断） */
   canonWarnings?: string[];
   /** 本章摘要最近一次生成失败；保留旧摘要并允许重试 */
@@ -283,6 +344,10 @@ export interface PlotThread {
   kind?: PlotThreadKind;
   /** 打算在第几章前回收 */
   dueChapterOrder?: number;
+  /** 预计回收卷 id；去向是作者排程，不注入提示词 */
+  dueVolumeId?: string;
+  /** 去向备注；仅作者 */
+  destinationNote?: string;
 }
 
 /** 全书批量生成任务（可序列化，暂停/续跑） */
@@ -339,6 +404,10 @@ export interface NovelProject {
   lastConsistencyReport?: ConsistencyReport | null;
   /** 人物状态账本：按人名累积本章变化 */
   characterStates?: CharacterStateLedger;
+  /** 阶段〇前提卡 */
+  premiseCard?: PremiseCard;
+  /** 手改摘要 / 置顶账本后的下游提示 */
+  accountRepairMarks?: AccountRepairMark[];
   promptPackId?: string;
 }
 
@@ -551,6 +620,9 @@ function normalizePlotThread(raw: PlotThread): PlotThread {
       typeof raw.dueChapterOrder === "number" && Number.isFinite(raw.dueChapterOrder)
         ? raw.dueChapterOrder
         : undefined,
+    dueVolumeId: typeof raw.dueVolumeId === "string" ? raw.dueVolumeId : undefined,
+    destinationNote:
+      typeof raw.destinationNote === "string" ? raw.destinationNote : undefined,
   };
 }
 
@@ -676,11 +748,142 @@ export function normalizeCharacterStates(
             ? n.chapterOrder
             : 0,
         note: String(n.note || "").trim(),
+        pinned: Boolean(n.pinned) || undefined,
       }))
       .filter((n) => n.note);
-    if (rows.length) out[key] = rows.slice(-CHARACTER_STATE_KEEP);
+    if (!rows.length) continue;
+    const pinned = rows.filter((n) => n.pinned);
+    const unpinned = rows.filter((n) => !n.pinned).slice(-CHARACTER_STATE_KEEP);
+    const seen = new Set<string>();
+    const merged: CharacterStateNote[] = [];
+    for (const n of [...pinned, ...unpinned].sort(
+      (a, b) => a.chapterOrder - b.chapterOrder
+    )) {
+      const k = `${n.chapterOrder}|${n.note}|${n.pinned ? 1 : 0}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(n);
+    }
+    if (merged.length) out[key] = merged;
   }
   return out;
+}
+
+export function parseLineList(text: string): string[] {
+  return String(text || "")
+    .split(/\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function formatLineList(lines?: string[] | null): string {
+  return (lines || []).join("\n");
+}
+
+export function createEmptyPremiseCard(): PremiseCard {
+  return {
+    premise: "",
+    theme: "",
+    endingDirection: "",
+    forbidList: [],
+    coreConflict: "",
+  };
+}
+
+export function createEmptyTruthLayer(): CharacterTruthLayer {
+  return {
+    surfaceWant: "",
+    realNeed: "",
+    fatalFlaw: "",
+    bottomLine: "",
+  };
+}
+
+export function normalizeTruthLayer(
+  raw: Character["truth"] | undefined
+): CharacterTruthLayer {
+  const base = createEmptyTruthLayer();
+  if (!raw || typeof raw !== "object") return base;
+  return {
+    surfaceWant: String(raw.surfaceWant || ""),
+    realNeed: String(raw.realNeed || ""),
+    fatalFlaw: String(raw.fatalFlaw || ""),
+    bottomLine: String(raw.bottomLine || ""),
+  };
+}
+
+export function normalizePremiseCard(
+  raw: NovelProject["premiseCard"] | undefined,
+  fallbackPremise = ""
+): PremiseCard {
+  const base = createEmptyPremiseCard();
+  if (!raw || typeof raw !== "object") {
+    return { ...base, premise: fallbackPremise };
+  }
+  const forbid = Array.isArray(raw.forbidList)
+    ? raw.forbidList.map((s) => String(s).trim()).filter(Boolean)
+    : typeof (raw as { forbidList?: unknown }).forbidList === "string"
+      ? parseLineList(String((raw as { forbidList?: unknown }).forbidList))
+      : [];
+  return {
+    premise: String(raw.premise || fallbackPremise || ""),
+    theme: String(raw.theme || ""),
+    endingDirection: String(raw.endingDirection || ""),
+    forbidList: forbid,
+    coreConflict: String(raw.coreConflict || ""),
+  };
+}
+
+function normalizeExitSnapshots(
+  raw: Volume["exitSnapshots"] | undefined
+): VolumeExitSnapshot[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const rows = raw
+    .filter((s): s is VolumeExitSnapshot => Boolean(s && typeof s === "object"))
+    .map((s) => ({
+      name: String(s.name || "").trim(),
+      note: String(s.note || "").trim(),
+    }))
+    .filter((s) => s.name || s.note);
+  return rows.length ? rows : undefined;
+}
+
+function normalizePendingStateDeltas(
+  raw: ChapterContent["pendingStateDeltas"] | undefined
+): PendingStateDelta[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const rows = raw
+    .filter((s): s is PendingStateDelta => Boolean(s && typeof s === "object"))
+    .map((s) => ({
+      name: String(s.name || "").trim(),
+      location: s.location ? String(s.location).trim() : undefined,
+      injury: s.injury ? String(s.injury).trim() : undefined,
+      relationsDelta: s.relationsDelta
+        ? String(s.relationsDelta).trim()
+        : undefined,
+      addressDelta: s.addressDelta ? String(s.addressDelta).trim() : undefined,
+      goal: s.goal ? String(s.goal).trim() : undefined,
+    }))
+    .filter((s) => s.name);
+  return rows.length ? rows : undefined;
+}
+
+function normalizeAccountRepairMarks(
+  raw: NovelProject["accountRepairMarks"] | undefined
+): AccountRepairMark[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m): m is AccountRepairMark => Boolean(m && typeof m === "object"))
+    .map((m) => ({
+      afterChapterOrder:
+        typeof m.afterChapterOrder === "number" &&
+        Number.isFinite(m.afterChapterOrder)
+          ? m.afterChapterOrder
+          : 0,
+      at: String(m.at || ""),
+      kind: (m.kind === "ledger" ? "ledger" : "summary") as AccountRepairMark["kind"],
+    }))
+    .filter((m) => m.at);
 }
 
 function ensureVolumes(projectId: string, volumes?: Volume[]): Volume[] {
@@ -693,6 +896,9 @@ function ensureVolumes(projectId: string, volumes?: Volume[]): Volume[] {
       summary: v.summary || "",
       arcGoal: typeof v.arcGoal === "string" ? v.arcGoal : "",
       exitState: typeof v.exitState === "string" ? v.exitState : "",
+      exitSnapshots: normalizeExitSnapshots(v.exitSnapshots),
+      timelineAnchor:
+        typeof v.timelineAnchor === "string" ? v.timelineAnchor : "",
     }));
   }
   return [
@@ -738,6 +944,7 @@ export function normalizeProject(p: NovelProject): NovelProject {
         ? settings.learnedStyleFingerprints.map((s) => String(s).trim()).filter(Boolean)
         : [],
       serialMode: Boolean(settings.serialMode),
+      injectFullOutline: Boolean(settings.injectFullOutline),
       customLength: normalizeCustomLength(settings.customLength),
     },
     outline: p.outline
@@ -757,6 +964,10 @@ export function normalizeProject(p: NovelProject): NovelProject {
                 ? c.castIds.map((id) => String(id).trim()).filter(Boolean)
                 : [],
               hook: typeof c.hook === "string" ? c.hook : "",
+              forbidList: Array.isArray(c.forbidList)
+                ? c.forbidList.map((s) => String(s).trim()).filter(Boolean)
+                : [],
+              timePlace: typeof c.timePlace === "string" ? c.timePlace : "",
             };
             delete next.eroticNote;
             return next;
@@ -775,6 +986,7 @@ export function normalizeProject(p: NovelProject): NovelProject {
       touchedThreads: Array.isArray(c.touchedThreads)
         ? c.touchedThreads.map((s) => String(s).trim()).filter(Boolean)
         : undefined,
+      pendingStateDeltas: normalizePendingStateDeltas(c.pendingStateDeltas),
       canonWarnings: Array.isArray(c.canonWarnings) ? c.canonWarnings : undefined,
       reviewState:
         c.reviewState === "reviewed" || c.reviewState === "draft"
@@ -783,6 +995,11 @@ export function normalizeProject(p: NovelProject): NovelProject {
       publishedAt: typeof c.publishedAt === "string" ? c.publishedAt : undefined,
     })),
     characterStates: normalizeCharacterStates(p.characterStates),
+    premiseCard: normalizePremiseCard(
+      p.premiseCard,
+      p.outline?.premise || ""
+    ),
+    accountRepairMarks: normalizeAccountRepairMarks(p.accountRepairMarks),
     lastConsistencyReport: p.lastConsistencyReport
       ? {
           ...p.lastConsistencyReport,
@@ -894,6 +1111,7 @@ export function createEmptyCharacter(): Character {
     notes: "",
     aliases: [],
     speechStyle: "",
+    truth: createEmptyTruthLayer(),
   };
 }
 
@@ -918,6 +1136,7 @@ export function normalizeCharacter(
       ? raw.aliases.map((a) => String(a).trim()).filter(Boolean)
       : [],
     speechStyle: String(raw.speechStyle || ""),
+    truth: normalizeTruthLayer(raw.truth),
   };
 }
 
@@ -993,12 +1212,14 @@ export function createEmptyProject(
         summary: "",
       },
     ],
-    settings: createDefaultSettings(),
+    settings: { ...createDefaultSettings(), serialMode: true },
     tags: [],
     archivedActTags: [],
     outline: null,
     chapters: [],
     plotThreads: [],
     bookJob: null,
+    premiseCard: createEmptyPremiseCard(),
+    accountRepairMarks: [],
   };
 }

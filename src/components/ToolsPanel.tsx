@@ -28,7 +28,6 @@ import {
   resetUsageStats,
 } from "@/lib/storage";
 import {
-  mergeCharacterStates,
   type CharacterStateDelta,
 } from "@/lib/character-states";
 import {
@@ -180,7 +179,13 @@ export function ToolsPanel({
             content: row.content,
             title: ch.title,
             openThreads: (project.plotThreads || [])
-              .filter((t) => t.status !== "resolved" && t.title.trim())
+              .filter(
+                (t) =>
+                  t.status !== "resolved" &&
+                  t.title.trim() &&
+                  t.visibility !== "author_only" &&
+                  t.kind !== "dark"
+              )
               .map((t) => t.title.trim()),
             settings: project.settings,
           });
@@ -200,15 +205,11 @@ export function ToolsPanel({
               touchedThreads: Array.isArray(data.touchedThreads)
                 ? data.touchedThreads
                 : chapters[idx].touchedThreads,
+              pendingStateDeltas: deltas,
             };
             return {
               ...p,
               chapters,
-              characterStates: mergeCharacterStates(
-                p.characterStates,
-                ch.order,
-                deltas
-              ),
             };
           });
         } catch {

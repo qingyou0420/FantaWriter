@@ -30,6 +30,8 @@ export function OutlinePanel({
   onChange,
   onGenerateChapter,
   onPolishChapter,
+  includeEndingDirection,
+  onIncludeEndingDirection,
 }: {
   outline: Outline | null;
   projectTags: string[];
@@ -45,6 +47,8 @@ export function OutlinePanel({
   onChange: (o: Outline) => void;
   onGenerateChapter: (ch: OutlineChapter) => void;
   onPolishChapter: (ch: OutlineChapter) => void | Promise<void>;
+  includeEndingDirection?: boolean;
+  onIncludeEndingDirection?: (v: boolean) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -371,24 +375,20 @@ export function OutlinePanel({
             </span>
           </p>
         ) : null}
-        <Field label="故事前提">
-          <textarea
-            value={outline.premise}
-            onChange={(e) => onChange({ ...outline, premise: e.target.value })}
-            rows={4}
-            className="!min-h-[6rem] w-full"
-          />
-        </Field>
-        <Field label="结局走向">
-          <textarea
-            value={outline.endingNote}
-            onChange={(e) =>
-              onChange({ ...outline, endingNote: e.target.value })
-            }
-            rows={3}
-            className="!min-h-[5rem] w-full"
-          />
-        </Field>
+        <p className="text-xs text-[var(--text-muted)] mt-0 mb-2">
+          一句话前提请到「前提卡」填写。大纲不再是前提的编辑处。
+        </p>
+        {onIncludeEndingDirection ? (
+          <label className="flex items-center gap-2 text-sm mb-2">
+            <input
+              type="checkbox"
+              className="!w-auto"
+              checked={Boolean(includeEndingDirection)}
+              onChange={(e) => onIncludeEndingDirection(e.target.checked)}
+            />
+            本次把结局方向给 AI 参考（默认不勾；主题/结局永不自动注入）
+          </label>
+        ) : null}
       </div>
 
       {/* 批量标签 */}

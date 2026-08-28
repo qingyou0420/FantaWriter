@@ -35,7 +35,7 @@ export function OnboardingCard({
   onDismiss,
 }: {
   project: NovelProject;
-  onGo: (step: "characters" | "background" | "outline" | "chapters") => void;
+  onGo: (step: "premise" | "characters" | "background" | "outline" | "chapters") => void;
   onDismiss: () => void;
 }) {
   const named = (project.characters || []).some((c) => (c.name || "").trim());
@@ -44,16 +44,20 @@ export function OnboardingCard({
   const firstDone = Boolean(
     project.chapters.some((c) => (c.content || "").trim())
   );
+  const premiseDone = Boolean(
+    (project.premiseCard?.premise || project.outline?.premise || "").trim()
+  );
   const steps = [
+    { id: "premise" as const, label: "填前提卡", done: premiseDone },
     { id: "characters" as const, label: "写人物", done: named },
     { id: "background" as const, label: "写背景", done: synopsis },
     { id: "outline" as const, label: "生成大纲", done: outline },
-    { id: "chapters" as const, label: "生成第一章", done: firstDone },
+    { id: "chapters" as const, label: "写下一章", done: firstDone },
   ];
   return (
     <EmptyState
-      title="开写四步"
-      description="从人物到第一章。完成一项会打勾；老项目不会看到这张卡。"
+      title="开写五步"
+      description="从前提卡到第一章。完成一项会打勾；老项目不会看到这张卡。"
       action={
         <div className="space-y-3">
           <ol className="list-none p-0 m-0 space-y-2">

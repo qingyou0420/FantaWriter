@@ -10,10 +10,11 @@ describe("resolveProjectTab", () => {
     expect(resolveProjectTab("chapters")).toBe("chapters");
   });
 
-  it("keeps the settings stage at most 6 tabs including original", () => {
-    expect(setupTabs(true)).toHaveLength(6);
-    expect(setupTabs(false)).toHaveLength(5);
+  it("keeps the settings stage at most 7 tabs including original and premise", () => {
+    expect(setupTabs(true)).toHaveLength(7);
+    expect(setupTabs(false)).toHaveLength(6);
     expect(setupTabs(false)).not.toContain("original");
+    expect(setupTabs(false)[0]).toBe("premise");
     const all = [
       ...setupTabs(true),
       "outline",
@@ -21,6 +22,6 @@ describe("resolveProjectTab", () => {
       "plot",
       "tools",
     ];
-    expect(all.length).toBeLessThanOrEqual(10);
+    expect(all.length).toBeLessThanOrEqual(11);
   });
 });

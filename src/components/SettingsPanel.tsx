@@ -298,6 +298,22 @@ export function SettingsPanel({
             按连载章来写（钩子 / 断章）
           </label>
         </Field>
+        <Field
+          label="注入全书大纲"
+          hint="默认只注入本卷大纲。打开则恢复旧的全书大纲全量注入。"
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="!w-auto"
+              checked={Boolean(settings.injectFullOutline)}
+              onChange={(e) =>
+                patch({ injectFullOutline: e.target.checked })
+              }
+            />
+            正文提示词带全书大纲
+          </label>
+        </Field>
       </div>
 
       {settings.writingStyle === "custom" ? (
