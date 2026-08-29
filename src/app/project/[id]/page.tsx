@@ -396,6 +396,8 @@ export default function ProjectPage() {
     if (rec) {
       setSelectedChapterId(rec.id);
       setSelectedVolumeId(null);
+    } else {
+      setSelectedVolumeId(null);
     }
   }, [workspace, project, volumeWizardId]);
 

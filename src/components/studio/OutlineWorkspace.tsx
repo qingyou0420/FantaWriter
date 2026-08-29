@@ -248,6 +248,27 @@ export function OutlineWorkspace({
           >
             批量写正文
           </button>
+          {display.chapters === 0 ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={!!busy}
+                onClick={onGenerateOutline}
+              >
+                {busy === "outline"
+                  ? "排大纲中…"
+                  : `让${PLANNER_AGENT_NAME}排大纲`}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onAddFirst}
+              >
+                新增第一章
+              </button>
+            </>
+          ) : null}
         </div>
         <div className="px-2 pb-2 flex gap-1">
           <input
