@@ -377,6 +377,37 @@ export function OutlineWorkspace({
         </div>
       </aside>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+        {display.chapters === 0 ? (
+          <div className="card space-y-3">
+            <p className="text-sm text-[var(--text-muted)] m-0">
+              还没有章节点。推荐先让{PLANNER_AGENT_NAME}
+              起草全书大纲（会弹出确认闸，确认后才写入）；也可以手工占一章再自己填摘要。
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={!!busy}
+                onClick={onGenerateOutline}
+              >
+                {busy === "outline" ? (
+                  <>
+                    <span className="spinner" /> 排大纲中…
+                  </>
+                ) : (
+                  `让${PLANNER_AGENT_NAME}排大纲`
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onAddFirst}
+              >
+                新增第一章
+              </button>
+            </div>
+          </div>
+        ) : null}
         {selectedVolume ? (
           <OutlineVolumeDetail
             volume={selectedVolume}
@@ -413,43 +444,11 @@ export function OutlineWorkspace({
             onRemove={onRemoveChapter}
             onSelectVolume={onSelectVolume}
           />
-        ) : (
+        ) : display.chapters === 0 ? null : (
           <div className="card space-y-3">
-            {display.chapters === 0 ? (
-              <>
-                <p className="text-sm text-[var(--text-muted)] m-0">
-                  还没有章节点。推荐先让{PLANNER_AGENT_NAME}
-                  起草全书大纲（会弹出确认闸，确认后才写入）；也可以手工占一章再自己填摘要。
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    disabled={!!busy}
-                    onClick={onGenerateOutline}
-                  >
-                    {busy === "outline" ? (
-                      <>
-                        <span className="spinner" /> 排大纲中…
-                      </>
-                    ) : (
-                      `让${PLANNER_AGENT_NAME}排大纲`
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={onAddFirst}
-                  >
-                    新增第一章
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-[var(--text-muted)] m-0">
-                从左侧选一个章节点或卷。
-              </p>
-            )}
+            <p className="text-sm text-[var(--text-muted)] m-0">
+              从左侧选一个章节点或卷。
+            </p>
           </div>
         )}
       </div>
