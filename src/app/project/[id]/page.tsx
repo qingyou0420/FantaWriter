@@ -145,6 +145,7 @@ import {
 import { syncOutlineTree } from "@/lib/outline-tree";
 import { chapterPromptContext } from "@/lib/canonical-packet";
 import { reviewStateAfterIssues } from "@/lib/review-registry";
+import { shouldSnapToWizardVolume } from "@/lib/outline-focus";
 import {
   addBlankOutlineChapter,
   addOutlineVolume,
@@ -237,6 +238,7 @@ export default function ProjectPage() {
   );
   const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
   const outlineEnterRef = useRef(false);
+  const prevWizardIdRef = useRef<string | null>(null);
   const [includeEndingDirection, setIncludeEndingDirection] = useState(false);
   const [volumeWizardId, setVolumeWizardId] = useState<string | null>(null);
   const [characterEditorRequest, setCharacterEditorRequest] = useState(0);
@@ -385,7 +387,12 @@ export default function ProjectPage() {
       outlineEnterRef.current = false;
       return;
     }
-    if (volumeWizardId) {
+    const snap = shouldSnapToWizardVolume(
+      prevWizardIdRef.current,
+      volumeWizardId
+    );
+    prevWizardIdRef.current = volumeWizardId;
+    if (snap && volumeWizardId) {
       setSelectedVolumeId(volumeWizardId);
       outlineEnterRef.current = true;
       return;
@@ -399,7 +406,9 @@ export default function ProjectPage() {
     } else {
       setSelectedVolumeId(null);
     }
-  }, [workspace, project, volumeWizardId]);
+    // 只跟工作区 / 项目切换 / 向导开闭走，不能订阅整个 project（每次落库会把选中态拽回卷）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace, project?.id, volumeWizardId]);
 
   const setBookJob = useCallback(
     (job: BookJob | null | ((prev: BookJob | null | undefined) => BookJob | null)) => {
@@ -2242,11 +2251,12 @@ export default function ProjectPage() {
           hideRollingOutline={!allowsWholeBookGenerate(project)}
           planChapterCount={project.settings.chapterCount}
           volumeWizard={
-            volumeWizardId ? (
+            volumeWizardId && selectedVolumeId === volumeWizardId ? (
               <VolumeCloseWizard
                 project={project}
                 volumeId={volumeWizardId}
                 busy={!!busy}
+                onDismiss={() => setVolumeWizardId(null)}
                 onRequestSummary={() => void generateVolumeSummary(volumeWizardId)}
                 onChangeVolume={(vid, patch) =>
                   update((p) => patchOutlineVolume(p, vid, patch))

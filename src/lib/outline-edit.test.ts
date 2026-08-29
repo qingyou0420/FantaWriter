@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   addBlankOutlineChapter,
   addOutlineVolume,
+  mergeIncomingOutlineChapter,
+  outlineChapterDraftSnapshot,
   patchOutlineChapter,
   removeOutlineChapter,
+  retainPendingAfterIncoming,
 } from "./outline-edit";
 import { flattenTreeChapterIds } from "./outline-tree";
 import { createEmptyProject } from "./types";
@@ -70,5 +73,46 @@ describe("addBlankOutlineChapter", () => {
     expect(project.volumes).toHaveLength(2);
     expect(project.volumes?.some((v) => v.id === volumeId)).toBe(true);
     expect(project.outlineTree?.some((v) => v.id === volumeId)).toBe(true);
+  });
+});
+
+describe("mergeIncomingOutlineChapter", () => {
+  const base = {
+    id: "c3",
+    order: 3,
+    title: "三",
+    summary: "旧摘要",
+    keyPoints: "旧点",
+    tags: [] as string[],
+  };
+
+  it("polish 确认 → 面板 summary 为润色后文本 → 键入一字 → 落库值为润色文本+一字", () => {
+    const last = { ...base };
+    const incoming = { ...base, summary: "润色后的摘要" };
+    expect(outlineChapterDraftSnapshot(last)).not.toBe(
+      outlineChapterDraftSnapshot(incoming)
+    );
+    const shown = mergeIncomingOutlineChapter(incoming, {}, last);
+    expect(shown.summary).toBe("润色后的摘要");
+    const afterType = mergeIncomingOutlineChapter(
+      incoming,
+      { summary: "润色后的摘要X" },
+      incoming
+    );
+    expect(afterType.summary).toBe("润色后的摘要X");
+  });
+
+  it("does not let stale pending overwrite a polished field", () => {
+    const last = { ...base };
+    const incoming = { ...base, summary: "润色后的摘要" };
+    const shown = mergeIncomingOutlineChapter(
+      incoming,
+      { summary: "旧摘要再打一字" },
+      last
+    );
+    expect(shown.summary).toBe("润色后的摘要");
+    expect(
+      retainPendingAfterIncoming({ summary: "旧摘要再打一字" }, incoming, last)
+    ).toEqual({});
   });
 });

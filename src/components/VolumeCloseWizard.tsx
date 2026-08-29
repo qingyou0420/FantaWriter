@@ -18,6 +18,7 @@ export function VolumeCloseWizard({
   onChangeVolume,
   onChangeThreads,
   onRequestSummary,
+  onDismiss,
   busy,
 }: {
   project: NovelProject;
@@ -25,6 +26,7 @@ export function VolumeCloseWizard({
   onChangeVolume: (id: string, patch: Partial<Volume>) => void;
   onChangeThreads: (threads: PlotThread[]) => void;
   onRequestSummary?: () => void;
+  onDismiss?: () => void;
   busy?: boolean;
 }) {
   const volume = (project.volumes || []).find((v) => v.id === volumeId);
@@ -54,7 +56,18 @@ export function VolumeCloseWizard({
 
   return (
     <div className="card space-y-3 border-[var(--warning)]/40">
-      <h2 className="text-base font-semibold m-0">过卷向导 · {volume.title}</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold m-0">过卷向导 · {volume.title}</h2>
+        {onDismiss ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={onDismiss}
+          >
+            关闭
+          </button>
+        ) : null}
+      </div>
       <p className="text-xs text-[var(--text-muted)] mt-0 mb-0">
         冻结四样：卷摘要、出卷人物快照、伏笔去向、时间线落点。新卷第一章只靠这些立契约。
       </p>

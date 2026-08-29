@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CastPicker } from "@/components/CastPicker";
 import { Field } from "@/components/Field";
 import { TagSelector } from "@/components/TagEditor";
 import { boardCopy } from "@/lib/copy";
-import { REMOVE_OUTLINE_CHAPTER_CONFIRM } from "@/lib/outline-edit";
+import {
+  mergeIncomingOutlineChapter,
+  outlineChapterDraftSnapshot,
+  REMOVE_OUTLINE_CHAPTER_CONFIRM,
+  retainPendingAfterIncoming,
+} from "@/lib/outline-edit";
 import type {
   Character,
   OutlineChapter,
@@ -46,6 +51,8 @@ export function OutlineChapterDetail({
   onSelectVolume: (volumeId: string) => void;
 }) {
   const [draft, setDraft] = useState(chapter);
+  const [lastSynced, setLastSynced] = useState(chapter);
+  const [pending, setPending] = useState<Partial<OutlineChapter>>({});
   const persistRef = useRef({
     chapterId: chapter.id,
     onPatch,
@@ -53,17 +60,37 @@ export function OutlineChapterDetail({
     timer: null as ReturnType<typeof setTimeout> | null,
   });
 
+  if (chapter.id !== lastSynced.id) {
+    setLastSynced(chapter);
+    setDraft(chapter);
+    setPending({});
+  } else if (
+    outlineChapterDraftSnapshot(chapter) !==
+    outlineChapterDraftSnapshot(lastSynced)
+  ) {
+    setDraft(mergeIncomingOutlineChapter(chapter, pending, lastSynced));
+    setPending(retainPendingAfterIncoming(pending, chapter, lastSynced));
+    setLastSynced(chapter);
+  }
+
   function flush() {
     const bag = persistRef.current;
     if (bag.timer) {
       clearTimeout(bag.timer);
       bag.timer = null;
     }
-    const pending = bag.pending;
-    if (!Object.keys(pending).length) return;
+    const payload = bag.pending;
+    if (!Object.keys(payload).length) return;
     bag.pending = {};
-    bag.onPatch(bag.chapterId, pending);
+    bag.onPatch(bag.chapterId, payload);
+    setPending({});
   }
+
+  useLayoutEffect(() => {
+    persistRef.current.onPatch = onPatch;
+    persistRef.current.chapterId = chapter.id;
+    persistRef.current.pending = pending;
+  }, [onPatch, chapter.id, pending]);
 
   useEffect(() => {
     const bag = persistRef.current;
@@ -85,6 +112,7 @@ export function OutlineChapterDetail({
       ...persistRef.current.pending,
       ...partial,
     };
+    setPending(persistRef.current.pending);
     setDraft((d) => ({ ...d, ...partial }));
     if (persistRef.current.timer) clearTimeout(persistRef.current.timer);
     persistRef.current.timer = setTimeout(flush, 200);

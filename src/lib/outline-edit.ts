@@ -186,3 +186,76 @@ export function addOutlineVolume(
     }),
   };
 }
+
+const DRAFT_KEYS = [
+  "title",
+  "summary",
+  "keyPoints",
+  "hook",
+  "intensityNote",
+  "eroticNote",
+  "tags",
+  "castIds",
+  "volumeId",
+] as const;
+
+type DraftKey = (typeof DRAFT_KEYS)[number];
+
+function fieldEqual(
+  a: OutlineChapter,
+  b: OutlineChapter,
+  key: DraftKey
+): boolean {
+  const av = a[key];
+  const bv = b[key];
+  if (Array.isArray(av) || Array.isArray(bv)) {
+    return JSON.stringify(av || []) === JSON.stringify(bv || []);
+  }
+  return (av || "") === (bv || "");
+}
+
+/** 可比较快照：润色确认等同 id 外部写入能被详情面板察觉。 */
+export function outlineChapterDraftSnapshot(ch: OutlineChapter): string {
+  return JSON.stringify(
+    DRAFT_KEYS.map((k) =>
+      Array.isArray(ch[k]) ? ch[k] : ch[k] || ""
+    )
+  );
+}
+
+/**
+ * 外部写入（润色确认等）与未 flush 本地编辑合并。
+ * 某字段若 incoming 相对 lastSynced 已变，采用 incoming，不让旧 pending 整段盖回去。
+ */
+export function mergeIncomingOutlineChapter(
+  incoming: OutlineChapter,
+  pending: Partial<OutlineChapter>,
+  lastSynced: OutlineChapter
+): OutlineChapter {
+  const next: OutlineChapter = { ...incoming };
+  for (const key of DRAFT_KEYS) {
+    if (pending[key] === undefined) continue;
+    if (fieldEqual(incoming, lastSynced, key)) {
+      (next as Record<DraftKey, OutlineChapter[DraftKey]>)[key] = pending[
+        key
+      ] as OutlineChapter[DraftKey];
+    }
+  }
+  return next;
+}
+
+/** 外部已改写的字段从 pending 里拿掉，避免下一拍又盖回去。 */
+export function retainPendingAfterIncoming(
+  pending: Partial<OutlineChapter>,
+  incoming: OutlineChapter,
+  lastSynced: OutlineChapter
+): Partial<OutlineChapter> {
+  const next: Partial<OutlineChapter> = {};
+  for (const key of DRAFT_KEYS) {
+    if (pending[key] === undefined) continue;
+    if (fieldEqual(incoming, lastSynced, key)) {
+      (next as Record<string, unknown>)[key] = pending[key];
+    }
+  }
+  return next;
+}
