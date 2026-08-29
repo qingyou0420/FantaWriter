@@ -4,6 +4,21 @@
 
 ## [未发布]
 
+## [1.7.1] - 2026-08-29
+
+安装包：`FantaWriter-Setup-1.7.1.exe`（同时上传 `Fantasy-Writer-Setup-1.7.1.exe` 别名）。
+
+### 变更
+
+- 大纲页收成一棵树，摘要就地改。
+- 「写这一章」对准被点的章。
+- 默认幕节先藏起来。
+
+### 修复
+
+- 过卷向导可关。
+- 优化大纲后摘要会跟上。
+
 ## [1.7.0] - 2026-08-28
 
 安装包：`FantaWriter-Setup-1.7.0.exe`（同时上传 `Fantasy-Writer-Setup-1.7.0.exe` 别名）。
@@ -174,6 +189,7 @@
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[1.7.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.7.1
 [1.7.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.7.0
 [1.6.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.6.0
 [1.5.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.1
