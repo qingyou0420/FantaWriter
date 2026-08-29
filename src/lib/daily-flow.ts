@@ -114,6 +114,35 @@ export function findWriteNextChapter(
   return unwritten[0] || chapters[0];
 }
 
+/** 「写这一章」：精确指向被点章，不走「当前之后第一个未写章」。 */
+export function resolveWriteThisChapter(
+  project: Pick<NovelProject, "outline">,
+  chapterId: string | null | undefined
+): OutlineChapter | null {
+  if (!chapterId) return null;
+  return (
+    (project.outline?.chapters || []).find((c) => c.id === chapterId) || null
+  );
+}
+
+/** 大纲页进页推荐：全书第一个未写章（有则用之）。 */
+export function findRecommendedOutlineChapter(
+  project: Pick<NovelProject, "outline" | "chapters">
+): OutlineChapter | null {
+  const chapters = [...(project.outline?.chapters || [])].sort(
+    (a, b) => a.order - b.order
+  );
+  return (
+    chapters.find((ch) => {
+      const row = project.chapters.find((c) => c.chapterId === ch.id);
+      return !row?.content?.trim();
+    }) || null
+  );
+}
+
+export const EMPTY_OUTLINE_WRITE_HINT =
+  "没有可写的下一章。请到大纲页点「让织卷排大纲」或「新增第一章」。";
+
 export function sortChaptersForDailyNav(
   chapters: OutlineChapter[],
   rows: ChapterContent[]

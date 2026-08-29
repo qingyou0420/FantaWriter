@@ -48,6 +48,15 @@ export function chapterLengthRequirement(
   ].join("");
 }
 
+/** 大纲详情「正文目标 n 字」：取篇幅档上下限。 */
+export function chapterWordTargetText(
+  length: ChapterLength | string | undefined,
+  custom?: { min: number; max: number } | null
+): string {
+  const { min, max } = lengthRangeFor(length, custom);
+  return `${min}–${max}`;
+}
+
 export function continueLengthRequirement(
   settings: Pick<GenerationSettings, "length" | "customLength">,
   existingChars?: number

@@ -3,6 +3,7 @@ import { LENGTH_RANGES } from "./types";
 import {
   chapterBelowMin,
   chapterLengthRequirement,
+  chapterWordTargetText,
   continueLengthRequirement,
   countChapterChars,
   expandTargetChars,
@@ -10,6 +11,11 @@ import {
 } from "./length";
 
 describe("length ranges", () => {
+  it("prints the numeric band for outline detail", () => {
+    expect(chapterWordTargetText("long")).toBe("3000–5000");
+    expect(chapterWordTargetText("medium")).toBe("1500–3000");
+  });
+
   it("maps long band to 3000–5000", () => {
     expect(LENGTH_RANGES.long).toEqual({ min: 3000, max: 5000 });
     expect(lengthRangeFor("long").min).toBe(3000);
