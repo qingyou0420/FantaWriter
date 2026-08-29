@@ -10,7 +10,6 @@ import { VolumeCloseWizard } from "@/components/VolumeCloseWizard";
 import { BookJobBar } from "@/components/BookJobBar";
 import { ChaptersReader } from "@/components/ChaptersReader";
 import { CharactersPanel } from "@/components/CharactersPanel";
-import { OutlinePanel } from "@/components/OutlinePanel";
 import { PlotThreadsPanel } from "@/components/PlotThreadsPanel";
 import { OnboardingCard, dismissOnboarding, isOnboardingDismissed, shouldShowOnboarding } from "@/components/OnboardingCard";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -29,7 +28,6 @@ import { AssistantRail } from "@/components/studio/AssistantRail";
 import { DiffConfirmGate } from "@/components/studio/DiffConfirmGate";
 import { WriteNextDialog } from "@/components/studio/WriteNextDialog";
 import { FocusPanel } from "@/components/studio/FocusPanel";
-import { VolumesPanel } from "@/components/VolumesPanel";
 import { LorePanel } from "@/components/LorePanel";
 import { OriginalPanel } from "@/components/OriginalPanel";
 import { attachOriginalContext, mergeCanonFacts } from "@/lib/original";
@@ -60,9 +58,12 @@ import {
 } from "@/lib/author-secrets";
 import {
   defaultOpeningWorkspace,
+  EMPTY_OUTLINE_WRITE_HINT,
+  findRecommendedOutlineChapter,
   findWriteNextChapter,
   listUnreviewedChapters,
   pushAccountRepairMark,
+  resolveWriteThisChapter,
 } from "@/lib/daily-flow";
 import { projectAfterFinalize } from "@/lib/finalize-chapter";
 import {
@@ -144,7 +145,13 @@ import {
 import { syncOutlineTree } from "@/lib/outline-tree";
 import { chapterPromptContext } from "@/lib/canonical-packet";
 import { reviewStateAfterIssues } from "@/lib/review-registry";
-import { addBlankOutlineChapter } from "@/lib/outline-edit";
+import {
+  addBlankOutlineChapter,
+  addOutlineVolume,
+  patchOutlineChapter,
+  patchOutlineVolume,
+  removeOutlineChapter,
+} from "@/lib/outline-edit";
 import { chapterGoalText } from "@/lib/chapter-contract";
 import { globalForbidList } from "@/lib/author-secrets";
 import { formatLoreBlock, selectLoreForPrompt } from "@/lib/lore";
@@ -228,6 +235,8 @@ export default function ProjectPage() {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(
     null
   );
+  const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null);
+  const outlineEnterRef = useRef(false);
   const [includeEndingDirection, setIncludeEndingDirection] = useState(false);
   const [volumeWizardId, setVolumeWizardId] = useState<string | null>(null);
   const [characterEditorRequest, setCharacterEditorRequest] = useState(0);
@@ -369,6 +378,26 @@ export default function ProjectPage() {
     project?.outline?.chapters.some((c) => c.id === selectedChapterId)
       ? selectedChapterId
       : outlineFirstId;
+
+  useEffect(() => {
+    if (!project) return;
+    if (workspace !== "outline") {
+      outlineEnterRef.current = false;
+      return;
+    }
+    if (volumeWizardId) {
+      setSelectedVolumeId(volumeWizardId);
+      outlineEnterRef.current = true;
+      return;
+    }
+    if (outlineEnterRef.current) return;
+    outlineEnterRef.current = true;
+    const rec = findRecommendedOutlineChapter(project);
+    if (rec) {
+      setSelectedChapterId(rec.id);
+      setSelectedVolumeId(null);
+    }
+  }, [workspace, project, volumeWizardId]);
 
   const setBookJob = useCallback(
     (job: BookJob | null | ((prev: BookJob | null | undefined) => BookJob | null)) => {
@@ -588,10 +617,11 @@ export default function ProjectPage() {
         !(volume.exitState || "").trim()
       ) {
         const fill = confirm(
-          "开卷前请先重定本卷弧线目标与出卷局面。现在去分卷页填写？\n点「取消」仍继续续排。"
+          "开卷前请先重定本卷弧线目标与出卷局面。现在去大纲页填写本卷？\n点「取消」仍继续续排。"
         );
         if (fill) {
-          goTab("volumes");
+          setSelectedVolumeId(volumeId);
+          goWorkspace("outline");
           setBusy(null);
           return;
         }
@@ -1157,7 +1187,7 @@ export default function ProjectPage() {
     const live = getLive() || project;
     const next = findWriteNextChapter(live, effectiveSelectedId);
     if (!next) {
-      setError("没有可写的下一章，请先排大纲。");
+      setError(EMPTY_OUTLINE_WRITE_HINT);
       goWorkspace("outline");
       return;
     }
@@ -1166,6 +1196,25 @@ export default function ProjectPage() {
       chapter: next,
       goal: chapterGoalText(next),
       hook: next.hook || "",
+      skipReview: false,
+    });
+  }
+
+  function requestWriteThisChapter(chapterId: string) {
+    if (!project) return;
+    const live = getLive() || project;
+    const chapter = resolveWriteThisChapter(live, chapterId);
+    if (!chapter) {
+      setError(EMPTY_OUTLINE_WRITE_HINT);
+      goWorkspace("outline");
+      return;
+    }
+    setSelectedChapterId(chapter.id);
+    setSelectedVolumeId(null);
+    setWriteDialog({
+      chapter,
+      goal: chapterGoalText(chapter),
+      hook: chapter.hook || "",
       skipReview: false,
     });
   }
@@ -2065,8 +2114,15 @@ export default function ProjectPage() {
       {workspace === "outline" ? (
         <OutlineWorkspace
           project={project}
-          selectedId={effectiveSelectedId}
-          onSelect={setSelectedChapterId}
+          selectedId={selectedVolumeId ? null : effectiveSelectedId}
+          selectedVolumeId={selectedVolumeId}
+          onSelectChapter={(chapterId) => {
+            setSelectedChapterId(chapterId);
+            setSelectedVolumeId(null);
+          }}
+          onSelectVolume={(volumeId) => {
+            setSelectedVolumeId(volumeId);
+          }}
           onAddSibling={(afterId) => {
             update((p) => {
               const { project: next, chapterId } = addBlankOutlineChapter(
@@ -2074,6 +2130,7 @@ export default function ProjectPage() {
                 afterId
               );
               setSelectedChapterId(chapterId);
+              setSelectedVolumeId(null);
               return next;
             });
           }}
@@ -2081,186 +2138,137 @@ export default function ProjectPage() {
             update((p) => {
               const { project: next, chapterId } = addBlankOutlineChapter(p);
               setSelectedChapterId(chapterId);
+              setSelectedVolumeId(null);
               return next;
             });
           }}
-          onCreateManuscript={(chapterId) => {
+          onAddVolume={() => {
+            update((p) => {
+              const { project: next, volumeId } = addOutlineVolume(p);
+              setSelectedVolumeId(volumeId);
+              return next;
+            });
+          }}
+          onWriteThisChapter={requestWriteThisChapter}
+          onViewManuscript={(chapterId) => {
             setSelectedChapterId(chapterId);
+            setSelectedVolumeId(null);
             goWorkspace("manuscript");
           }}
-          onLocate={(chapterId) => {
-            setSelectedChapterId(chapterId);
-            goWorkspace("manuscript");
+          onPatchChapter={(chapterId, partial) => {
+            update((p) => patchOutlineChapter(p, chapterId, partial));
           }}
-          extra={
-            <div className="space-y-4">
-              {volumeWizardId ? (
-                <VolumeCloseWizard
-                  project={project}
-                  volumeId={volumeWizardId}
-                  busy={!!busy}
-                  onRequestSummary={() => void generateVolumeSummary(volumeWizardId)}
-                  onChangeVolume={(vid, patch) =>
-                    update((p) => ({
-                      ...p,
-                      volumes: (p.volumes || []).map((v) =>
-                        v.id === vid ? { ...v, ...patch } : v
-                      ),
-                    }))
-                  }
-                  onChangeThreads={(plotThreads) =>
-                    update((p) => ({ ...p, plotThreads }))
-                  }
-                />
-              ) : null}
-              <VolumesPanel
+          onRemoveChapter={(chapterId) => {
+            update((p) => removeOutlineChapter(p, chapterId));
+            if (selectedChapterId === chapterId) setSelectedChapterId(null);
+          }}
+          onPolishChapter={async (ch) => {
+            setError("");
+            setBusy(`polish:${ch.id}`);
+            try {
+              const fresh = getLive() || project;
+              const live =
+                fresh.outline?.chapters.find((c) => c.id === ch.id) || ch;
+              const data = await postGenerate(
+                attachOriginalContext(fresh, {
+                  mode: "polish_chapter_outline",
+                  writingBoard: fresh.writingBoard,
+                  characters: fresh.characters,
+                  background: fresh.background,
+                  settings: fresh.settings,
+                  outline: fresh.outline,
+                  chapter: live,
+                  projectTags: fresh.tags || [],
+                  premise: injectablePremise(
+                    fresh.premiseCard,
+                    fresh.outline
+                  ),
+                  includeEndingDirection,
+                  endingDirection: injectableEndingDirection(
+                    includeEndingDirection,
+                    fresh.premiseCard
+                  ),
+                })
+              );
+              const polished = data.chapter as {
+                title: string;
+                summary: string;
+                keyPoints: string;
+                intensityNote?: string;
+              };
+              const liveOutline = (getLive() || project).outline;
+              if (liveOutline) {
+                const proposal = proposalFromPolishedChapter({
+                  outline: liveOutline,
+                  chapterId: ch.id,
+                  beforeTitle: live.title,
+                  after: polished,
+                });
+                update((p) => enqueueCanonDraft(p, proposal));
+                setPendingProposal(proposal);
+              }
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            } finally {
+              setBusy(null);
+            }
+          }}
+          onPatchVolume={(volumeId, partial) => {
+            update((p) => patchOutlineVolume(p, volumeId, partial));
+          }}
+          onGenerateOutline={generateOutline}
+          onGenerateVolumeOutline={(volumeId, n) =>
+            void generateVolumeOutline(volumeId, n)
+          }
+          onGenerateNext={(volumeId, n) => void generateNextChapters(volumeId, n)}
+          onGenerateVolumeSummary={(volumeId) =>
+            void generateVolumeSummary(volumeId)
+          }
+          onOpenCloseWizard={(volumeId) => {
+            setVolumeWizardId(volumeId);
+            setSelectedVolumeId(volumeId);
+          }}
+          onBatchWrite={() => {
+            setToolsSection("jobs");
+            goWorkspace("tools");
+          }}
+          tagLibrary={tagLibrary}
+          characters={project.characters}
+          busy={busy}
+          includeEndingDirection={includeEndingDirection}
+          onIncludeEndingDirection={setIncludeEndingDirection}
+          hideRollingOutline={!allowsWholeBookGenerate(project)}
+          planChapterCount={project.settings.chapterCount}
+          volumeWizard={
+            volumeWizardId ? (
+              <VolumeCloseWizard
                 project={project}
-                onChange={(volumes, outline) =>
-                  update((p) =>
-                    markAuthorCanonEdit({
-                      ...p,
-                      volumes,
-                      outline: outline ?? p.outline,
-                    })
-                  )
+                volumeId={volumeWizardId}
+                busy={!!busy}
+                onRequestSummary={() => void generateVolumeSummary(volumeWizardId)}
+                onChangeVolume={(vid, patch) =>
+                  update((p) => patchOutlineVolume(p, vid, patch))
                 }
-                hideWholeVolumeGenerate={!allowsWholeBookGenerate(project)}
-                onGenerateNext={(volumeId, n) => void generateNextChapters(volumeId, n)}
-                onGenerateVolume={(volumeId) => {
-                  setToolsSection("jobs");
-                  startBookJob("missing", volumeId);
-                }}
-                onGenerateVolumeOutline={(volumeId, n) =>
-                  void generateVolumeOutline(volumeId, n)
+                onChangeThreads={(plotThreads) =>
+                  update((p) => ({ ...p, plotThreads }))
                 }
-                onGenerateVolumeSummary={(volumeId) =>
-                  void generateVolumeSummary(volumeId)
-                }
-                onOpenCloseWizard={(volumeId) => setVolumeWizardId(volumeId)}
-                summaryDraft={volumeSummaryDraft}
-                onSaveSummaryDraft={() => {
-                  if (!volumeSummaryDraft) return;
-                  const { volumeId, text } = volumeSummaryDraft;
-                  update((p) => ({
-                    ...p,
-                    volumes: (p.volumes || []).map((v) =>
-                      v.id === volumeId ? { ...v, summary: text.trim() } : v
-                    ),
-                  }));
-                  setVolumeSummaryDraft(null);
-                }}
-                onDiscardSummaryDraft={() => setVolumeSummaryDraft(null)}
-                onEditSummaryDraft={(text) =>
-                  setVolumeSummaryDraft((prev) =>
-                    prev ? { ...prev, text } : prev
-                  )
-                }
-                busy={busy}
               />
-              <OutlinePanel
-                includeEndingDirection={includeEndingDirection}
-                onIncludeEndingDirection={setIncludeEndingDirection}
-                outline={project.outline}
-                projectTags={project.tags || []}
-                library={tagLibrary}
-                writingBoard={project.writingBoard}
-                volumes={project.volumes}
-                characters={project.characters}
-                busy={busy}
-                hideRollingOutline={!allowsWholeBookGenerate(project)}
-                planChapterCount={project.settings.chapterCount}
-                onGenerateNext={(volumeId, n) =>
-                  void generateNextChapters(volumeId, n)
-                }
-                onGenerate={generateOutline}
-                onChange={(outline) => {
-                  update((p) => {
-                    const chapters = outline.chapters.map((ch) => {
-                      const old = p.chapters.find((c) => c.chapterId === ch.id);
-                      return (
-                        old || {
-                          chapterId: ch.id,
-                          title: ch.title,
-                          content: "",
-                          status: "idle" as const,
-                          updatedAt: new Date().toISOString(),
-                        }
-                      );
-                    });
-                    const fallback = p.volumes?.[0]?.id || `${p.id}:vol:1`;
-                    return markAuthorCanonEdit({
-                      ...p,
-                      outline,
-                      chapters: chapters.map((c) => {
-                        const ch = outline.chapters.find((x) => x.id === c.chapterId);
-                        return ch ? { ...c, title: ch.title } : c;
-                      }),
-                      outlineTree: syncOutlineTree(
-                        p.outlineTree,
-                        p.volumes,
-                        outline.chapters,
-                        fallback
-                      ),
-                    });
-                  });
-                }}
-                onGenerateChapter={(ch) => {
-                  setSelectedChapterId(ch.id);
-                  requestWriteNext();
-                }}
-                onPolishChapter={async (ch) => {
-                  setError("");
-                  setBusy(`polish:${ch.id}`);
-                  try {
-                    const fresh = getLive() || project;
-                    const live =
-                      fresh.outline?.chapters.find((c) => c.id === ch.id) || ch;
-                    const data = await postGenerate(
-                      attachOriginalContext(fresh, {
-                        mode: "polish_chapter_outline",
-                        writingBoard: fresh.writingBoard,
-                        characters: fresh.characters,
-                        background: fresh.background,
-                        settings: fresh.settings,
-                        outline: fresh.outline,
-                        chapter: live,
-                        projectTags: fresh.tags || [],
-                        premise: injectablePremise(
-                          fresh.premiseCard,
-                          fresh.outline
-                        ),
-                        includeEndingDirection,
-                        endingDirection: injectableEndingDirection(
-                          includeEndingDirection,
-                          fresh.premiseCard
-                        ),
-                      })
-                    );
-                    const polished = data.chapter as {
-                      title: string;
-                      summary: string;
-                      keyPoints: string;
-                      intensityNote?: string;
-                    };
-                    const liveOutline = (getLive() || project).outline;
-                    if (liveOutline) {
-                      const proposal = proposalFromPolishedChapter({
-                        outline: liveOutline,
-                        chapterId: ch.id,
-                        beforeTitle: live.title,
-                        after: polished,
-                      });
-                      update((p) => enqueueCanonDraft(p, proposal));
-                      setPendingProposal(proposal);
-                    }
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : String(e));
-                  } finally {
-                    setBusy(null);
-                  }
-                }}
-              />
-            </div>
+            ) : null
+          }
+          volumeSummaryDraft={volumeSummaryDraft}
+          onSaveSummaryDraft={() => {
+            if (!volumeSummaryDraft) return;
+            const { volumeId, text } = volumeSummaryDraft;
+            update((p) =>
+              patchOutlineVolume(p, volumeId, { summary: text.trim() })
+            );
+            setVolumeSummaryDraft(null);
+          }}
+          onDiscardSummaryDraft={() => setVolumeSummaryDraft(null)}
+          onEditSummaryDraft={(text) =>
+            setVolumeSummaryDraft((prev) =>
+              prev ? { ...prev, text } : prev
+            )
           }
         />
       ) : null}

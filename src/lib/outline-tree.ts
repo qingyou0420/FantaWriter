@@ -252,3 +252,128 @@ export function searchTreeLabel(text: string, query: string): boolean {
   if (!q) return true;
   return text.toLowerCase().includes(q);
 }
+
+/** 默认「第一幕」：createDefaultAct 生成且标题未被作者改过。 */
+export function isDefaultAct(
+  act: Pick<OutlineTreeAct, "id" | "title">,
+  volumeId: string
+): boolean {
+  return act.id === defaultActId(volumeId) && (act.title || "第一幕") === "第一幕";
+}
+
+/** 默认「第一节」：createDefaultAct 生成且标题未被作者改过。 */
+export function isDefaultSection(
+  section: Pick<OutlineTreeSection, "id" | "title">,
+  volumeId: string
+): boolean {
+  return (
+    section.id === defaultSectionId(volumeId) &&
+    (section.title || "第一节") === "第一节"
+  );
+}
+
+/** 统计行用：默认幕/节不计入显示。不改 countTreeNodes（数据层仍含默认组）。 */
+export function countDisplayTreeNodes(tree: OutlineTree | undefined): {
+  volumes: number;
+  acts: number;
+  sections: number;
+  chapters: number;
+} {
+  let acts = 0;
+  let sections = 0;
+  let chapters = 0;
+  for (const vol of tree || []) {
+    for (const act of vol.acts || []) {
+      if (!isDefaultAct(act, vol.id)) acts += 1;
+      for (const sec of act.sections || []) {
+        if (!isDefaultSection(sec, vol.id)) sections += 1;
+        chapters += sec.chapters?.length || 0;
+      }
+    }
+  }
+  return { volumes: tree?.length || 0, acts, sections, chapters };
+}
+
+export function chapterRowVisible(opts: {
+  written: boolean;
+  filter: OutlineTreeFilter;
+  label: string;
+  query: string;
+}): boolean {
+  return (
+    chapterMatchesTreeFilter(opts.written, opts.filter) &&
+    searchTreeLabel(opts.label, opts.query)
+  );
+}
+
+/** 整枝可见：自己标签命中，或任一后代可见。筛选非「全部」时，空枝（无可见章）隐藏。 */
+export function treeBranchVisible(opts: {
+  selfLabel: string;
+  query: string;
+  filter: OutlineTreeFilter;
+  visibleChapterCount: number;
+}): boolean {
+  if (opts.visibleChapterCount > 0) return true;
+  if (opts.filter !== "all") return false;
+  if (opts.query.trim()) return searchTreeLabel(opts.selfLabel, opts.query);
+  return true;
+}
+
+/** 把已有章引用挪到目标卷末节。不改 syncOutlineTree。 */
+export function moveChapterRefToVolume(
+  tree: OutlineTree,
+  chapterId: string,
+  volumeId: string
+): OutlineTree {
+  const stripped = tree.map((vol) => ({
+    ...vol,
+    acts: vol.acts.map((act) => ({
+      ...act,
+      sections: act.sections.map((sec) => ({
+        ...sec,
+        chapters: sec.chapters.filter((ref) => ref.chapterId !== chapterId),
+      })),
+    })),
+  }));
+  return stripped.map((vol) => {
+    if (vol.id !== volumeId) return vol;
+    if (!vol.acts.length) {
+      return {
+        ...vol,
+        acts: [
+          {
+            ...createDefaultAct(volumeId),
+            sections: [
+              {
+                id: defaultSectionId(volumeId),
+                title: "第一节",
+                chapters: [{ chapterId }],
+              },
+            ],
+          },
+        ],
+      };
+    }
+    const lastActIdx = vol.acts.length - 1;
+    const lastAct = vol.acts[lastActIdx];
+    const lastSecIdx = Math.max(0, lastAct.sections.length - 1);
+    const lastSec =
+      lastAct.sections[lastSecIdx] || {
+        id: defaultSectionId(volumeId),
+        title: "第一节",
+        chapters: [],
+      };
+    const sections = [...lastAct.sections];
+    if (!sections.length) sections.push(lastSec);
+    sections[sections.length - 1] = {
+      ...sections[sections.length - 1],
+      chapters: [
+        ...sections[sections.length - 1].chapters,
+        { chapterId },
+      ],
+    };
+    const acts = [...vol.acts];
+    acts[lastActIdx] = { ...lastAct, sections };
+    return { ...vol, acts };
+  });
+}

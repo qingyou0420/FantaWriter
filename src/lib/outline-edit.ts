@@ -1,6 +1,11 @@
 import { markAuthorCanonEdit } from "./canon-gate";
-import { insertSiblingChapterRef, syncOutlineTree } from "./outline-tree";
-import type { NovelProject, Outline, OutlineChapter } from "./types";
+import {
+  insertSiblingChapterRef,
+  moveChapterRefToVolume,
+  syncOutlineTree,
+} from "./outline-tree";
+import { addVolume } from "./volumes";
+import type { NovelProject, Outline, OutlineChapter, Volume } from "./types";
 
 function emptyOutline(project: NovelProject): Outline {
   return {
@@ -79,6 +84,105 @@ export function addBlankOutlineChapter(
               updatedAt: new Date().toISOString(),
             },
           ],
+    }),
+  };
+}
+
+export const REMOVE_OUTLINE_CHAPTER_CONFIRM =
+  "删除该章大纲？对应正文也会丢失关联。";
+
+/** 删章：直写 + 记作者痕迹。正文行保留（仅丢失关联），与旧面板一致。 */
+export function removeOutlineChapter(
+  project: NovelProject,
+  chapterId: string
+): NovelProject {
+  if (!project.outline) return project;
+  const nextChapters = project.outline.chapters
+    .filter((c) => c.id !== chapterId)
+    .map((c, i) => ({ ...c, order: i + 1 }));
+  const fallback = project.volumes?.[0]?.id || `${project.id}:vol:1`;
+  return markAuthorCanonEdit({
+    ...project,
+    outline: { ...project.outline, chapters: nextChapters },
+    outlineTree: syncOutlineTree(
+      project.outlineTree,
+      project.volumes,
+      nextChapters,
+      fallback
+    ),
+    chapters: project.chapters.map((c) => {
+      const ch = nextChapters.find((x) => x.id === c.chapterId);
+      return ch ? { ...c, title: ch.title } : c;
+    }),
+  });
+}
+
+/** 就地改章字段。直写 + 记作者痕迹。换卷时挪树引用。 */
+export function patchOutlineChapter(
+  project: NovelProject,
+  chapterId: string,
+  partial: Partial<OutlineChapter>
+): NovelProject {
+  if (!project.outline) return project;
+  const fallback = project.volumes?.[0]?.id || `${project.id}:vol:1`;
+  const chapters = project.outline.chapters.map((c) =>
+    c.id === chapterId ? { ...c, ...partial } : c
+  );
+  const prev = project.outline.chapters.find((c) => c.id === chapterId);
+  let tree = project.outlineTree;
+  if (
+    partial.volumeId &&
+    prev &&
+    (prev.volumeId || fallback) !== partial.volumeId
+  ) {
+    tree = moveChapterRefToVolume(
+      tree || syncOutlineTree(undefined, project.volumes, chapters, fallback),
+      chapterId,
+      partial.volumeId
+    );
+  }
+  return markAuthorCanonEdit({
+    ...project,
+    outline: { ...project.outline, chapters },
+    outlineTree: tree,
+    chapters: project.chapters.map((c) =>
+      c.chapterId === chapterId && partial.title
+        ? { ...c, title: partial.title }
+        : c
+    ),
+  });
+}
+
+export function patchOutlineVolume(
+  project: NovelProject,
+  volumeId: string,
+  partial: Partial<Volume>
+): NovelProject {
+  return markAuthorCanonEdit({
+    ...project,
+    volumes: (project.volumes || []).map((v) =>
+      v.id === volumeId ? { ...v, ...partial } : v
+    ),
+  });
+}
+
+export function addOutlineVolume(
+  project: NovelProject
+): { project: NovelProject; volumeId: string } {
+  const volumes = addVolume(project);
+  const added = volumes[volumes.length - 1];
+  const fallback = volumes[0]?.id || `${project.id}:vol:1`;
+  return {
+    volumeId: added.id,
+    project: markAuthorCanonEdit({
+      ...project,
+      volumes,
+      outlineTree: syncOutlineTree(
+        project.outlineTree,
+        volumes,
+        project.outline?.chapters,
+        fallback
+      ),
     }),
   };
 }
