@@ -8,7 +8,7 @@
 import { fetchJson, useApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
-import { SerialCockpitStrip, startWriteNext } from "../components/SerialCockpitStrip";
+import { startWriteNext } from "../components/SerialCockpitStrip";
 import type { WritePreflightEvaluation } from "../components/SerialCockpitStrip";
 import { TruthProposalCard, type PendingTruthProposal } from "../components/TruthProposalCard";
 import { assembleCockpitSnapshot, type CockpitDueHook, type CockpitReviewItem } from "../lib/serial-cockpit";
@@ -311,18 +311,6 @@ export function SerialCockpit({
           {isZh ? "带病续写（上一章未通过也继续）" : "Continue even if previous chapter is unapproved"}
         </label>
       </section>
-
-      <SerialCockpitStrip
-        bookId={bookId}
-        isZh={isZh}
-        skipPreviousApproval={skipPreviousApproval}
-        onSkipChange={setSkipPreviousApproval}
-        onJumpOutline={() => nav.toOutline(bookId)}
-        onJumpReview={(chapterNumber) => {
-          if (chapterNumber) nav.toChapter(bookId, chapterNumber);
-        }}
-        showSkip={false}
-      />
 
       {snapshot && snapshot.pendingProposalCount > 0 && (
         <section className="space-y-2" data-testid="cockpit-proposals">
