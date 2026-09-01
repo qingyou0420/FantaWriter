@@ -24,6 +24,8 @@ export interface VolumeMapVolumeNode {
   readonly volumeNumber: number | null;
   readonly title: string;
   readonly okr: string;
+  /** Full pre-chapter volume body (OKR + notes). Unedited lines stay in canon. */
+  readonly body: string;
   readonly startChapter?: number;
   readonly endChapter?: number;
   readonly chapters: ReadonlyArray<VolumeMapChapterNode>;
@@ -159,23 +161,27 @@ function isStructuralLine(line: string): boolean {
   return Boolean(parseVolumeHeader(line) || parseChapterLine(line));
 }
 
+function trimTrailingBlankLines(lines: string[]): string[] {
+  const next = [...lines];
+  while (next.length && next[next.length - 1].trim() === "") next.pop();
+  return next;
+}
+
 function collectSummary(lines: ReadonlyArray<string>, start: number): { summary: string; end: number } {
   const collected: string[] = [];
   let end = start - 1;
   for (let index = start; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
-    if (!line.trim()) {
-      if (collected.length > 0) break;
-      end = index;
-      continue;
-    }
     if (isStructuralLine(line)) break;
-    if (line.trim().startsWith("#") && parseVolumeHeader(line)) break;
-    collected.push(line.trim());
+    collected.push(line);
     end = index;
-    if (collected.join("\n").length > 280) break;
   }
-  return { summary: collected.join("\n").trim(), end: end < start ? start - 1 : end };
+  while (collected.length && collected[collected.length - 1].trim() === "") {
+    collected.pop();
+    end -= 1;
+  }
+  while (collected.length && collected[0].trim() === "") collected.shift();
+  return { summary: collected.join("\n"), end: end < start ? start - 1 : end };
 }
 
 function extractOkr(bodyLines: ReadonlyArray<string>): string {
@@ -199,7 +205,6 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
     endChapter?: number;
     lineStart: number;
     chapters: VolumeMapChapterNode[];
-    body: string[];
   };
 
   let current: OpenVolume | null = null;
@@ -207,12 +212,16 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
   const flushVolume = (endLine: number) => {
     if (!current) return;
     const id = current.volumeNumber != null ? `volume:${current.volumeNumber}` : `volume:${current.lineStart}`;
+    const firstChapterStart = current.chapters[0]?.lineStart;
+    const bodyUntil = firstChapterStart ?? endLine + 1;
+    const bodyLines = trimTrailingBlankLines(lines.slice(current.lineStart + 1, bodyUntil));
     volumes.push({
       kind: "volume",
       id,
       volumeNumber: current.volumeNumber,
       title: current.title,
-      okr: extractOkr(current.body),
+      okr: extractOkr(bodyLines),
+      body: bodyLines.join("\n"),
       startChapter: current.startChapter,
       endChapter: current.endChapter,
       chapters: current.chapters,
@@ -245,16 +254,13 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
         ...volume,
         lineStart: index,
         chapters: [],
-        body: [],
       };
       continue;
     }
     const chapter = parseChapterLine(line);
     if (chapter) {
       index = pushChapter(chapter, index);
-      continue;
     }
-    if (current && line.trim()) current.body.push(line);
   }
   flushVolume(lines.length - 1);
 
@@ -344,6 +350,79 @@ function chapterHeading(node: VolumeMapChapterNode, title: string): string {
   return `## 第 ${node.chapterNumber} 章 ${title}`.trim();
 }
 
+function replaceVolumeHeadingTitle(
+  oldHeading: string,
+  newTitle: string,
+  node: VolumeMapVolumeNode,
+): string {
+  const hash = oldHeading.match(/^#+/)?.[0] ?? "##";
+  const rangeOnLine = oldHeading.match(/[（(]\s*(?:第|[Cc]hapters?\s+)?\d+\s*[-–~～—]\s*\d+\s*(?:章)?\s*[）)]/);
+  if (rangeOnLine) return `${hash} ${newTitle}${rangeOnLine[0]}`;
+  const range = node.startChapter && node.endChapter
+    ? `（${node.startChapter}-${node.endChapter}章）`
+    : "";
+  return `${hash} ${newTitle}${range}`;
+}
+
+function replaceChapterHeadingTitle(
+  oldHeading: string,
+  node: VolumeMapChapterNode,
+  newTitle: string,
+): string {
+  const rangePrefix = oldHeading.match(/^(#{1,3})\s*(第\s*\d+\s*[-–~～—]\s*\d+\s*章)\s*/);
+  if (rangePrefix) return `${rangePrefix[1]} ${rangePrefix[2]} ${newTitle}`.trim();
+  const zhPrefix = oldHeading.match(/^(#{1,3})\s*(第\s*\d+\s*章)\s*/);
+  if (zhPrefix) return `${zhPrefix[1]} ${zhPrefix[2]} ${newTitle}`.trim();
+  const enPrefix = oldHeading.match(/^(#{1,3})\s*(Chapter\s*\d+(?:\s*[-–~～—]\s*\d+)?)\s*/i);
+  if (enPrefix) return `${enPrefix[1]} ${enPrefix[2]} ${newTitle}`.trim();
+  return chapterHeading(node, newTitle);
+}
+
+export function outlineEditorSource(
+  node: VolumeMapVolumeNode | VolumeMapChapterNode,
+): { title: string; summary: string } {
+  return {
+    title: node.title,
+    summary: node.kind === "volume" ? node.body : node.summary,
+  };
+}
+
+/**
+ * Only persist fields the user actually changed. Select+blur with an
+ * unchanged title/summary must not rewrite volume_map (G2).
+ */
+export function buildOutlineEditPatch(
+  node: VolumeMapVolumeNode | VolumeMapChapterNode,
+  title: string,
+  summary: string,
+): { readonly title?: string; readonly summary?: string } | null {
+  const source = outlineEditorSource(node);
+  const patch: { title?: string; summary?: string } = {};
+  if (title.trim() !== source.title.trim()) patch.title = title.trim();
+  if (summary !== source.summary) patch.summary = summary;
+  return patch.title !== undefined || patch.summary !== undefined ? patch : null;
+}
+
+/** Outline workspace save: no-op when the draft matches the selected node. */
+export function applyOutlineWorkspaceSave(
+  markdown: string,
+  nodeId: string,
+  title: string,
+  summary: string,
+): string {
+  const tree = parseVolumeMapTree(markdown);
+  const node = findNodeById(tree, nodeId);
+  if (!node) return markdown;
+  const patch = buildOutlineEditPatch(node, title, summary);
+  if (!patch) return markdown;
+  return applyVolumeMapNodeEdit(markdown, nodeId, patch);
+}
+
+/**
+ * In-place volume_map edits stay lossless for unedited lines: title-only
+ * touches the heading; a volume summary replaces only the pre-chapter body
+ * and leaves chapter blocks verbatim (including multi-paragraph summaries).
+ */
 export function applyVolumeMapNodeEdit(
   markdown: string,
   nodeId: string,
@@ -355,31 +434,31 @@ export function applyVolumeMapNodeEdit(
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
 
   if (node.kind === "volume") {
-    const title = patch.title?.trim() ?? node.title;
-    const header = lines[node.lineStart] ?? "";
-    const hash = header.match(/^#+/)?.[0] ?? "##";
-    const range = node.startChapter && node.endChapter
-      ? `（${node.startChapter}-${node.endChapter}章）`
-      : "";
-    const nextHeader = `${hash} ${title}${range}`;
-    const chapterLineSet = new Set(node.chapters.flatMap((chapter) => {
-      const span: number[] = [];
-      for (let index = chapter.lineStart; index <= chapter.lineEnd; index += 1) span.push(index);
-      return span;
-    }));
+    const oldHeading = lines[node.lineStart] ?? "";
+    const nextHeader = patch.title !== undefined
+      ? replaceVolumeHeadingTitle(oldHeading, patch.title, node)
+      : oldHeading;
     if (patch.summary === undefined) {
       return replaceLineRange(markdown, node.lineStart, node.lineStart, [nextHeader]);
     }
-    const keptChapters = lines.filter((_, index) => chapterLineSet.has(index) && index > node.lineStart);
-    const okrLines = patch.summary.split("\n");
-    return replaceLineRange(markdown, node.lineStart, node.lineEnd, [nextHeader, "", ...okrLines, "", ...keptChapters]);
+    const firstChapterStart = node.chapters[0]?.lineStart;
+    const bodyUntil = firstChapterStart ?? node.lineEnd + 1;
+    return [...lines.slice(0, node.lineStart), nextHeader, ...patch.summary.split("\n"), ...lines.slice(bodyUntil)].join("\n");
   }
 
-  const title = patch.title ?? node.title;
-  const summary = patch.summary ?? node.summary;
-  const heading = chapterHeading(node, title);
-  const body = summary ? ["", summary] : [];
-  return replaceLineRange(markdown, node.lineStart, node.lineEnd, [heading, ...body]);
+  const oldHeading = lines[node.lineStart] ?? "";
+  const nextHeading = patch.title !== undefined
+    ? replaceChapterHeadingTitle(oldHeading, node, patch.title)
+    : oldHeading;
+  if (patch.summary === undefined) {
+    return replaceLineRange(markdown, node.lineStart, node.lineStart, [nextHeading]);
+  }
+  return [
+    ...lines.slice(0, node.lineStart),
+    nextHeading,
+    ...patch.summary.split("\n"),
+    ...lines.slice(node.lineEnd + 1),
+  ].join("\n");
 }
 
 export function insertChapterStub(

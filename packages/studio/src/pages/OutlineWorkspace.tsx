@@ -11,9 +11,10 @@ import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/Boo
 import { startWriteNext } from "../components/SerialCockpitStrip";
 import type { WritePreflightEvaluation } from "../components/SerialCockpitStrip";
 import {
-  applyVolumeMapNodeEdit,
+  applyOutlineWorkspaceSave,
   findNodeById,
   insertChapterStub,
+  outlineEditorSource,
   parseVolumeMapTree,
   recommendedOutlineNodeId,
   type VolumeMapChapterNode,
@@ -115,8 +116,9 @@ export function OutlineWorkspace({
 
   useEffect(() => {
     if (!selected) return;
-    setTitleDraft(selected.title);
-    setSummaryDraft(selected.kind === "volume" ? selected.okr : selected.summary);
+    const source = outlineEditorSource(selected);
+    setTitleDraft(source.title);
+    setSummaryDraft(source.summary);
   }, [selected]);
 
   const visibleVolumes = tree.volumes
@@ -126,7 +128,7 @@ export function OutlineWorkspace({
     }))
     .filter((volume) => {
       if (volume.chapters.length > 0) return true;
-      if (query && !`${volume.title} ${volume.okr}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
+      if (query && !`${volume.title} ${volume.body} ${volume.okr}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
       return filter === "all";
     });
   const visibleOrphans = tree.orphanChapters.filter((node) => nodeVisible(node, filter, query.trim().toLowerCase(), written));
@@ -142,9 +144,10 @@ export function OutlineWorkspace({
 
   const saveSelected = async () => {
     if (!selected) return;
+    const next = applyOutlineWorkspaceSave(volumeMap, selected.id, titleDraft, summaryDraft);
+    if (next === volumeMap) return;
     setSaving(true);
     try {
-      const next = applyVolumeMapNodeEdit(volumeMap, selected.id, { title: titleDraft, summary: summaryDraft });
       await fetchJson(`/books/${bookId}/truth/outline/volume_map.md`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

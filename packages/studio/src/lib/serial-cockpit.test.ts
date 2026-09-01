@@ -7,9 +7,11 @@ import {
   type CockpitPreflight,
 } from "./serial-cockpit";
 import {
+  applyOutlineWorkspaceSave,
   applyVolumeMapNodeEdit,
   findChapterNode,
   insertChapterStub,
+  outlineEditorSource,
   parseVolumeMapTree,
   recommendedOutlineNodeId,
 } from "./volume-map-tree";
@@ -255,5 +257,38 @@ describe("outline in-place edit", () => {
     const tree = parseVolumeMapTree(withStub);
     expect(findChapterNode(tree, 1)?.id).toBe("chapter:1");
     expect(recommendedOutlineNodeId(tree, 1)).toBe("chapter:1");
+  });
+
+  it("keeps non-OKR volume notes and multi-paragraph chapter summaries on select+blur and title-only edit", () => {
+    const markdown = [
+      "## 第一卷《入门》（1-4章）",
+      "Objective：从杂役转入正式弟子籍。",
+      "备注：本卷埋药园钥匙伏笔",
+      "",
+      "## 第 1 章 入局",
+      "主角走进档案室。",
+      "",
+      "还有第二段，不能丢。",
+    ].join("\n");
+    const tree = parseVolumeMapTree(markdown);
+    const volume = tree.volumes[0];
+    expect(volume).toBeDefined();
+    if (!volume) throw new Error("expected volume");
+    expect(volume.body).toContain("备注：本卷埋药园钥匙伏笔");
+    expect(findChapterNode(tree, 1)?.summary).toContain("还有第二段，不能丢。");
+
+    const source = outlineEditorSource(volume);
+    const afterBlur = applyOutlineWorkspaceSave(markdown, volume.id, source.title, source.summary);
+    expect(afterBlur).toBe(markdown);
+    expect(afterBlur).toContain("备注：本卷埋药园钥匙伏笔");
+    expect(afterBlur).toContain("还有第二段，不能丢。");
+
+    const afterTitle = applyOutlineWorkspaceSave(markdown, volume.id, "第一卷《入门改》", source.summary);
+    expect(afterTitle).toContain("## 第一卷《入门改》（1-4章）");
+    expect(afterTitle).toContain("Objective：从杂役转入正式弟子籍。");
+    expect(afterTitle).toContain("备注：本卷埋药园钥匙伏笔");
+    expect(afterTitle).toContain("主角走进档案室。");
+    expect(afterTitle).toContain("还有第二段，不能丢。");
+    expect(afterTitle.split("还有第二段，不能丢。")).toHaveLength(2);
   });
 });
