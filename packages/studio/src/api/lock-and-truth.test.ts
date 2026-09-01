@@ -138,4 +138,30 @@ describe("P0 lock + truth PUT", () => {
       await release();
     }
   });
+
+  it("draft returns BOOK_BUSY naming the holder", async () => {
+    const app = createStudioServer(projectConfig, root);
+    const state = new StateManager(root);
+    const release = await state.acquireBookLock("demo-book", {
+      taskId: "other-draft",
+      stage: "write-next",
+    });
+    try {
+      const busy = await app.request("/api/v1/books/demo-book/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(busy.status).toBe(409);
+      const body = await busy.json() as {
+        error: { code: string; message: string; owner?: { taskId?: string; stage?: string } };
+      };
+      expect(body.error.code).toBe("BOOK_BUSY");
+      expect(body.error.owner?.taskId).toBe("other-draft");
+      expect(body.error.owner?.stage).toBe("write-next");
+      expect(body.error.message).toContain("task:other-draft");
+    } finally {
+      await release();
+    }
+  });
 });

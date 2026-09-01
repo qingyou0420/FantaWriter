@@ -3347,21 +3347,24 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
   // --- Actions ---
 
+  function throwIfBookBusy(id: string): void {
+    const existingLock = state.inspectBookLock(id);
+    if (!existingLock) return;
+    const lockData = [
+      `pid:${existingLock.pid}`,
+      existingLock.taskId ? `task:${existingLock.taskId}` : null,
+      existingLock.stage ? `stage:${existingLock.stage}` : null,
+    ].filter(Boolean).join(" ");
+    throw new BookWriteLockError(id, existingLock.lockPath, lockData, existingLock);
+  }
+
   app.post("/api/v1/books/:id/write-next", async (c) => {
     const id = c.req.param("id");
     if (!isSafeBookId(id)) {
       throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
     }
     const body = await c.req.json<{ wordCount?: number }>().catch(() => ({ wordCount: undefined }));
-    const existingLock = state.inspectBookLock(id);
-    if (existingLock) {
-      const lockData = [
-        `pid:${existingLock.pid}`,
-        existingLock.taskId ? `task:${existingLock.taskId}` : null,
-        existingLock.stage ? `stage:${existingLock.stage}` : null,
-      ].filter(Boolean).join(" ");
-      throw new BookWriteLockError(id, existingLock.lockPath, lockData, existingLock);
-    }
+    throwIfBookBusy(id);
     const taskId = `write-next-${id}-${randomUUID()}`;
     const taskController = new AbortController();
     activeConfirmedTasks.set(taskId, taskController);
@@ -3432,21 +3435,76 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
   app.post("/api/v1/books/:id/draft", async (c) => {
     const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
+    }
     const body = await c.req.json<{ wordCount?: number; context?: string }>().catch(() => ({ wordCount: undefined, context: undefined }));
+    throwIfBookBusy(id);
+    const taskId = `draft-${id}-${randomUUID()}`;
+    const taskController = new AbortController();
+    activeConfirmedTasks.set(taskId, taskController);
 
-    broadcast("draft:start", { bookId: id });
+    let settledLock = false;
+    let resolveLock!: () => void;
+    let rejectLock!: (error: unknown) => void;
+    const lockReady = new Promise<void>((resolve, reject) => {
+      resolveLock = resolve;
+      rejectLock = reject;
+    });
 
-    const pipeline = new PipelineRunner(await buildPipelineConfig());
-    pipeline.writeDraft(id, body.context, body.wordCount).then(
+    broadcast("draft:start", { bookId: id, taskId });
+
+    const pipeline = new PipelineRunner(await buildPipelineConfig({
+      bookIdForSettings: id,
+      executionIdForSSE: taskId,
+    }));
+    const work = pipeline.runWithAgentContext(
+      {
+        signal: taskController.signal,
+        abort: taskController,
+        lockTaskId: taskId,
+        onLocked: () => {
+          settledLock = true;
+          resolveLock();
+        },
+      },
+      () => pipeline.writeDraft(id, body.context, body.wordCount),
+    );
+    void work.then(
       (result) => {
-        broadcast("draft:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount });
+        activeConfirmedTasks.delete(taskId);
+        if (!settledLock) resolveLock();
+        broadcast("draft:complete", {
+          bookId: id,
+          taskId,
+          chapterNumber: result.chapterNumber,
+          title: result.title,
+          wordCount: result.wordCount,
+        });
       },
       (e) => {
-        broadcast("draft:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
+        activeConfirmedTasks.delete(taskId);
+        if (e instanceof BookWriteLockError) {
+          if (!settledLock) rejectLock(e);
+          return;
+        }
+        if (!settledLock) resolveLock();
+        if (taskController.signal.aborted) {
+          broadcast("draft:error", { bookId: id, taskId, error: "aborted", aborted: true });
+          return;
+        }
+        broadcast("draft:error", { bookId: id, taskId, error: e instanceof Error ? e.message : String(e) });
       },
     );
 
-    return c.json({ status: "drafting", bookId: id });
+    try {
+      await lockReady;
+    } catch (error) {
+      activeConfirmedTasks.delete(taskId);
+      throw error;
+    }
+
+    return c.json({ status: "drafting", bookId: id, taskId });
   });
 
   app.get("/api/v1/books/:id/eval", async (c) => {

@@ -75,6 +75,80 @@ describe("writeNextChapter lock ownership", () => {
     expect(new StateManager(root).inspectBookLock("demo")).toBeNull();
   });
 
+  it("acquires the book lock with a named abortable draft holder", async () => {
+    const root = await mkdtemp(join(tmpdir(), "fw-wn-"));
+    temps.push(root);
+    const acquire = vi.spyOn(StateManager.prototype, "acquireBookLock");
+    const controller = new AbortController();
+    const pipe = runner(root);
+    await pipe
+      .runWithAgentContext(
+        {
+          abort: controller,
+          signal: controller.signal,
+          lockTaskId: "draft-demo",
+        },
+        () => pipe.writeDraft("demo"),
+      )
+      .catch(() => undefined);
+
+    expect(acquire).toHaveBeenCalledWith(
+      "demo",
+      expect.objectContaining({
+        taskId: "draft-demo",
+        stage: "draft",
+        abort: controller,
+      }),
+    );
+  });
+
+  it("does not persist a draft after force-release aborts the draft holder", async () => {
+    const root = await mkdtemp(join(tmpdir(), "fw-wn-"));
+    temps.push(root);
+    const { WriterAgent } = await import("../agents/writer.js");
+    const save = vi.spyOn(WriterAgent.prototype, "saveChapter");
+    const controller = new AbortController();
+    const pipe = runner(root);
+
+    await expect(
+      pipe.runWithAgentContext(
+        {
+          abort: controller,
+          signal: controller.signal,
+          lockTaskId: "draft-hung",
+          onLocked: () => {
+            void new StateManager(root).forceReleaseBookLock("demo", { graceMs: 0 });
+          },
+        },
+        () => pipe.writeDraft("demo"),
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(save).not.toHaveBeenCalled();
+    expect(controller.signal.aborted).toBe(true);
+    expect(new StateManager(root).inspectBookLock("demo")).toBeNull();
+  });
+
+  it("names the draft holder on BOOK_BUSY when a second draft collides", async () => {
+    const root = await mkdtemp(join(tmpdir(), "fw-wn-"));
+    temps.push(root);
+    const held = await new StateManager(root).acquireBookLock("demo", {
+      taskId: "draft-first",
+      stage: "draft",
+    });
+    try {
+      await expect(runner(root).writeDraft("demo")).rejects.toMatchObject({
+        code: "BOOK_BUSY",
+        owner: expect.objectContaining({
+          taskId: "draft-first",
+          stage: "draft",
+        }),
+      });
+    } finally {
+      await held();
+    }
+  });
+
   it("names the write-next holder on BOOK_BUSY when a second write collides", async () => {
     const root = await mkdtemp(join(tmpdir(), "fw-wn-"));
     temps.push(root);

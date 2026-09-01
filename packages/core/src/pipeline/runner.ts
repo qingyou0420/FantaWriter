@@ -1148,8 +1148,23 @@ export class PipelineRunner {
 
   /** Write a single draft chapter. Saves chapter file + truth files + index + snapshot. */
   async writeDraft(bookId: string, context?: string, wordCount?: number): Promise<DraftResult> {
-    const releaseLock = await this.state.acquireBookLock(bookId);
+    this.throwIfOperationAborted();
+    const existingAbort = this.currentAbortController();
+    if (!existingAbort) {
+      const abort = new AbortController();
+      return this.runWithAgentContext(
+        {
+          abort,
+          signal: this.currentAbortSignal() ?? abort.signal,
+          lockTaskId: this.currentLockTaskId() ?? "draft",
+        },
+        () => this.writeDraft(bookId, context, wordCount),
+      );
+    }
+    const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("draft"));
+    this.operationContext.getStore()?.onLocked?.();
     try {
+      this.throwIfOperationAborted();
       await this.state.ensureControlDocuments(bookId);
       const book = await this.state.loadBookConfig(bookId);
       const bookDir = this.state.bookDir(bookId);
@@ -1213,6 +1228,7 @@ export class PipelineRunner {
       const filePath = join(chaptersDir, filename);
 
       const resolvedLang = book.language ?? gp.language;
+      this.throwIfOperationAborted();
       // Persist the chapter and its complete truth update as one atomic file set.
       this.logStage(stageLanguage, { zh: "落盘草稿与真相文件", en: "persisting draft and truth files" });
       await writer.saveChapter(bookDir, draftOutput, gp.numericalSystem, resolvedLang);
