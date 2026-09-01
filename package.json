@@ -1,76 +1,55 @@
 {
   "name": "fantawriter",
-  "version": "1.7.1",
+  "version": "2.0.0-dev",
   "private": true,
-  "license": "MIT",
-  "description": "FantaWriter / 幻想作家 — 常规小说 AI 长篇编辑器",
+  "license": "AGPL-3.0-only",
+  "description": "FantaWriter / 幻想作家 — InkOS-kernel Windows desktop writing studio",
   "author": "FantaWriter",
-  "main": "electron/main.cjs",
+  "main": "packages/desktop/main.cjs",
+  "packageManager": "pnpm@10.33.3",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "test": "vitest run",
-    "electron:dev": "node scripts/electron-dev.mjs",
-    "prepare:standalone": "node scripts/prepare-standalone.mjs",
-    "publish:update": "node scripts/publish-update.mjs",
-    "dist:win": "npm run build && npm run prepare:standalone && electron-builder --win nsis && npm run publish:update",
-    "dist:win:ci": "npm run build && npm run prepare:standalone && electron-builder --win nsis --publish never",
-    "dist:dir": "npm run build && npm run prepare:standalone && electron-builder --win dir"
+    "dev": "pnpm --filter @fantawriter/desktop dev",
+    "start": "pnpm --filter @fantawriter/desktop start",
+    "build": "pnpm --filter @actalk/inkos-core build && pnpm --filter @actalk/inkos-studio build",
+    "test": "pnpm --filter @actalk/inkos-core exec vitest run src/__tests__/state-manager.test.ts src/__tests__/write-next-lock.test.ts && pnpm --filter @fantawriter/desktop test && pnpm --filter @actalk/inkos-studio exec vitest run src/api/lock-and-truth.test.ts src/api/resolve-engine-bind.test.ts src/hooks/use-api.test.ts src/lib/error-copy.test.ts",
+    "test:core:full": "pnpm --filter @actalk/inkos-core test",
+    "test:core": "pnpm --filter @actalk/inkos-core test",
+    "test:desktop": "pnpm --filter @fantawriter/desktop test",
+    "typecheck": "pnpm --filter @actalk/inkos-core typecheck && pnpm --filter @actalk/inkos-studio exec tsc -p tsconfig.server.json --noEmit",
+    "engine:smoke": "node scripts/engine-smoke.mjs",
+    "dist:win": "echo \"P0 ships a working pnpm start / pnpm dev desktop path. electron-builder NSIS pack is a follow-up (H3).\" && exit 1"
   },
-  "dependencies": {
-    "next": "16.2.12",
-    "openai": "^7.1.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "uuid": "^14.0.1"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/uuid": "^10.0.0",
-    "electron": "^37.10.3",
-    "electron-builder": "^26.15.3",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.12",
-    "fake-indexeddb": "^6.2.5",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.11"
+  "pnpm": {
+    "overrides": {
+      "@mariozechner/pi-ai": "0.67.1",
+      "@mariozechner/pi-agent-core": "0.67.1"
+    },
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
   },
   "build": {
     "appId": "com.fantawriter.app",
     "productName": "FantaWriter",
-    "copyright": "Copyright © 2026",
-    "afterPack": "./scripts/after-pack.cjs",
+    "copyright": "Copyright © 2026 FantaWriter / 幻想作家. InkOS © upstream authors.",
     "directories": {
       "output": "dist-installer",
       "buildResources": "build"
     },
     "files": [
-      "electron/**/*",
+      "packages/desktop/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": ".next/standalone",
-        "to": "standalone",
-        "filter": [
-          "**/*"
-        ]
-      }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "artifactName": "FantaWriter-Setup-${version}.${ext}"
@@ -79,15 +58,11 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "FantaWriter",
       "uninstallDisplayName": "FantaWriter",
-      "installerLanguages": [
-        "zh_CN",
-        "en_US"
-      ],
+      "installerLanguages": ["zh_CN", "en_US"],
       "language": "2052"
     },
     "asar": true

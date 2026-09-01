@@ -9,11 +9,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm run lint
-      - run: npm test
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @actalk/inkos-core build
+      - run: pnpm test
+      - name: Engine smoke (explicit root, pinned non-4567 port)
+        run: pnpm --filter @actalk/inkos-studio build && pnpm engine:smoke
+      - name: Refuse secrets in workspace
+        run: |
+          if git ls-files | grep -E '(^|/)\.env(\.|$)|secrets\.json$' | grep -vE '(^|/)\.env\.example$'; then
+            echo "tracked env/secrets files are forbidden"
+            exit 1
+          fi

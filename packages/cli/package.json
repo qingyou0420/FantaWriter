@@ -1,0 +1,75 @@
+{
+  "name": "@actalk/inkos",
+  "version": "1.8.0",
+  "description": "InkOS Story Creation AI Agent CLI and TUI for fiction, scripts, interactive worlds, and translation.",
+  "keywords": [
+    "story-creation-ai-agent",
+    "story-agent",
+    "ai-novel-writing",
+    "ai-writing-agent",
+    "novel-generator",
+    "interactive-fiction",
+    "ip-content",
+    "litrpg",
+    "progression-fantasy",
+    "ai-fiction",
+    "creative-writing-ai",
+    "novel-writing-tool",
+    "ai-storytelling",
+    "openclaw-skill",
+    "cli",
+    "epub",
+    "continuity-tracking"
+  ],
+  "type": "module",
+  "bin": {
+    "inkos": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__"
+  ],
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Narcooo/inkos.git",
+    "directory": "packages/cli"
+  },
+  "scripts": {
+    "prepare:workspace-core": "pnpm --filter @actalk/inkos-core build",
+    "prepack": "node ../../scripts/prepare-package-for-publish.mjs",
+    "postpack": "node ../../scripts/restore-package-json.mjs",
+    "prepublishOnly": "node ../../scripts/verify-no-workspace-protocol.mjs .",
+    "prebuild": "pnpm run prepare:workspace-core",
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "pretest": "pnpm run build",
+    "test": "vitest run --passWithNoTests",
+    "pretypecheck": "pnpm run prepare:workspace-core",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@actalk/inkos-core": "workspace:*",
+    "@actalk/inkos-studio": "workspace:*",
+    "commander": "^13.0.0",
+    "dotenv": "^16.4.0",
+    "epub-gen-memory": "^1.0.10",
+    "ink": "7.0.0",
+    "ink-text-input": "^6.0.0",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0",
+    "react": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/marked-terminal": "^6.1.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "overrides": {
+    "@mariozechner/pi-ai": "0.67.1",
+    "@mariozechner/pi-agent-core": "0.67.1"
+  }
+}

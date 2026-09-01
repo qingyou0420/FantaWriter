@@ -1,74 +1,75 @@
-# 幻想作家 / FantaWriter
+# 幻想作家 / FantaWriter 2.0-dev
 
-本地 AI 长篇小说编辑器。面向类型 / 文学 / 网文等**常规虚构长篇**。基于 Next.js + Electron。稿件、设定与 API 密钥都留在你自己的电脑上。
+Windows 向的**本机桌面**长篇连载工作台。2.0 是一次**重建**，不是把 1.7.x Next.js Studio 迁过来。
 
-A local AI editor for long-form mainstream fiction. Next.js + Electron. Your data stays on your machine.
+内核与 Studio UI fork 自 [InkOS](https://github.com/Narcooo/inkos) v1.8.x（AGPL-3.0）。Electron 壳负责单实例、钉端口、窗口、首启向导和退出杀引擎。稿件落在你选的项目根目录（默认 `%USERPROFILE%\Documents\幻想作家\`），标准 InkOS 布局：`inkos.json`、`books/`、`.inkos/secrets.json`。
 
-当前版本：**1.7.1**
+当前版本：**2.0.0-dev**（未完成的 2.0，不是正式 2.0.0）。
 
-**[更新日志](./CHANGELOG.md)**：各已发行版本的用户可见改动。 / User-facing changelog: **[CHANGELOG.md](./CHANGELOG.md)**.
+**[更新日志](./CHANGELOG.md)** · **[2.0 蓝图](./docs/2.0重构蓝图-InkOS内核桌面重建方案.md)** · **[上游说明](./docs/UPSTREAM.md)**
+
+## 这期 P0 做了什么
+
+- 本仓变成 pnpm monorepo：`packages/core`、`packages/studio`、`packages/cli`（调试）、`packages/desktop`。
+- `npm start` / `pnpm start` / `pnpm dev` **只会**走 Electron + InkOS Studio 引擎，不能再启动 1.7.1 Next.js UI。
+- 引擎启动必须带显式项目根（`argv[2]` / `INKOS_STUDIO` 的 `INKOS_PROJECT_ROOT`），禁止 `process.cwd()`。
+- 引擎端口由壳扫描并钉住，默认从 17831 起，**不用 4567**，避免和手动 `inkos studio` 撞车。
+- 书锁：进程内租约可回收、`POST /api/v1/books/:id/lock/force-release`、诚实的 `BOOK_BUSY`；truth 文件 PUT 必须取书锁。
+- 退出时先 abort 任务、等短暂 flush，再杀掉引擎子进程。
+- 许可证改为 **AGPL-3.0-only**。
+
+## 这期刻意没做（P1 / P2）
+
+- OpenWrite 硬闸（大纲范围确认、正典 diff 人闸、审稿问题队列、钩子逾期）。
+- 连载驾驶舱 UI 重写。
+- 1.7.1 IndexedDB → InkOS 书目录迁移器（可另开 PR）。
+- 完整 electron-builder NSIS 安装包装配（pnpm workspace 打包是蓝图 H3，本 PR 以可工作的 `dev`/`start` 路径为准）。
+- 不嵌入 Python / OpenWrite 运行时，不复制 37 维审查器。
 
 ## 系统要求
 
-- **安装包**：仅 Windows 64 位（x64）。没有 macOS / Linux 安装包。
-- **模型接口**：请自备 **OpenAI 兼容** 的 API（例如 DeepSeek）。在应用里填写 Base URL、API Key 和模型名。本软件不提供账号，也不代管密钥。
+- **目标安装包**：Windows 64 位。本 PR 先保证从源码启动的桌面开发路径。
+- **Node.js ≥ 22**（InkOS / `node:sqlite`）。桌面引擎实际跑在 Electron 自带的 Node 上（`ELECTRON_RUN_AS_NODE`）。
+- **pnpm ≥ 9**。根 `package.json` 已允许 `electron` / `esbuild` 的 install 脚本；若二进制缺失可再跑 `pnpm rebuild electron`。
+- **模型接口**：自备 OpenAI 兼容 API。密钥只写在项目根 `.inkos/secrets.json`。
 
-## 下载
-
-到 GitHub 最新发行页下载安装包：
-
-**https://github.com/qingyou0420/FantaWriter/releases/latest**
-
-文件名形如 **`FantaWriter-Setup-*.exe`**。1.7.1 为 `FantaWriter-Setup-1.7.1.exe`。1.4.0 已发布为 `Fantasy-Writer-Setup-1.4.0.exe`。
-
-## Windows 提示「已保护你的电脑」
-
-当前安装包**没有代码签名**。Windows SmartScreen 可能弹出 **Windows protected your PC / Windows 已保护你的电脑**。这是未签名软件的常见拦截，**不是**已经通过 SmartScreen 认证。
-
-请点 **More info（更多信息）** → **Run anyway（仍要运行）**。以后如果为安装包购买代码签名证书，这类提示会少很多。
-
-## 第一次打开
-
-1. 安装并启动「FantaWriter」。
-2. 若首页提示「尚未配置 API Key」，打开右上角 **设置 → API 设置**。
-3. 填写三项后点 **保存**：
-   - **API Key**：你的密钥
-   - **Base URL**：接口地址（界面默认 `https://api.deepseek.com`，可改成你使用的兼容服务）
-   - **模型**：模型名（界面默认 `deepseek-v4-pro`，按你账号实际可用的名称填写）
-4. 密钥写在本机（桌面端在 `%APPDATA%\fantawriter`），不会进这个公开仓库。
-
-生成正文会按你选用的接口计费。全书一键生成前，先确认章节数量。
-
-## 能做什么
-
-- **项目**：多部小说本地保存；可导入 / 导出单个项目。
-- **设定**：人物设定、故事背景、世界观（地点 / 组织 / 物品 / 规则）。
-- **大纲与分卷**：AI 生成可编辑大纲；作品可按卷分章。
-- **正文**：按章流式生成，可润色、续写；支持全书或本卷队列。
-- **原作焕新**：粘贴或导入旧稿，先锁定不能改的事实，再**抽取故事骨架**；确认写入后，在章拍工作台**按拍扩写**（先预览，接受后才进正文）。
-- **本地备份**：右上角设置可「下载完整备份」「导入完整备份」；项目「工具」页可查看 / 恢复自动备份。桌面端还会在用户目录落盘备份。
-- **应用内更新**：桌面端 **设置 → 检查更新**，从本仓 [GitHub Releases](https://github.com/qingyou0420/FantaWriter/releases/latest) 下载并安装。公开仓无需填写更新令牌。
-
-数据优先存在本机 IndexedDB（库名 `fantawriter`）。桌面端用户目录是 `%APPDATA%\fantawriter`。
-
-## 致谢
-
-工作台信息架构与写作流程设计借鉴自 [OpenWrite](https://github.com/LiPu-jpg/Openwrite)（Apache-2.0）；本仓未复制其代码与资源。
-
-## 许可证
-
-[MIT](LICENSE)。Copyright © 2026 FantaWriter / 幻想作家。
-
-## 从源码运行（可选）
-
-需要 Node.js 18 及以上。多数读者直接下 exe 即可，不必走这里。
+## 从源码运行
 
 ```bash
 git clone https://github.com/qingyou0420/FantaWriter.git
 cd FantaWriter
-cp .env.example .env.local   # 也可不改文件，启动后在「设置 → API 设置」填写
-npm install
-npm run dev
+pnpm install
+pnpm build          # 编译 @actalk/inkos-core + Studio dist/
+pnpm test           # CI 会跑的子集
+pnpm start          # Electron；首次打开走首启向导
+# 或
+pnpm dev            # 缺 dist 时先 build，再开 Electron
 ```
 
-浏览器打开 [http://localhost:3000](http://localhost:3000)。桌面开发：`npm run electron:dev`。在 Windows 上打安装包：`npm run dist:win`。
+引擎冒烟（无窗口）：
+
+```bash
+pnpm engine:smoke
+```
+
+调试 CLI（显式根，不要靠 cwd）：
+
+```bash
+INKOS_PROJECT_ROOT=/abs/path/to/project pnpm --filter @actalk/inkos exec inkos status
+```
+
+`pnpm dist:win` 在 P0 **会失败并说明原因**：安装包装配留作后续。
+
+完整上游 `packages/core` 测试套件依赖 SQLite **FTS5**。本环境探测：系统 Node 22.14 的 `node:sqlite` 可用但无 FTS5；**Electron 37 的 `ELECTRON_RUN_AS_NODE` 有 FTS5**（蓝图 H1）。CI 因此跑锁/桌面/引擎绑定子集；有 FTS5 的 Node 上可再跑 `pnpm test:core:full`。
+
+## 上游
+
+见 [docs/UPSTREAM.md](./docs/UPSTREAM.md)。加 remote：
+
+```bash
+git remote add inkos-upstream https://github.com/Narcooo/inkos.git
+```
+
+## 许可证
+
+[AGPL-3.0-only](LICENSE)。1.x 已发布的 MIT 安装包不受影响。关于页与 `NOTICE` 保留 InkOS 署名。

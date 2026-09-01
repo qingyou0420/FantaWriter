@@ -1,4 +1,5 @@
-# 打 tag vX.Y.Z 或手动 workflow_dispatch → Windows NSIS 安装包 → 该 tag 的 GitHub Release
+# 2.0-dev：完整 NSIS 安装包装配仍是 follow-up（蓝图 H3）。
+# 打 tag 时先跑与 PR 相同的引擎测试，避免再打出 1.x Next standalone。
 name: release-win
 
 on:
@@ -8,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release 标签，如 v1.0.0；留空则用 package.json 的 version"
+        description: "Release 标签；2.0-dev 阶段请用 v2.0.0-dev.N"
         required: false
         type: string
 
@@ -16,105 +17,24 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  test-only:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
-
-      - name: Resolve release tag
-        id: meta
-        shell: bash
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @actalk/inkos-core build
+      - run: pnpm --filter @actalk/inkos-studio build
+      - run: pnpm test
+      - run: pnpm engine:smoke
+      - name: Refuse to ship a 1.x Next installer
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG="${{ github.ref_name }}"
-          elif [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="v$(node -p "require('./package.json').version")"
-          fi
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
-            echo "非法 tag: $TAG（需要 vX.Y.Z）"
+          echo "P0 不产 NSIS 安装包。需要打包时先完成 pnpm workspace → electron-builder 装配。"
+          if [ -d src/app ] || [ -f next.config.ts ]; then
+            echo "仓库里仍有 Next 1.x 入口，拒绝发版"
             exit 1
           fi
-          PKG="$(node -p "require('./package.json').version")"
-          TAG_VER="${TAG#v}"
-          if [ "$TAG_VER" != "$PKG" ]; then
-            echo "tag $TAG 与 package.json version $PKG 不一致，请先改版本再发版"
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$PKG" >> "$GITHUB_OUTPUT"
-          echo "asset=FantaWriter-Setup-${PKG}.exe" >> "$GITHUB_OUTPUT"
-
-      - run: npm ci
-
-      - run: npx tsc --noEmit
-
-      - run: npm run lint
-
-      - run: npm test
-
-      - name: Build standalone (strip .env.local)
-        run: |
-          npm run build
-          npm run prepare:standalone
-
-      - name: Refuse secrets in standalone
-        shell: bash
-        run: |
-          if [ -f .next/standalone/.env.local ] || [ -f .next/standalone/.env ]; then
-            echo "standalone 里出现 .env / .env.local，中止发版"
-            exit 1
-          fi
-
-      - name: Build NSIS installer
-        shell: bash
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: |
-          set +e
-          npx electron-builder --win nsis --publish never
-          code=$?
-          if [ "$code" -eq 0 ]; then
-            exit 0
-          fi
-          echo "首次打包失败，跳过签名重试（不阻断发版）"
-          unset CSC_LINK WIN_CSC_LINK CSC_KEY_PASSWORD WIN_CSC_KEY_PASSWORD
-          export CSC_IDENTITY_AUTO_DISCOVERY=false
-          npx electron-builder --win nsis --publish never -c.win.signAndEditExecutable=false
-
-      - name: SHA256 of installer
-        shell: bash
-        run: |
-          asset="dist-installer/${{ steps.meta.outputs.asset }}"
-          if [ ! -f "$asset" ]; then
-            echo "找不到安装包 $asset"
-            exit 1
-          fi
-          sha256sum "$asset" | tee "${asset}.sha256"
-
-      - name: Alias installer for 1.4.0 clients
-        shell: bash
-        run: node scripts/alias-legacy-setup.cjs "${{ steps.meta.outputs.version }}" dist-installer
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: ${{ steps.meta.outputs.tag }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            dist-installer/FantaWriter-Setup-*.exe
-            dist-installer/FantaWriter-Setup-*.exe.sha256
-            dist-installer/Fantasy-Writer-Setup-*.exe
-            dist-installer/Fantasy-Writer-Setup-*.exe.sha256
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

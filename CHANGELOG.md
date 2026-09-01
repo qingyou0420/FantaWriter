@@ -4,6 +4,27 @@
 
 ## [未发布]
 
+## [2.0.0-dev] - 2026-09-01
+
+这是 **2.0 重建的开发快照**，不是正式 2.0.0。没有 `FantaWriter-Setup-2.0.0.exe`。
+
+### 变更
+
+- 产品入口换成 Electron + fork 的 InkOS Studio（v1.8.0）。旧 Next.js 1.7.1 Studio / IndexedDB 不再能从 `pnpm start` 启动。
+- 默认项目根：`文档/幻想作家`（Windows 上即 `%USERPROFILE%\Documents\幻想作家\`）。
+- 仓库许可证改为 AGPL-3.0-only。
+- 书锁可强制释放；进程内过期租约可回收；truth 文件保存会取书锁。
+- 引擎端口从 17831 扫描钉住，不再默认 4567。
+- 壳接管已有引擎后仍跟踪 pid/port/token，退出与「重启引擎」会 abort+杀进程。
+- Dashboard/BookDetail「写下一章」注册可中止任务并占用书锁；BOOK_BUSY 带持有者；强释后管线不再继续落盘。
+- BookDetail「草稿」`POST /draft` 同样注册可中止任务并占用书锁，避免强释后幽灵落盘。
+
+### 尚未交付（P1/P2）
+
+- OpenWrite 硬闸与连载驾驶舱。
+- 1.x 备份迁移器。
+- 正式 Windows 安装包装配。
+
 ## [1.7.1] - 2026-08-29
 
 安装包：`FantaWriter-Setup-1.7.1.exe`（同时上传 `Fantasy-Writer-Setup-1.7.1.exe` 别名）。

@@ -1,0 +1,19 @@
+FantaWriter / 幻想作家
+Copyright (c) 2026 FantaWriter / 幻想作家
+
+This product is a derived work of InkOS.
+
+InkOS
+Copyright (c) InkOS authors
+https://github.com/Narcooo/inkos
+Licensed under GNU Affero General Public License v3.0 only.
+Vendored in this repository from tag v1.8.0
+(commit 52075bb97422a07315a27094c666dd87e60506b7).
+See third_party/INKOS-LICENSE and packages/{core,studio,cli}.
+
+FantaWriter 1.x desktop-shell ideas (single-instance lock, scan-and-pin port,
+ELECTRON_RUN_AS_NODE, NSIS/update helpers) were originally published under MIT
+and are relicensed here as part of the AGPL-3.0-only combined work.
+
+The FantaWriter / 幻想作家 names are product marks and are not licensed as
+trademarks by the AGPL grant.
