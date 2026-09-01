@@ -21,7 +21,7 @@ jobs:
         run: pnpm --filter @actalk/inkos-studio build && pnpm engine:smoke
       - name: Refuse secrets in workspace
         run: |
-          if git ls-files | grep -E '(^|/)\.env(\.|$)|secrets\.json$'; then
+          if git ls-files | grep -E '(^|/)\.env(\.|$)|secrets\.json$' | grep -vE '(^|/)\.env\.example$'; then
             echo "tracked env/secrets files are forbidden"
             exit 1
           fi
