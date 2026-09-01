@@ -29,8 +29,8 @@ Windows 向的**本机桌面**长篇连载工作台。2.0 是一次**重建**，
 ## 系统要求
 
 - **目标安装包**：Windows 64 位。本 PR 先保证从源码启动的桌面开发路径。
-- **Node.js ≥ 22**（InkOS / `node:sqlite`）。
-- **pnpm ≥ 9**。
+- **Node.js ≥ 22**（InkOS / `node:sqlite`）。桌面引擎实际跑在 Electron 自带的 Node 上（`ELECTRON_RUN_AS_NODE`）。
+- **pnpm ≥ 9**。根 `package.json` 已允许 `electron` / `esbuild` 的 install 脚本；若二进制缺失可再跑 `pnpm rebuild electron`。
 - **模型接口**：自备 OpenAI 兼容 API。密钥只写在项目根 `.inkos/secrets.json`。
 
 ## 从源码运行
@@ -60,7 +60,7 @@ INKOS_PROJECT_ROOT=/abs/path/to/project pnpm --filter @actalk/inkos exec inkos s
 
 `pnpm dist:win` 在 P0 **会失败并说明原因**：安装包装配留作后续。
 
-完整上游 `packages/core` 测试套件依赖 SQLite **FTS5**。本环境探测：`node:sqlite` 可用，但 `CREATE VIRTUAL TABLE … USING fts5` 报 `no such module: fts5`（蓝图 H1）。CI 因此跑锁/桌面/引擎绑定子集；有 FTS5 的 Node 上可再跑 `pnpm test:core:full`。
+完整上游 `packages/core` 测试套件依赖 SQLite **FTS5**。本环境探测：系统 Node 22.14 的 `node:sqlite` 可用但无 FTS5；**Electron 37 的 `ELECTRON_RUN_AS_NODE` 有 FTS5**（蓝图 H1）。CI 因此跑锁/桌面/引擎绑定子集；有 FTS5 的 Node 上可再跑 `pnpm test:core:full`。
 
 ## 上游
 

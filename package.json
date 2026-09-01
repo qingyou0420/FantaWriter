@@ -27,7 +27,11 @@
     "overrides": {
       "@mariozechner/pi-ai": "0.67.1",
       "@mariozechner/pi-agent-core": "0.67.1"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
   },
   "build": {
     "appId": "com.fantawriter.app",
