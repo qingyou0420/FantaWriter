@@ -3665,9 +3665,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
   app.get("/api/v1/books/:id/truth-proposals", async (c) => {
     const id = c.req.param("id");
-    const status = c.req.query("status") === "applied" || c.req.query("status") === "rejected"
-      ? c.req.query("status")
-      : "pending";
+    const queried = c.req.query("status");
+    const status = queried === "applied" || queried === "rejected" ? queried : "pending";
     const proposals = await listTruthProposals(state.bookDir(id), status);
     return c.json({ proposals });
   });
