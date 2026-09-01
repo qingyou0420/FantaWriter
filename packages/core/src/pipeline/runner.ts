@@ -24,7 +24,7 @@ import type { RadarSource } from "../agents/radar-source.js";
 import { readGenreProfile } from "../agents/rules-reader.js";
 import { analyzeAITells } from "../agents/ai-tells.js";
 import { analyzeSensitiveWords } from "../agents/sensitive-words.js";
-import { StateManager } from "../state/manager.js";
+import { StateManager, type BookLockHolder } from "../state/manager.js";
 import { archiveChapterVersion, readChapterUserBrief } from "../state/chapter-workspace.js";
 import { MemoryDB, type Fact } from "../state/memory-db.js";
 import { dispatchNotification, dispatchWebhookEvent } from "../notify/dispatcher.js";
@@ -425,6 +425,9 @@ export class PipelineRunner {
   private readonly agentClients = new Map<string, LLMClient>();
   private readonly operationContext = new AsyncLocalStorage<{
     readonly signal?: AbortSignal;
+    readonly abort?: AbortController;
+    readonly lockTaskId?: string;
+    readonly onLocked?: () => void;
     readonly activatedSkills?: ReadonlyArray<ActivatedSkillGuidance>;
   }>();
 
@@ -443,24 +446,50 @@ export class PipelineRunner {
   async runWithAgentContext<T>(
     context: {
       readonly signal?: AbortSignal;
+      readonly abort?: AbortController;
+      readonly lockTaskId?: string;
+      readonly onLocked?: () => void;
       readonly activatedSkills?: ReadonlyArray<ActivatedSkillGuidance>;
     },
     task: () => Promise<T>,
   ): Promise<T> {
     const current = this.operationContext.getStore();
+    const abort = context.abort ?? current?.abort;
     const merged = {
-      signal: context.signal ?? current?.signal,
+      signal: context.signal ?? abort?.signal ?? current?.signal,
+      abort,
+      lockTaskId: context.lockTaskId ?? current?.lockTaskId,
+      onLocked: context.onLocked ?? current?.onLocked,
       activatedSkills: context.activatedSkills ?? current?.activatedSkills,
     };
     merged.signal?.throwIfAborted();
+    merged.abort?.signal.throwIfAborted();
     return this.operationContext.run(merged, async () => {
       merged.signal?.throwIfAborted();
+      merged.abort?.signal.throwIfAborted();
       return task();
     });
   }
 
   private currentAbortSignal(): AbortSignal | undefined {
-    return this.operationContext.getStore()?.signal;
+    const store = this.operationContext.getStore();
+    return store?.signal ?? store?.abort?.signal;
+  }
+
+  private currentAbortController(): AbortController | undefined {
+    return this.operationContext.getStore()?.abort;
+  }
+
+  private currentLockTaskId(): string | undefined {
+    return this.operationContext.getStore()?.lockTaskId;
+  }
+
+  private writeLockHolder(stage: string): BookLockHolder {
+    return {
+      taskId: this.currentLockTaskId() ?? stage,
+      stage,
+      abort: this.currentAbortController(),
+    };
   }
 
   private currentActivatedSkills(): ReadonlyArray<ActivatedSkillGuidance> | undefined {
@@ -469,6 +498,7 @@ export class PipelineRunner {
 
   private throwIfOperationAborted(): void {
     this.currentAbortSignal()?.throwIfAborted();
+    this.currentAbortController()?.signal.throwIfAborted();
   }
 
   private localize(language: LengthLanguage, messages: { zh: string; en: string }): string {
@@ -1819,8 +1849,22 @@ export class PipelineRunner {
     externalContext?: string,
   ): Promise<ChapterPipelineResult> {
     this.throwIfOperationAborted();
-    const releaseLock = await this.state.acquireBookLock(bookId);
+    const existingAbort = this.currentAbortController();
+    if (!existingAbort) {
+      const abort = new AbortController();
+      return this.runWithAgentContext(
+        {
+          abort,
+          signal: this.currentAbortSignal() ?? abort.signal,
+          lockTaskId: this.currentLockTaskId() ?? "write-next",
+        },
+        () => this.writeNextChapter(bookId, wordCount, temperatureOverride, externalContext),
+      );
+    }
+    const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("write-next"));
+    this.operationContext.getStore()?.onLocked?.();
     try {
+      this.throwIfOperationAborted();
       return await this._writeNextChapterLocked(
         bookId,
         wordCount,
@@ -1842,7 +1886,20 @@ export class PipelineRunner {
     }
 
     this.throwIfOperationAborted();
-    const releaseLock = await this.state.acquireBookLock(bookId);
+    const existingAbort = this.currentAbortController();
+    if (!existingAbort) {
+      const abort = new AbortController();
+      return this.runWithAgentContext(
+        {
+          abort,
+          signal: this.currentAbortSignal() ?? abort.signal,
+          lockTaskId: this.currentLockTaskId() ?? "write-next",
+        },
+        () => this.writeChapters(bookId, chapterCount, options),
+      );
+    }
+    const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("write-next"));
+    this.operationContext.getStore()?.onLocked?.();
     try {
       const results: ChapterPipelineResult[] = [];
       for (let index = 0; index < chapterCount; index += 1) {

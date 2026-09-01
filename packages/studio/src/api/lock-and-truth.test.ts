@@ -25,9 +25,27 @@ describe("P0 lock + truth PUT", () => {
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "fw-lock-"));
     await mkdir(join(root, "books", "demo-book", "story"), { recursive: true });
+    await mkdir(join(root, ".inkos"), { recursive: true });
     await writeFile(
       join(root, "inkos.json"),
-      JSON.stringify({ name: "test", language: "zh" }, null, 2),
+      JSON.stringify({
+        name: "test",
+        language: "zh",
+        llm: {
+          provider: "openai",
+          service: "custom",
+          configSource: "studio",
+          baseUrl: "https://example.invalid",
+          model: "test-model",
+          apiFormat: "chat",
+          stream: true,
+        },
+      }, null, 2),
+      "utf-8",
+    );
+    await writeFile(
+      join(root, ".inkos", "secrets.json"),
+      JSON.stringify({ services: { custom: { apiKey: "sk-test" } } }, null, 2),
       "utf-8",
     );
   });
@@ -90,6 +108,32 @@ describe("P0 lock + truth PUT", () => {
         body: JSON.stringify({ content: "# after release\n" }),
       });
       expect(retry.status).toBe(200);
+    } finally {
+      await release();
+    }
+  });
+
+  it("write-next returns BOOK_BUSY naming the holder", async () => {
+    const app = createStudioServer(projectConfig, root);
+    const state = new StateManager(root);
+    const release = await state.acquireBookLock("demo-book", {
+      taskId: "other-write",
+      stage: "draft",
+    });
+    try {
+      const busy = await app.request("/api/v1/books/demo-book/write-next", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(busy.status).toBe(409);
+      const body = await busy.json() as {
+        error: { code: string; message: string; owner?: { taskId?: string; stage?: string } };
+      };
+      expect(body.error.code).toBe("BOOK_BUSY");
+      expect(body.error.owner?.taskId).toBe("other-write");
+      expect(body.error.owner?.stage).toBe("draft");
+      expect(body.error.message).toContain("task:other-write");
     } finally {
       await release();
     }

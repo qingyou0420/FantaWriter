@@ -10,6 +10,14 @@ const crypto = require("crypto");
 const { spawn, execFile } = require("child_process");
 const { defaultProjectRoot, ensureProjectLayout, writeSecrets, writeProjectLlm } = require("./lib/project.cjs");
 const { HOST, SCAN_START, normalizePinnedPort, pickListenPort, canBindPort } = require("./lib/port.cjs");
+const {
+  emptyEngineHandle,
+  hasLiveEngine,
+  engineKillPid,
+  adoptEngine,
+  attachSpawnedEngine,
+  clearEngineHandle,
+} = require("./lib/engine-handle.cjs");
 const { versionFromSetupName, setupFileNameForVersion } = require("./lib/setup-artifact.cjs");
 const {
   DEFAULT_GITHUB_REPO,
@@ -39,6 +47,8 @@ const LOG_MAX_BYTES = 512 * 1024;
 
 /** @type {import('child_process').ChildProcess | null} */
 let engineProcess = null;
+/** @type {{ child: import('child_process').ChildProcess | null, pid: number, port: number, token: string }} */
+let engineHandle = emptyEngineHandle();
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 let quitting = false;
@@ -254,11 +264,13 @@ function startEngine(listenPort, root) {
     windowsHide: true,
   });
   engineProcess = child;
+  attachSpawnedEngine(engineHandle, child, listenPort, instanceToken);
   child.stdout?.on("data", (d) => appendLog(`[engine] ${d.toString().trim()}`));
   child.stderr?.on("data", (d) => appendLog(`[engine] ${d.toString().trim()}`));
   child.on("exit", (code, signal) => {
     appendLog(`engine exited code=${code} signal=${signal}`);
     if (engineProcess === child) engineProcess = null;
+    if (engineHandle.child === child) clearEngineHandle(engineHandle);
     if (!quitting && code && code !== 0) {
       dialog.showErrorBox("引擎已退出", `InkOS Studio 子进程退出（${code}）。\n日志：${getLogPath()}`);
     }
@@ -282,28 +294,44 @@ function postJson(url, timeoutMs = 4000) {
 }
 
 async function stopEngine({ graceful = true } = {}) {
-  if (!engineProcess) return;
-  const child = engineProcess;
-  if (graceful && enginePort) {
+  if (!hasLiveEngine(engineHandle) && !engineProcess) return;
+  const child = engineHandle.child || engineProcess;
+  const port = engineHandle.port || enginePort;
+  const pid = engineKillPid(engineHandle) || child?.pid || 0;
+  if (graceful && port) {
     try {
-      await postJson(`http://${HOST}:${enginePort}/api/v1/engine/shutdown`, 4000);
+      await postJson(`http://${HOST}:${port}/api/v1/engine/shutdown`, 4000);
       await new Promise((resolve) => setTimeout(resolve, 600));
     } catch {
       /* still kill */
     }
   }
   try {
-    if (process.platform === "win32" && child.pid) {
-      spawn("taskkill", ["/pid", String(child.pid), "/f", "/t"], { windowsHide: true });
-    } else if (child.pid) {
+    if (process.platform === "win32" && pid) {
+      spawn("taskkill", ["/pid", String(pid), "/f", "/t"], { windowsHide: true });
+    } else if (child && child.kill) {
       child.kill("SIGTERM");
       await new Promise((resolve) => setTimeout(resolve, 400));
       if (child.exitCode === null) child.kill("SIGKILL");
+    } else if (pid) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        /* already gone */
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
     }
   } catch {
     /* ignore */
   }
   engineProcess = null;
+  enginePort = 0;
+  clearEngineHandle(engineHandle);
 }
 
 async function resolveEngineUrl() {
@@ -324,8 +352,10 @@ async function resolveEngineUrl() {
   if (port) {
     const existing = await probeHealth(port);
     if (existing?.ok && existing.instanceToken === instanceToken) {
-      appendLog(`接管已有引擎 port=${port}`);
+      appendLog(`接管已有引擎 port=${port} pid=${existing.pid}`);
       enginePort = port;
+      adoptEngine(engineHandle, existing, port);
+      engineProcess = null;
       return `http://${HOST}:${port}`;
     }
     if (existing?.ok && existing.instanceToken !== instanceToken) {
