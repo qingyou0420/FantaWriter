@@ -223,11 +223,11 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       </div>
 
       <label className="block text-xs text-muted-foreground">
-        {t("reader.approve")} override
+        带病通过原因（critical 覆盖，可选）
         <input
           value={overrideWhy}
           onChange={(event) => setOverrideWhy(event.target.value)}
-          placeholder="critical 带病定稿原因（可选）"
+          placeholder="例如：人设改动是刻意的"
           className="mt-1 w-full rounded-lg border border-border/50 bg-background px-3 py-2 text-sm"
         />
       </label>
