@@ -10,6 +10,10 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { StateManager } from "../state/manager.js";
 import { deleteLatestChapter } from "../state/chapter-delete.js";
 import { assertSafeTruthFileName, createInteractionToolsFromDeps } from "../interaction/project-tools.js";
+import {
+  requiresCanonDiffGate,
+  stageTruthProposal,
+} from "../interaction/truth-proposals.js";
 import { writeExportArtifact } from "../interaction/export-artifact.js";
 import { assertSafeBookId, deriveBookIdFromTitle } from "../utils/book-id.js";
 import { safeChildPath } from "../utils/path-safety.js";
@@ -3328,13 +3332,44 @@ export function createWriteTruthFileTool(
   const tools = createDeterministicInteractionTools(pipeline, projectRoot);
   return {
     name: "write_truth_file",
-    description: "Replace a truth/control file under story/ using deterministic project tools.",
+    description: "Replace a truth/control file under story/ using deterministic project tools. Direction, foundation, and rules files are staged as a diff for the author to confirm — they are not written until the confirm button is pressed.",
     label: "Write Truth File",
     parameters: WriteTruthFileParams,
-    async execute(_toolCallId, params): Promise<AgentToolResult<undefined>> {
+    async execute(_toolCallId, params): Promise<AgentToolResult<unknown>> {
       try {
         const bookId = resolveToolBookId("write_truth_file", params.bookId, activeBookId);
         const fileName = assertSafeTruthFileName(params.fileName);
+        if (requiresCanonDiffGate(fileName)) {
+          const state = new StateManager(projectRoot);
+          const storyDir = join(state.bookDir(bookId), "story");
+          const currentContent = await readFile(join(storyDir, fileName), "utf-8").catch(() => "");
+          if (currentContent === params.content) {
+            return textResult(`No change for "${fileName}" on "${bookId}".`);
+          }
+          const proposal = await stageTruthProposal({
+            bookDir: state.bookDir(bookId),
+            bookId,
+            fileName,
+            proposedContent: params.content,
+            currentContent,
+          });
+          return textResult(
+            [
+              `Staged canon change for "${fileName}". Waiting for a confirm button — the file was not written.`,
+              `Proposal ${proposal.id}.`,
+            ].join("\n"),
+            {
+              kind: "proposed_truth_diff",
+              proposalId: proposal.id,
+              bookId,
+              fileName,
+              baseRevision: proposal.baseRevision,
+              unifiedDiff: proposal.unifiedDiff,
+              title: `确认改正典 · ${fileName}`,
+              summary: `将改写 story/${fileName}。刷新后提案仍在 story/runtime/proposals/。`,
+            },
+          );
+        }
         await tools.writeTruthFile(bookId, fileName, params.content);
         return textResult(`Updated "${fileName}" for "${bookId}".`);
       } catch (err: any) {

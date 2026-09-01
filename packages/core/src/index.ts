@@ -1,6 +1,64 @@
 // Models
 export { type BookConfig, type Platform, type Genre, type BookStatus, type FanficMode, type ChapterReviewMode, type RevisionGate, BookConfigSchema, PlatformSchema, GenreSchema, BookStatusSchema, FanficModeSchema, normalizePlatformId, normalizePlatformOrOther, resolveChapterReviewMode, resolveRevisionGate } from "./models/book.js";
 export { type ChapterMeta, type ChapterStatus, ChapterMetaSchema, ChapterStatusSchema } from "./models/chapter.js";
+export {
+  evaluateWritePreflight,
+  assertWritePreflight,
+  WritePreflightError,
+  isPreviousChapterSettled,
+  isEmptyOrPlaceholderCanon,
+  type WritePreflightEvaluation,
+  type WritePreflightReason,
+  type WritePreflightReasonCode,
+} from "./pipeline/write-preflight.js";
+export {
+  assertChapterApprovable,
+  applyApproveOverride,
+  buildReviewQueue,
+  collectCriticalIssues,
+  parseAuditIssueLine,
+  readChapterAuditSnapshot,
+  writeChapterAuditSnapshot,
+  ApproveBlockedError,
+  ApproveOverrideSchema,
+  type ApproveOverride,
+  type ReviewQueueItem,
+} from "./pipeline/approve-gate.js";
+export {
+  requiresCanonDiffGate,
+  stageTruthProposal,
+  loadTruthProposal,
+  listTruthProposals,
+  applyTruthProposal,
+  rejectTruthProposal,
+  contentRevision,
+  buildUnifiedDiff,
+  TruthRevisionConflictError,
+  TruthProposalNotFoundError,
+  TruthProposalSchema,
+  type TruthProposal,
+} from "./interaction/truth-proposals.js";
+export {
+  classifyHookDue,
+  selectDueHooks,
+  selectOverdueHooks,
+  overdueHookAuditIssues,
+  resolveHookTargetChapter,
+  parseTargetChapterHint,
+  type HookDueState,
+} from "./utils/hook-overdue.js";
+export {
+  findVolumeMapEntry,
+} from "./utils/volume-map-entry.js";
+export {
+  buildGovernedPacketSnapshot,
+  writeGovernedPacketSnapshot,
+  packetSnapshotRelativePath,
+  chapterRuntimeSlug,
+  type GovernedPacketSnapshot,
+} from "./utils/packet-snapshot.js";
+export { matchCraftPatterns, loadDefaultCraftPatterns } from "./craft/load-craft-rules.js";
+export { parsePendingHooksMarkdown } from "./utils/story-markdown.js";
 export { type ProjectConfig, type LLMConfig, type NotifyChannel, type DetectionConfig, type QualityGates, type FoundationConfig, type WritingConfig, type AgentLLMOverride, type ResearchSearchConfig, ProjectConfigSchema, LLMConfigSchema, AgentLLMOverrideSchema, DetectionConfigSchema, QualityGatesSchema, FoundationConfigSchema, WritingConfigSchema, ResearchSearchConfigSchema } from "./models/project.js";
 export { type CurrentState, type ParticleLedger, type PendingHooks, type PendingHook, type LedgerEntry } from "./models/state.js";
 export { type GenreProfile, type ParsedGenreProfile, GenreProfileSchema, parseGenreProfile } from "./models/genre-profile.js";
@@ -579,7 +637,7 @@ export { arbitrateRuntimeStateDeltaHooks, type HookArbiterDecision } from "./uti
 export { analyzeHookHealth } from "./utils/hook-health.js";
 
 // Pipeline
-export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type WriteChaptersOptions, type DraftResult, type PlanChapterResult, type ComposeChapterResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";
+export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type WriteChaptersOptions, type WriteChapterGateOptions, type DraftResult, type PlanChapterResult, type ComposeChapterResult, type ReviseResult, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";
 export { Scheduler, type SchedulerConfig } from "./pipeline/scheduler.js";
 export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";
 export { runScriptCreation, runStoryboardCreation, runInteractiveFilmCreation, createStoryboardAssetsManifest, type ScriptCreationRunOptions, type ScriptCreationRunResult, type StoryboardAssetsManifest, type StoryboardCreationRunOptions, type StoryboardCreationRunResult, type InteractiveFilmCreationRunOptions, type InteractiveFilmCreationRunResult, type StoryboardImageAsset, type StoryboardImageAssetVariant } from "./pipeline/script-storyboard-runner.js";

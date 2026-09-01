@@ -6,11 +6,13 @@ import type {
   ContextPackage,
   RuleStack,
 } from "../models/input-governance.js";
+import { writeGovernedPacketSnapshot } from "./packet-snapshot.js";
 
 export interface RuntimeArtifactWriteResult {
   readonly contextPath: string;
   readonly ruleStackPath: string;
   readonly tracePath: string;
+  readonly packetPath: string;
 }
 
 export async function writeGovernedRuntimeArtifacts(params: {
@@ -27,7 +29,14 @@ export async function writeGovernedRuntimeArtifacts(params: {
   const ruleStackPath = join(params.runtimeDir, `${chapterSlug}.rule-stack.yaml`);
   const tracePath = join(params.runtimeDir, `${chapterSlug}.trace.json`);
 
-  await Promise.all([
+  const [packetPath] = await Promise.all([
+    writeGovernedPacketSnapshot({
+      runtimeDir: params.runtimeDir,
+      chapterNumber: params.chapterNumber,
+      contextPackage: params.contextPackage,
+      ruleStack: params.ruleStack,
+      trace: params.trace,
+    }),
     writeFile(contextPath, JSON.stringify(params.contextPackage, null, 2), "utf-8"),
     writeFile(ruleStackPath, yaml.dump(params.ruleStack, { lineWidth: 120 }), "utf-8"),
     writeFile(tracePath, JSON.stringify(params.trace, null, 2), "utf-8"),
@@ -37,5 +46,6 @@ export async function writeGovernedRuntimeArtifacts(params: {
     contextPath,
     ruleStackPath,
     tracePath,
+    packetPath,
   };
 }

@@ -140,6 +140,18 @@ export interface PlayEditDetails {
   readonly updatedEntities?: number;
 }
 
+export interface ProposedTruthDiffDetails {
+  readonly kind: "proposed_truth_diff";
+  readonly execId: string;
+  readonly proposalId: string;
+  readonly bookId: string;
+  readonly fileName: string;
+  readonly baseRevision: string;
+  readonly unifiedDiff: string;
+  readonly title?: string;
+  readonly summary?: string;
+}
+
 export interface ProposedActionDetails {
   readonly kind: "proposed_action";
   readonly execId: string;
@@ -737,6 +749,30 @@ export function getPlayEditDetails(exec: ToolExecution): PlayEditDetails | null 
   };
 }
 
+export function getProposedTruthDiffDetails(exec: ToolExecution): ProposedTruthDiffDetails | null {
+  if (exec.tool !== "write_truth_file") return null;
+  if (!exec.details || typeof exec.details !== "object") return null;
+  const record = exec.details as Record<string, unknown>;
+  if (record.kind !== "proposed_truth_diff") return null;
+  const proposalId = stringField(record, "proposalId");
+  const bookId = stringField(record, "bookId");
+  const fileName = stringField(record, "fileName");
+  const unifiedDiff = stringField(record, "unifiedDiff");
+  const baseRevision = stringField(record, "baseRevision");
+  if (!proposalId || !bookId || !fileName || !unifiedDiff || !baseRevision) return null;
+  return {
+    kind: "proposed_truth_diff",
+    execId: exec.id,
+    proposalId,
+    bookId,
+    fileName,
+    baseRevision,
+    unifiedDiff,
+    title: stringField(record, "title"),
+    summary: stringField(record, "summary"),
+  };
+}
+
 export function getProposedActionDetails(exec: ToolExecution): ProposedActionDetails | null {
   if (exec.tool !== "propose_action") return null;
   if (!exec.details || typeof exec.details !== "object") return null;
@@ -769,6 +805,58 @@ export function getProposedActionContractRows(details: ProposedActionDetails): R
   const visualContract = playStart.visualContract?.trim();
   if (visualContract) rows.push({ label: tr("视觉契约", "Visual contract"), value: visualContract });
   return rows;
+}
+
+function ProposedTruthDiffPreview({
+  exec,
+  onConfirmTruthDiff,
+  onRejectTruthDiff,
+}: {
+  exec: ToolExecution;
+  onConfirmTruthDiff?: (details: ProposedTruthDiffDetails) => void;
+  onRejectTruthDiff?: (details: ProposedTruthDiffDetails) => void;
+}) {
+  const resolvedProposals = useChatStore((s) => s.resolvedProposals);
+  if (exec.tool !== "write_truth_file" || exec.status !== "completed") return null;
+  const details = getProposedTruthDiffDetails(exec);
+  if (!details) return null;
+  const resolution = resolvedProposals[details.execId];
+  return (
+    <div className="mx-3 mb-3 mt-1 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3.5" data-testid="confirm-truth-diff">
+      <div className="text-[17px] leading-6 font-semibold text-foreground">{details.title ?? tr("确认改正典", "Confirm canon change")}</div>
+      {details.summary && (
+        <div className="mt-1.5 whitespace-pre-wrap break-words text-[15px] leading-7 text-muted-foreground">{details.summary}</div>
+      )}
+      <pre className="mt-2.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/70 px-3 py-2.5 text-[13px] leading-6 text-muted-foreground">
+        {details.unifiedDiff}
+      </pre>
+      {resolution === "confirmed" ? (
+        <div className="mt-3 text-[15px] leading-6 font-medium text-primary">{tr("已写入", "Applied")}</div>
+      ) : resolution === "rejected" ? (
+        <div className="mt-3 text-[15px] leading-6 font-medium text-muted-foreground">{tr("已取消", "Cancelled")}</div>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="confirm-truth-diff-apply"
+            onClick={() => onConfirmTruthDiff?.(details)}
+            disabled={!onConfirmTruthDiff}
+            className="rounded-lg bg-primary px-3.5 py-2 text-[15px] leading-6 font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {tr("确认写入", "Apply change")}
+          </button>
+          <button
+            type="button"
+            onClick={() => onRejectTruthDiff?.(details)}
+            disabled={!onRejectTruthDiff}
+            className="rounded-lg border border-border/60 bg-background/80 px-3.5 py-2 text-[15px] leading-6 font-medium text-muted-foreground disabled:opacity-50"
+          >
+            {tr("取消", "Cancel")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ProposedActionPreview({
@@ -889,6 +977,7 @@ function PlayEditPreview({ exec }: { exec: ToolExecution }) {
 
 function hasStructuredResultPreview(exec: ToolExecution): boolean {
   if (getProposedActionDetails(exec)) return true;
+  if (getProposedTruthDiffDetails(exec)) return true;
   if (getPlayToolDetails(exec)?.sceneText) return true;
   if (getChapterRevisionDetails(exec)) return true;
   if (getChapterStateResyncDetails(exec)) return true;
@@ -900,6 +989,7 @@ function isPipelineTool(tool: string): boolean {
     || tool === "resync_chapter_state"
     || tool === "context_compression"
     || tool === "propose_action"
+    || tool === "write_truth_file"
     || tool === "short_fiction_run"
     || tool === "script_create"
     || tool === "storyboard_create"
@@ -956,6 +1046,8 @@ function PipelineExecution({
   exec,
   onProposedAction,
   onRejectProposedAction,
+  onConfirmTruthDiff,
+  onRejectTruthDiff,
   onOpenFilmStudio,
   onSelectNarrativeBranch,
   onRecheckNarrativeForecast,
@@ -963,6 +1055,8 @@ function PipelineExecution({
   exec: ToolExecution;
   onProposedAction?: (details: ProposedActionDetails) => void;
   onRejectProposedAction?: (details: ProposedActionDetails) => void;
+  onConfirmTruthDiff?: (details: ProposedTruthDiffDetails) => void;
+  onRejectTruthDiff?: (details: ProposedTruthDiffDetails) => void;
   onOpenFilmStudio?: (projectId: string) => void;
   onSelectNarrativeBranch?: (forecastId: string, branchId: string) => void | Promise<void>;
   onRecheckNarrativeForecast?: (forecastId: string) => void | Promise<void>;
@@ -1006,6 +1100,11 @@ function PipelineExecution({
         exec={exec}
         onProposedAction={onProposedAction}
         onRejectProposedAction={onRejectProposedAction}
+      />
+      <ProposedTruthDiffPreview
+        exec={exec}
+        onConfirmTruthDiff={onConfirmTruthDiff}
+        onRejectTruthDiff={onRejectTruthDiff}
       />
       <SkillUsagePreview exec={exec} />
       <ShortFictionResultPreview exec={exec} />
@@ -1150,6 +1249,8 @@ export interface ToolExecutionStepsProps {
   executions: ToolExecution[];
   onProposedAction?: (details: ProposedActionDetails) => void;
   onRejectProposedAction?: (details: ProposedActionDetails) => void;
+  onConfirmTruthDiff?: (details: ProposedTruthDiffDetails) => void;
+  onRejectTruthDiff?: (details: ProposedTruthDiffDetails) => void;
   onOpenFilmStudio?: (projectId: string) => void;
   onSelectNarrativeBranch?: (forecastId: string, branchId: string) => void | Promise<void>;
   onRecheckNarrativeForecast?: (forecastId: string) => void | Promise<void>;
@@ -1190,6 +1291,8 @@ export const ToolExecutionSteps = memo(function ToolExecutionSteps({
   executions,
   onProposedAction,
   onRejectProposedAction,
+  onConfirmTruthDiff,
+  onRejectTruthDiff,
   onOpenFilmStudio,
   onSelectNarrativeBranch,
   onRecheckNarrativeForecast,
@@ -1206,6 +1309,8 @@ export const ToolExecutionSteps = memo(function ToolExecutionSteps({
                 exec={g.exec}
                 onProposedAction={onProposedAction}
                 onRejectProposedAction={onRejectProposedAction}
+                onConfirmTruthDiff={onConfirmTruthDiff}
+                onRejectTruthDiff={onRejectTruthDiff}
                 onOpenFilmStudio={onOpenFilmStudio}
                 onSelectNarrativeBranch={onSelectNarrativeBranch}
                 onRecheckNarrativeForecast={onRecheckNarrativeForecast}

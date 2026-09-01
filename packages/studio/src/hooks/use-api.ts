@@ -20,6 +20,7 @@ export class StudioApiError extends Error {
     readonly code?: string,
     readonly status?: number,
     readonly owner?: BookLockOwnerInfo,
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = "StudioApiError";
@@ -108,12 +109,13 @@ async function readError(res: Response): Promise<StudioApiError> {
           code?: unknown;
           message?: unknown;
           owner?: BookLockOwnerInfo;
+          details?: unknown;
         };
         const message = typeof payload.message === "string" && payload.message.trim()
           ? localizeKnownRuntimeMessage(payload.message)
           : localizeKnownRuntimeMessage(`${res.status} ${res.statusText}`.trim());
         const code = typeof payload.code === "string" ? payload.code : undefined;
-        return new StudioApiError(message, code, res.status, payload.owner);
+        return new StudioApiError(message, code, res.status, payload.owner, payload.details);
       }
     } catch {
       // fall through

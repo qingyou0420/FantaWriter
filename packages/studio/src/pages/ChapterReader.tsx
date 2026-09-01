@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
+import { StudioApiError } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
@@ -47,6 +48,9 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  const [packetOpen, setPacketOpen] = useState(false);
+  const [packetText, setPacketText] = useState("");
+  const [overrideWhy, setOverrideWhy] = useState("");
 
   const handleStartEdit = () => {
     if (!data) return;
@@ -98,10 +102,15 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
 
   const handleApprove = async () => {
     try {
-      await postApi(`/books/${bookId}/chapters/${chapterNumber}/approve`);
+      await postApi(`/books/${bookId}/chapters/${chapterNumber}/approve`, overrideWhy.trim()
+        ? { override: { who: "author", why: overrideWhy.trim() } }
+        : {});
       nav.toBook(bookId);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Approve failed");
+      const blocked = e instanceof StudioApiError && e.code === "APPROVE_BLOCKED";
+      alert(blocked
+        ? `${e.message}\n${e.details ? JSON.stringify(e.details) : ""}`
+        : (e instanceof Error ? e.message : "Approve failed"));
     }
   };
 
@@ -111,6 +120,16 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       nav.toBook(bookId);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Reject failed");
+    }
+  };
+
+  const handleOpenPacket = async () => {
+    try {
+      const packet = await fetchJson<unknown>(`/books/${bookId}/chapters/${chapterNumber}/packet`);
+      setPacketText(JSON.stringify(packet, null, 2));
+      setPacketOpen(true);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No packet snapshot");
     }
   };
 
@@ -180,6 +199,12 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           )}
 
           <button
+            onClick={handleOpenPacket}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-foreground hover:bg-secondary/80 transition-all border border-border/50"
+          >
+            Packet
+          </button>
+          <button
             onClick={handleApprove}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-emerald-500/10 text-emerald-600 rounded-xl hover:bg-emerald-500 hover:text-white transition-all border border-emerald-500/20 shadow-sm"
           >
@@ -189,12 +214,29 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           <button
             onClick={handleReject}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-destructive/10 text-destructive rounded-xl hover:bg-destructive hover:text-white transition-all border border-destructive/20 shadow-sm"
+            title="回滚本章"
           >
             <XCircle size={14} />
-            {t("reader.reject")}
+            回滚本章
           </button>
         </div>
       </div>
+
+      <label className="block text-xs text-muted-foreground">
+        {t("reader.approve")} override
+        <input
+          value={overrideWhy}
+          onChange={(event) => setOverrideWhy(event.target.value)}
+          placeholder="critical 带病定稿原因（可选）"
+          className="mt-1 w-full rounded-lg border border-border/50 bg-background px-3 py-2 text-sm"
+        />
+      </label>
+
+      {packetOpen && (
+        <pre className="max-h-80 overflow-auto rounded-xl border border-border/50 bg-secondary/20 p-4 text-xs" data-testid="packet-viewer">
+          {packetText}
+        </pre>
+      )}
 
       <ChapterWorkspacePanel
         key={`${chapterNumber}-${workspaceRevision}`}

@@ -4,6 +4,26 @@
 
 ## [未发布]
 
+## [2.0.0-dev.1] - 2026-09-01
+
+P1 硬闸（仍是开发快照，不是正式 2.0.0）。
+
+### 新增
+
+- G1 写前闸：目标章无 `volume_map` 条目、骨架/意图为空、或上一章未通过时拒绝写下一章/草稿；可显式「带病续写」。
+- G2 有界 packet 落盘为 `story/runtime/chapter-NNNN.packet.json`。
+- G3 正典 diff 人闸：chat/agent 改方向/骨架/规则只暂存提案，确认按钮 + 基线修订校验后才写。
+- G5 审稿问题队列；critical>0 默认挡通过，覆盖须记入章 meta。
+- 伏笔 `targetChapter`：到期/过期进写 packet，过期记 hook-debt critical。
+- G6 合并 OpenWrite Apache-2.0 文风禁表到默认 craft；写后违规强制改稿，仍失败则 audit-failed。
+- 织卷 / 落墨入口标签（仍走现有 Chat + pipeline）。
+
+### 尚未交付（P2 / 后续）
+
+- 连载驾驶舱完整重写。
+- 1.x IndexedDB 备份迁移器。
+- 正式 Windows NSIS 安装包装配。
+
 ## [2.0.0-dev] - 2026-09-01
 
 这是 **2.0 重建的开发快照**，不是正式 2.0.0。没有 `FantaWriter-Setup-2.0.0.exe`。
@@ -21,7 +41,7 @@
 
 ### 尚未交付（P1/P2）
 
-- OpenWrite 硬闸与连载驾驶舱。
+- P1 硬闸见 [2.0.0-dev.1]；连载驾驶舱完整重写仍待 P2。
 - 1.x 备份迁移器。
 - 正式 Windows 安装包装配。
 

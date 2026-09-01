@@ -55,6 +55,13 @@ import {
   retrySettlementAfterValidationFailure,
 } from "./chapter-state-recovery.js";
 import { persistChapterArtifacts } from "./chapter-persistence.js";
+import { writeChapterAuditSnapshot } from "./approve-gate.js";
+import {
+  assertWritePreflight,
+  evaluateWritePreflight,
+  type WritePreflightEvaluation,
+} from "./write-preflight.js";
+import { overdueHookAuditIssues } from "../utils/hook-overdue.js";
 import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { validateChapterTruthPersistence } from "./chapter-truth-validation.js";
 import { loadPersistedPlan, relativeToBookDir, savePersistedPlan } from "./persisted-governed-plan.js";
@@ -295,10 +302,15 @@ export interface ChapterPipelineResult {
   readonly contextTrace?: ChapterContextTraceSummary;
 }
 
+export interface WriteChapterGateOptions {
+  readonly skipPreviousApproval?: boolean;
+}
+
 export interface WriteChaptersOptions {
   readonly wordCount?: number;
   readonly temperatureOverride?: number;
   readonly externalContext?: string;
+  readonly skipPreviousApproval?: boolean;
   readonly onChapterComplete?: (
     result: ChapterPipelineResult,
     completedCount: number,
@@ -1147,7 +1159,12 @@ export class PipelineRunner {
   }
 
   /** Write a single draft chapter. Saves chapter file + truth files + index + snapshot. */
-  async writeDraft(bookId: string, context?: string, wordCount?: number): Promise<DraftResult> {
+  async writeDraft(
+    bookId: string,
+    context?: string,
+    wordCount?: number,
+    options?: WriteChapterGateOptions,
+  ): Promise<DraftResult> {
     this.throwIfOperationAborted();
     const existingAbort = this.currentAbortController();
     if (!existingAbort) {
@@ -1158,7 +1175,7 @@ export class PipelineRunner {
           signal: this.currentAbortSignal() ?? abort.signal,
           lockTaskId: this.currentLockTaskId() ?? "draft",
         },
-        () => this.writeDraft(bookId, context, wordCount),
+        () => this.writeDraft(bookId, context, wordCount, options),
       );
     }
     const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("draft"));
@@ -1176,6 +1193,7 @@ export class PipelineRunner {
         bookDir,
         chapterNumber,
         context ?? this.config.externalContext,
+        { ...options, enforceWriteGate: true, bookId },
       );
 
       const { profile: gp } = await this.loadGenreProfile(book.genre);
@@ -1863,6 +1881,7 @@ export class PipelineRunner {
     wordCount?: number,
     temperatureOverride?: number,
     externalContext?: string,
+    options?: WriteChapterGateOptions,
   ): Promise<ChapterPipelineResult> {
     this.throwIfOperationAborted();
     const existingAbort = this.currentAbortController();
@@ -1874,7 +1893,7 @@ export class PipelineRunner {
           signal: this.currentAbortSignal() ?? abort.signal,
           lockTaskId: this.currentLockTaskId() ?? "write-next",
         },
-        () => this.writeNextChapter(bookId, wordCount, temperatureOverride, externalContext),
+        () => this.writeNextChapter(bookId, wordCount, temperatureOverride, externalContext, options),
       );
     }
     const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("write-next"));
@@ -1886,10 +1905,29 @@ export class PipelineRunner {
         wordCount,
         temperatureOverride,
         externalContext ?? this.config.externalContext,
+        options,
       );
     } finally {
       await releaseLock();
     }
+  }
+
+  async evaluateWritePreflight(
+    bookId: string,
+    options?: WriteChapterGateOptions & { readonly chapterNumber?: number },
+  ): Promise<WritePreflightEvaluation> {
+    const bookDir = this.state.bookDir(bookId);
+    const chapterNumber = options?.chapterNumber ?? await this.state.getNextChapterNumber(bookId);
+    const index = await this.state.loadChapterIndex(bookId);
+    const previous = index.find((chapter) => chapter.number === chapterNumber - 1);
+    return evaluateWritePreflight({
+      bookDir,
+      chapterNumber,
+      previousChapter: previous
+        ? { number: previous.number, status: previous.status }
+        : undefined,
+      skipPreviousApproval: options?.skipPreviousApproval === true,
+    });
   }
 
   async writeChapters(
@@ -1925,6 +1963,9 @@ export class PipelineRunner {
           options.wordCount,
           options.temperatureOverride,
           options.externalContext ?? this.config.externalContext,
+          {
+            skipPreviousApproval: options.skipPreviousApproval === true || index > 0,
+          },
         );
         results.push(result);
         options.onChapterComplete?.(result, results.length, chapterCount);
@@ -1977,6 +2018,7 @@ export class PipelineRunner {
     wordCount?: number,
     temperatureOverride?: number,
     externalContext?: string,
+    options?: WriteChapterGateOptions,
   ): Promise<ChapterPipelineResult> {
     const book = await this.state.loadBookConfig(bookId);
     const bookDir = this.state.bookDir(bookId);
@@ -2010,6 +2052,7 @@ export class PipelineRunner {
         wordCount,
         temperatureOverride,
         externalContext,
+        options,
       );
       const chapterPrefix = `${paddedChapter}_`;
       const chapterFile = (await readdir(join(bookDir, "chapters")))
@@ -2029,6 +2072,7 @@ export class PipelineRunner {
         join("story", "pending_hooks.md"),
         join("story", "snapshots", String(chapterNumber)),
         join("story", "runtime", `chapter-${paddedChapter}.trace.json`),
+        join("story", "runtime", `chapter-${paddedChapter}.packet.json`),
       ].map(toPosixPath);
       await writeProductionRunSnapshot({
         rootDir: bookDir,
@@ -2071,6 +2115,7 @@ export class PipelineRunner {
     wordCount?: number,
     temperatureOverride?: number,
     externalContext?: string,
+    options?: WriteChapterGateOptions,
   ): Promise<ChapterPipelineResult> {
     this.throwIfOperationAborted();
     await this.state.ensureControlDocuments(bookId);
@@ -2085,6 +2130,7 @@ export class PipelineRunner {
       bookDir,
       chapterNumber,
       externalContext,
+      { ...options, enforceWriteGate: true, bookId },
     );
     const reducedControlInput = {
       chapterIntent: writeInput.chapterIntent,
@@ -2106,6 +2152,7 @@ export class PipelineRunner {
     const { validateHookLedger } = await import("../utils/hook-ledger-validator.js");
     const { readBookRules } = await import("../agents/rules-reader.js");
     const parsedBookRules = (await readBookRules(bookDir))?.rules ?? null;
+    const hooksForOverdue = await this.loadHooksForOverdue(bookDir);
 
     // 1. Write chapter
     const writer = new WriterAgent(this.agentCtxFor("writer", bookId));
@@ -2182,7 +2229,7 @@ export class PipelineRunner {
           const ledgerIssues = memoBody
             ? validateHookLedger(memoBody, content)
             : [];
-          return [...baseIssues, ...ledgerIssues];
+          return [...baseIssues, ...ledgerIssues, ...overdueHookAuditIssues(hooksForOverdue, chapterNumber)];
         },
         maxReviewIterations: this.config.writingReviewRetries,
         logWarn: (message) => this.logWarn(pipelineLang, message),
@@ -2411,6 +2458,7 @@ export class PipelineRunner {
       logSnapshotStage: () =>
         this.logStage(stageLanguage, { zh: "更新章节索引与快照", en: "updating chapter index and snapshots" }),
     });
+    await writeChapterAuditSnapshot({ bookDir, chapterNumber, auditResult }).catch(() => undefined);
 
     // 6. Send notification
     if (this.config.notifyChannels && this.config.notifyChannels.length > 0) {
@@ -3330,14 +3378,46 @@ ${matrix}`,
   // Helpers
   // ---------------------------------------------------------------------------
 
+  private async loadHooksForOverdue(bookDir: string): Promise<ReadonlyArray<{
+    readonly hookId: string;
+    readonly startChapter: number;
+    readonly status: string;
+    readonly notes?: string;
+    readonly targetChapter?: number;
+  }>> {
+    try {
+      const raw = await readFile(join(bookDir, "story", "state", "hooks.json"), "utf-8");
+      return HooksStateSchema.parse(JSON.parse(raw)).hooks;
+    } catch {
+      return [];
+    }
+  }
+
   private async prepareWriteInput(
     book: BookConfig,
     bookDir: string,
     chapterNumber: number,
     externalContext?: string,
+    options?: WriteChapterGateOptions & { readonly enforceWriteGate?: boolean; readonly bookId?: string },
   ): Promise<Pick<WriteChapterInput, "externalContext" | "chapterIntent" | "chapterMemo" | "chapterIntentData" | "contextPackage" | "ruleStack"> & {
     readonly contextTrace?: ChapterContextTraceSummary;
   }> {
+    if (options?.enforceWriteGate) {
+      const index = options.bookId
+        ? await this.state.loadChapterIndex(options.bookId)
+        : [];
+      const previous = index.find((chapter) => chapter.number === chapterNumber - 1);
+      const evaluation = await evaluateWritePreflight({
+        bookDir,
+        chapterNumber,
+        previousChapter: previous
+          ? { number: previous.number, status: previous.status }
+          : undefined,
+        skipPreviousApproval: options.skipPreviousApproval === true,
+      });
+      assertWritePreflight(evaluation);
+    }
+
     const { plan, composed } = await this.createGovernedArtifacts(
       book,
       bookDir,
