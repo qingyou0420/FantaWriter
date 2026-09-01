@@ -76,6 +76,8 @@ interface Nav {
   toDashboard: () => void;
   toChat: () => void;
   toBook: (id: string) => void;
+  toBookChat: (id: string) => void;
+  toOutline: (id: string) => void;
   toBookCreate: () => void;
   toServices: () => void;
   toProjectSettings: () => void;
@@ -224,7 +226,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const openSession = (bookId: string, sessionId: string) => {
     setInput("");
     activateSession(sessionId);
-    nav.toBook(bookId);
+    nav.toBookChat(bookId);
     void loadSessionDetail(sessionId);
   };
 
@@ -234,7 +236,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
     setExpandedBooks((prev) => new Set(prev).add(bookId));
     setInput("");
     createDraftSession(bookId, "book");
-    nav.toBook(bookId);
+    nav.toBookChat(bookId);
   };
 
   const openProjectChatSession = (sessionId: string) => {

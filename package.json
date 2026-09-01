@@ -15,7 +15,7 @@
     "dev": "pnpm --filter @fantawriter/desktop dev",
     "start": "pnpm --filter @fantawriter/desktop start",
     "build": "pnpm --filter @actalk/inkos-core build && pnpm --filter @actalk/inkos-studio build",
-    "test": "pnpm --filter @actalk/inkos-core exec vitest run src/__tests__/state-manager.test.ts src/__tests__/write-next-lock.test.ts src/__tests__/write-preflight.test.ts src/__tests__/truth-proposals.test.ts src/__tests__/approve-gate.test.ts src/__tests__/p1-hooks-packet-craft.test.ts src/__tests__/revise-foundation.test.ts && pnpm --filter @fantawriter/desktop test && pnpm --filter @actalk/inkos-studio exec vitest run src/api/lock-and-truth.test.ts src/api/resolve-engine-bind.test.ts src/api/p1-gates.test.ts src/hooks/use-api.test.ts src/lib/error-copy.test.ts",
+    "test": "pnpm --filter @actalk/inkos-core exec vitest run src/__tests__/state-manager.test.ts src/__tests__/write-next-lock.test.ts src/__tests__/write-preflight.test.ts src/__tests__/truth-proposals.test.ts src/__tests__/approve-gate.test.ts src/__tests__/p1-hooks-packet-craft.test.ts src/__tests__/revise-foundation.test.ts && pnpm --filter @fantawriter/desktop test && pnpm --filter @actalk/inkos-studio exec vitest run src/api/lock-and-truth.test.ts src/api/resolve-engine-bind.test.ts src/api/p1-gates.test.ts src/hooks/use-api.test.ts src/hooks/use-hash-route.test.ts src/lib/error-copy.test.ts src/lib/serial-cockpit.test.ts src/App.test.ts",
     "test:core:full": "pnpm --filter @actalk/inkos-core test",
     "test:core": "pnpm --filter @actalk/inkos-core test",
     "test:desktop": "pnpm --filter @fantawriter/desktop test",

@@ -23,6 +23,11 @@ describe("hash route", () => {
       expect(parseHash("#/book/my-novel/settings")).toEqual({ page: "book-settings", bookId: "my-novel" });
     });
 
+    it("parses book outline and chat as dedicated workspaces", () => {
+      expect(parseHash("#/book/my-novel/outline")).toEqual({ page: "book-outline", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/chat")).toEqual({ page: "book-chat", bookId: "my-novel" });
+    });
+
     it("decodes encoded bookId", () => {
       expect(parseHash("#/book/%E4%B9%9D%E9%BE%99")).toEqual({ page: "book", bookId: "九龙" });
     });
@@ -79,6 +84,11 @@ describe("hash route", () => {
 
     it("book-settings -> #/book/{id}/settings", () => {
       expect(routeToHash({ page: "book-settings", bookId: "novel-1" })).toBe("#/book/novel-1/settings");
+    });
+
+    it("book-outline and book-chat have stable hashes", () => {
+      expect(routeToHash({ page: "book-outline", bookId: "novel-1" })).toBe("#/book/novel-1/outline");
+      expect(routeToHash({ page: "book-chat", bookId: "novel-1" })).toBe("#/book/novel-1/chat");
     });
 
     it("encodes Chinese bookId", () => {
