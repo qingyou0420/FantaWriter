@@ -1,5 +1,6 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
+import { SerialCockpitStrip, startDraft, startWriteNext } from "../components/SerialCockpitStrip";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -115,6 +116,14 @@ export function BookDetail({
   // run audit / revise / approve as checkpoint actions). This is scoped to
   // the current book, with project-level mode as the inherited default.
   const [reviewMode, setReviewMode] = useState<"auto" | "manual">("auto");
+  const [skipPreviousApproval, setSkipPreviousApproval] = useState(false);
+  const [preflightOk, setPreflightOk] = useState(true);
+  const [reviewQueue, setReviewQueue] = useState<ReadonlyArray<{
+    chapterNumber: number;
+    severity: string;
+    category: string;
+    description: string;
+  }>>([]);
   useEffect(() => {
     void fetchJson<{ mode?: string }>(`/books/${encodeURIComponent(bookId)}/chapter-review-mode`)
       .then((r) => setReviewMode(r.mode === "manual" ? "manual" : "auto"))
@@ -149,10 +158,20 @@ export function BookDetail({
     }
   }, [bookId, refetch, sse.messages]);
 
+  useEffect(() => {
+    const query = skipPreviousApproval ? "?skipPreviousApproval=1" : "";
+    void fetchJson<{ ok: boolean }>(`/books/${bookId}/write-preflight${query}`)
+      .then((body) => setPreflightOk(body.ok))
+      .catch(() => setPreflightOk(true));
+    void fetchJson<{ items?: Array<{ chapterNumber: number; severity: string; category: string; description: string }> }>(`/books/${bookId}/review-queue`)
+      .then((body) => setReviewQueue(body.items ?? []))
+      .catch(() => setReviewQueue([]));
+  }, [bookId, skipPreviousApproval, data?.nextChapter, activity.lastError]);
+
   const handleWriteNext = async () => {
     setWriteRequestPending(true);
     try {
-      await postApi(`/books/${bookId}/write-next`);
+      await startWriteNext(bookId, skipPreviousApproval);
     } catch (e) {
       setWriteRequestPending(false);
       alert(e instanceof Error ? e.message : "Failed");
@@ -162,7 +181,7 @@ export function BookDetail({
   const handleDraft = async () => {
     setDraftRequestPending(true);
     try {
-      await postApi(`/books/${bookId}/draft`);
+      await startDraft(bookId, skipPreviousApproval);
     } catch (e) {
       setDraftRequestPending(false);
       alert(e instanceof Error ? e.message : "Failed");
@@ -296,8 +315,30 @@ export function BookDetail({
     let failed = 0;
     for (const chapter of reviewable) {
       try {
-        await postApi(`/books/${bookId}/chapters/${chapter.number}/approve`);
-      } catch {
+        await postApi(`/books/${bookId}/chapters/${chapter.number}/approve`, {});
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (/critical/i.test(message) || /APPROVE_BLOCKED/.test(String(error))) {
+          const why = window.prompt(
+            data?.book.language === "en"
+              ? `Chapter ${chapter.number} has critical issues. Type an override reason or cancel.`
+              : `第 ${chapter.number} 章仍有 critical 问题。输入带病定稿原因，或取消。`,
+            "",
+          );
+          if (!why?.trim()) {
+            failed += 1;
+            continue;
+          }
+          try {
+            await postApi(`/books/${bookId}/chapters/${chapter.number}/approve`, {
+              override: { who: "author", why: why.trim() },
+            });
+            continue;
+          } catch {
+            failed += 1;
+            continue;
+          }
+        }
         failed += 1;
       }
     }
@@ -482,15 +523,16 @@ export function BookDetail({
         <div className="flex flex-wrap gap-2">
           <button
             onClick={handleWriteNext}
-            disabled={writing || drafting}
+            disabled={writing || drafting || !preflightOk}
+            title={!preflightOk ? (data?.book.language === "en" ? "Write blocked until outline/intent gates pass" : "落墨被闸：先补大纲/意图或带病续写") : undefined}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
           >
             {writing ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Zap size={16} />}
-            {writing ? t("dash.writing") : t("book.writeNext")}
+            {writing ? t("dash.writing") : (data?.book.language === "en" ? "落墨 · Write next" : "落墨 · 写下一章")}
           </button>
           <button
             onClick={handleDraft}
-            disabled={writing || drafting}
+            disabled={writing || drafting || !preflightOk}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-all border border-border/50 disabled:opacity-50"
           >
             {drafting ? <div className="w-4 h-4 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" /> : <Wand2 size={16} />}
@@ -516,6 +558,33 @@ export function BookDetail({
           </button>
         </div>
       </div>
+
+      <SerialCockpitStrip
+        bookId={bookId}
+        isZh={book.language !== "en"}
+        skipPreviousApproval={skipPreviousApproval}
+        onSkipChange={setSkipPreviousApproval}
+        onJumpOutline={() => nav.toTruth(bookId)}
+        onJumpReview={(chapterNumber) => {
+          if (chapterNumber) nav.toChapter(bookId, chapterNumber);
+        }}
+      />
+
+      {reviewQueue.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 space-y-2" data-testid="review-queue">
+          <div className="text-sm font-medium">{book.language === "en" ? "Review queue" : "审稿队列"}</div>
+          <ul className="space-y-1 text-sm">
+            {reviewQueue.slice(0, 12).map((item, index) => (
+              <li key={`${item.chapterNumber}-${item.category}-${index}`}>
+                <span className={item.severity === "critical" ? "text-destructive font-medium" : "text-muted-foreground"}>
+                  [{item.severity}]
+                </span>{" "}
+                {book.language === "en" ? "Ch." : "第"}{item.chapterNumber} · {item.category}: {item.description}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {(writing || drafting || activity.lastError) && (
         <div
@@ -592,7 +661,7 @@ export function BookDetail({
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50 disabled:opacity-50"
           >
             <FileText size={14} />
-            {bookActionPending === "plan" ? t("common.loading") : t("book.planNext")}
+            {bookActionPending === "plan" ? t("common.loading") : (data?.book.language === "en" ? "织卷 · Plan next" : "织卷 · 规划下一章")}
           </button>
           <button
             onClick={handleCompose}
@@ -729,8 +798,29 @@ export function BookDetail({
                         <>
                           <button
                             onClick={async () => {
-                              try { await postApi(`/books/${bookId}/chapters/${ch.number}/approve`); refetch(); }
-                              catch (e) { alert(e instanceof Error ? e.message : "Approve failed"); }
+                              try {
+                                await postApi(`/books/${bookId}/chapters/${ch.number}/approve`, {});
+                                refetch();
+                              } catch (e) {
+                                const why = window.prompt(
+                                  data?.book.language === "en"
+                                    ? "Critical issues block approve. Type override reason or cancel."
+                                    : "critical 问题阻止通过。输入带病定稿原因，或取消。",
+                                  "",
+                                );
+                                if (!why?.trim()) {
+                                  alert(e instanceof Error ? e.message : "Approve failed");
+                                  return;
+                                }
+                                try {
+                                  await postApi(`/books/${bookId}/chapters/${ch.number}/approve`, {
+                                    override: { who: "author", why: why.trim() },
+                                  });
+                                  refetch();
+                                } catch (retry) {
+                                  alert(retry instanceof Error ? retry.message : "Approve failed");
+                                }
+                              }
                             }}
                             className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
                             title={t("book.approve")}
@@ -743,7 +833,7 @@ export function BookDetail({
                               catch (e) { alert(e instanceof Error ? e.message : "Reject failed"); }
                             }}
                             className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-white transition-all shadow-sm"
-                            title={t("book.reject")}
+                            title={data?.book.language === "en" ? "Rollback this chapter" : "回滚本章"}
                           >
                             <X size={14} />
                           </button>

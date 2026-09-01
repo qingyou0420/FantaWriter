@@ -23,11 +23,18 @@ interface ChipDef {
 const CHIPS: ReadonlyArray<ChipDef> = [
   {
     icon: <Zap size={12} />,
-    labelZh: "写下一章",
-    labelEn: "Write next",
+    labelZh: "落墨 · 写下一章",
+    labelEn: "落墨 · Write next",
     commandZh: "写下一章",
     commandEn: "write next",
     requestedIntent: "write_next",
+  },
+  {
+    icon: <FileOutput size={12} />,
+    labelZh: "织卷 · 规划",
+    labelEn: "织卷 · Plan",
+    commandZh: "规划下一章大纲与正典",
+    commandEn: "plan the next chapter outline",
   },
   {
     icon: <Search size={12} />,

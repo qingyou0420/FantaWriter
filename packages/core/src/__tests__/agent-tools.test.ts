@@ -87,7 +87,7 @@ describe("agent deterministic writing tools", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("writes truth files through the deterministic tool path", async () => {
+  it("stages foundation truth files through the G3 proposal path", async () => {
     const tool = createWriteTruthFileTool({} as never, root, "harbor");
 
     const result = await tool.execute("tool-1", {
@@ -96,8 +96,12 @@ describe("agent deterministic writing tools", () => {
     });
 
     expect(result.content[0]?.type).toBe("text");
+    expect(result.details).toMatchObject({
+      kind: "proposed_truth_diff",
+      fileName: "story_bible.md",
+    });
     await expect(readFile(join(state.bookDir("harbor"), "story", "story_bible.md"), "utf-8"))
-      .resolves.toContain("distrusts the guild");
+      .resolves.not.toContain("distrusts the guild");
   });
 
   it("binds, lists, and unbinds project reference assets for the active book", async () => {
@@ -169,7 +173,7 @@ describe("agent deterministic writing tools", () => {
     )).resolves.toContain("jade seal");
   });
 
-  it("writes role cards through the deterministic truth-file tool path", async () => {
+  it("stages role cards through the G3 truth-file proposal path", async () => {
     const tool = createWriteTruthFileTool({} as never, root, "harbor");
 
     const result = await tool.execute("tool-role", {
@@ -178,8 +182,12 @@ describe("agent deterministic writing tools", () => {
     });
 
     expect(result.content[0]?.type).toBe("text");
+    expect(result.details).toMatchObject({
+      kind: "proposed_truth_diff",
+      fileName: "roles/主要角色/林月.md",
+    });
     await expect(readFile(join(state.bookDir("harbor"), "story", "roles", "主要角色", "林月.md"), "utf-8"))
-      .resolves.toContain("不再相信公会");
+      .rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("renames entities through the deterministic edit controller", async () => {
@@ -1477,8 +1485,9 @@ describe("agent deterministic writing tools", () => {
     });
 
     expect(result.content[0]?.type).toBe("text");
-    await expect(readFile(join(state.bookDir("harbor"), "story", "outline", "story_frame.md"), "utf-8"))
-      .resolves.toContain("central pressure");
+    expect(result.details).toMatchObject({ kind: "proposed_truth_diff", fileName: "outline/story_frame.md" });
+    await expect(readFile(join(state.bookDir("harbor"), "story", "outline", "story_frame.md"), "utf-8").catch(() => ""))
+      .resolves.not.toContain("central pressure");
   });
 
   it("writes Phase 5 role truth files through write_truth_file", async () => {
@@ -1490,8 +1499,9 @@ describe("agent deterministic writing tools", () => {
     });
 
     expect(result.content[0]?.type).toBe("text");
-    await expect(readFile(join(state.bookDir("harbor"), "story", "roles", "major", "Lin Yan.md"), "utf-8"))
-      .resolves.toContain("ledger hidden");
+    expect(result.details).toMatchObject({ kind: "proposed_truth_diff", fileName: "roles/major/Lin Yan.md" });
+    await expect(readFile(join(state.bookDir("harbor"), "story", "roles", "major", "Lin Yan.md"), "utf-8").catch(() => ""))
+      .resolves.not.toContain("ledger hidden");
   });
 
   it("rejects unsafe truth file names", async () => {

@@ -32,6 +32,26 @@ const KNOWN_RUNTIME_REPLACEMENTS: ReadonlyArray<{
     pattern: /This in-process lock is not recovered automatically while the holder is still alive\. Abort the running task or POST \/api\/v1\/books\/:id\/lock\/force-release, then retry\./g,
     replacement: "进程内锁在持有者仍存活时不会自动恢复。请中止正在运行的任务，或使用「强制释放」，然后再试。",
   },
+  {
+    pattern: /volume_map\.md has no entry for chapter (\d+)\./g,
+    replacement: "volume_map.md 没有第 $1 章条目。请先排纲。",
+  },
+  {
+    pattern: /story_frame\.md is empty or still a placeholder\./g,
+    replacement: "story_frame.md 为空或仍是占位。请先写骨架。",
+  },
+  {
+    pattern: /author_intent\.md is empty or still a placeholder\./g,
+    replacement: "author_intent.md 为空或仍是占位。请先写作者意图。",
+  },
+  {
+    pattern: /Chapter (\d+) is not approved\. Pass skipPreviousApproval to continue with 带病续写\./g,
+    replacement: "上一章（第 $1 章）尚未通过。勾选「带病续写」才能继续。",
+  },
+  {
+    pattern: /Chapter (\d+) has (\d+) critical audit issue\(s\) and cannot be approved without an explicit override\./g,
+    replacement: "第 $1 章有 $2 条 critical 审稿问题，未记录覆盖理由不能通过。",
+  },
 ];
 
 export function localizeKnownRuntimeMessage(message: string): string {

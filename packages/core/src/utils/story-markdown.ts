@@ -1,4 +1,5 @@
 import type { Fact, StoredHook, StoredSummary } from "../state/memory-db.js";
+import { parseTargetChapterHint } from "./hook-overdue.js";
 import {
   localizeHookPayoffTiming,
   normalizeStoredHookStatus,
@@ -68,9 +69,17 @@ export function renderHookSnapshot(
       renderCoreHookCell(hook.coreHook === true, language),
       renderHalfLifeCell(hook.halfLifeChapters),
       renderPromotedCell(hook.promoted, language),
-      hook.notes,
+      notesWithTargetChapter(hook),
     ].map((cell) => escapeTableCell(String(cell))).join(" | ")).map((row) => `| ${row} |`),
   ].join("\n");
+}
+
+function notesWithTargetChapter(hook: StoredHook): string {
+  const notes = hook.notes ?? "";
+  const target = hook.targetChapter;
+  if (typeof target !== "number" || !Number.isInteger(target) || target < 1) return notes;
+  if (parseTargetChapterHint(notes) === target) return notes;
+  return notes ? `${notes} target:${target}` : `target:${target}`;
 }
 
 function renderHalfLifeCell(value: number | undefined): string {
@@ -281,6 +290,10 @@ function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook
           ? (row[6] ?? "")
           : (row[7] ?? "");
 
+  const targetChapter = parseTargetChapterHint(notes)
+    ?? parseTargetChapterHint(row[row.length - 1])
+    ?? parseOptionalInt(row.length >= 14 ? row[13] : undefined);
+
   const base = {
     hookId: normalizeHookId(row[0]),
     startChapter: parseStrictChapterInteger(row[1]),
@@ -290,6 +303,7 @@ function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook
     expectedPayoff: row[5] ?? "",
     payoffTiming,
     notes,
+    ...(targetChapter ? { targetChapter } : {}),
   };
 
   if (!phase7) return base;

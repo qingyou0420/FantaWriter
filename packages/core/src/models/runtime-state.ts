@@ -46,6 +46,8 @@ export const HookRecordSchema = z.object({
   // ledgers; architect-seed and consolidator-rerun both populate it going
   // forward. Reviewer uses it to gate critical severity for stale hooks.
   promoted: z.boolean().optional(),
+  // P1 §3.4 — optional payoff chapter. Overdue when current > target and open.
+  targetChapter: z.number().int().min(1).optional(),
 });
 
 export type HookRecord = z.infer<typeof HookRecordSchema>;

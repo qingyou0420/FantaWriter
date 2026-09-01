@@ -31,4 +31,11 @@ describe("localizeKnownRuntimeMessage", () => {
     expect(cliMessage).toContain("INKOS_LLM_API_KEY 未设置");
     expect(cliMessage).not.toMatch(/kkaiapi/i);
   });
+
+  it("localizes P1 write-preflight and approve-blocked messages", () => {
+    expect(localizeKnownRuntimeMessage("volume_map.md has no entry for chapter 2.")).toContain("第 2 章");
+    expect(localizeKnownRuntimeMessage(
+      "Chapter 4 has 3 critical audit issue(s) and cannot be approved without an explicit override.",
+    )).toContain("第 4 章");
+  });
 });

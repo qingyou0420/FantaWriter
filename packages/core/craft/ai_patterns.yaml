@@ -1,0 +1,67 @@
+# FantaWriter default craft — AI-trace patterns
+# Derived from OpenWrite craft/ai_patterns.yaml (Apache-2.0)
+# Copyright (c) LiPu-jpg / OpenWrite authors
+# https://github.com/LiPu-jpg/Openwrite
+# See NOTICE for attribution. Patterns merged into InkOS post-write checks.
+#
+# severity: error → forces revise; still failing → audit-failed (cannot approve)
+
+version: 1
+source: openwrite-ai_patterns
+patterns:
+  - id: not-but
+    name: 不是…而是…
+    severity: error
+    language: zh
+    regex: "不是[^，。！？\\n]{0,30}[，,]?\\s*而是"
+    description: 出现了「不是……而是……」句式
+    suggestion: 改用直述句
+  - id: em-dash
+    name: 禁止破折号
+    severity: error
+    language: zh
+    contains: "——"
+    description: 出现了破折号「——」
+    suggestion: 用逗号或句号断句
+  - id: as-if-frozen
+    name: 空气凝固
+    severity: error
+    language: zh
+    regex: "空气[仿佛好像似乎]?(?:瞬间)?(?:凝固|静止|冻结)"
+    description: 出现了「空气仿佛凝固」式套话
+    suggestion: 用具体的声响、动作或温度写现场
+  - id: gasp
+    name: 倒吸凉气
+    severity: error
+    language: zh
+    regex: "倒吸(?:了)?一口(?:凉气|冷气)"
+    description: 出现了「倒吸一口凉气」套话
+    suggestion: 写具体的身体反应，不要用全员统一动作
+  - id: deep-gaze
+    name: 目光深邃
+    severity: error
+    language: zh
+    regex: "目光(?:深邃|锐利|幽深|如炬)"
+    description: 出现了「目光深邃/锐利」式空形容
+    suggestion: 写对方看向哪里、停了多久
+  - id: mouth-corner
+    name: 嘴角微扬
+    severity: error
+    language: zh
+    regex: "嘴角(?:微微)?(?:上扬|一扬|勾起)"
+    description: 出现了「嘴角微微上扬」套话
+    suggestion: 用一句对白或一个具体动作代替表情标签
+  - id: inner-aside
+    name: 心中暗道
+    severity: error
+    language: zh
+    regex: "心中暗道|心里暗想|不禁心想"
+    description: 出现了「心中暗道」式旁白
+    suggestion: 把判断写成行动或对白
+  - id: tapestry
+    name: AI-tell tapestry
+    severity: error
+    language: en
+    regex: "\\b(delve(?:s|d|ing)?|tapestry|testament|embark(?:s|ed|ing)?)\\b"
+    description: English AI-tell filler (delve/tapestry/testament/embark)
+    suggestion: Replace with a concrete verb or image

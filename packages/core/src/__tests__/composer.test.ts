@@ -51,6 +51,8 @@ describe("ComposerAgent", () => {
       writeFile(join(storyDir, "pending_hooks.md"), "# Pending Hooks\n\n- Why the mentor vanished after the trial.\n", "utf-8"),
       writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep the prose restrained.\n", "utf-8"),
     ]);
+    const { seedWritePreflightCanon } = await import("./helpers/seed-write-preflight-canon.js");
+    await seedWritePreflightCanon(bookDir);
 
     const runtimePath = join(storyDir, "runtime", "chapter-0004.intent.md");
     await writeFile(runtimePath, "# Chapter Intent\n\n## Goal\nBring the focus back to the mentor conflict.\n", "utf-8");

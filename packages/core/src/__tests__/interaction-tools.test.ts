@@ -232,13 +232,21 @@ describe("interaction tools", () => {
       },
     );
 
-    await tools.updateCurrentFocus("harbor", "# Current Focus\n\nBring focus back.\n");
-    await tools.updateAuthorIntent("harbor", "# Author Intent\n\nWrite a harbor mystery.\n");
+    const focus = await tools.updateCurrentFocus("harbor", "# Current Focus\n\nBring focus back.\n") as { kind?: string };
+    const intent = await tools.updateAuthorIntent("harbor", "# Author Intent\n\nWrite a harbor mystery.\n") as { kind?: string };
 
-    await expect(readFile(join(projectRoot, "books", "harbor", "story", "current_focus.md"), "utf-8"))
-      .resolves.toContain("Bring focus back");
-    await expect(readFile(join(projectRoot, "books", "harbor", "story", "author_intent.md"), "utf-8"))
-      .resolves.toContain("harbor mystery");
+    expect(focus.kind).toBe("proposed");
+    expect(intent.kind).toBe("proposed");
+    await expect(readFile(join(projectRoot, "books", "harbor", "story", "current_focus.md"), "utf-8").catch(() => ""))
+      .resolves.not.toContain("Bring focus back");
+    await expect(readFile(join(projectRoot, "books", "harbor", "story", "author_intent.md"), "utf-8").catch(() => ""))
+      .resolves.not.toContain("harbor mystery");
+    const { listTruthProposals } = await import("../interaction/truth-proposals.js");
+    const proposals = await listTruthProposals(join(projectRoot, "books", "harbor"), "pending");
+    expect(proposals.map((proposal) => proposal.fileName).sort()).toEqual([
+      "author_intent.md",
+      "current_focus.md",
+    ]);
   });
 
   it("rejects truth-file writes outside the canonical truth-file allowlist", async () => {

@@ -17,3 +17,13 @@ and are relicensed here as part of the AGPL-3.0-only combined work.
 
 The FantaWriter / 幻想作家 names are product marks and are not licensed as
 trademarks by the AGPL grant.
+
+OpenWrite craft lists
+Copyright (c) LiPu-jpg / OpenWrite authors
+https://github.com/LiPu-jpg/Openwrite
+Licensed under the Apache License, Version 2.0.
+This product includes style-ban / AI-trace pattern lists derived from
+OpenWrite `craft/ai_patterns.yaml` and `craft/humanization.yaml`, merged into
+`packages/core/craft/` as FantaWriter default post-write craft config.
+Changes: subsetted and rewritten as YAML consumed by InkOS post-write checks;
+no Python runtime was copied.

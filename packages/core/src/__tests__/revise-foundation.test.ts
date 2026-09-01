@@ -154,12 +154,20 @@ describe("pipeline.reviseFoundation", () => {
         model: "test-model",
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
-      await runner.reviseFoundation("legacy-book", "升级到段落式");
+      const revised = await runner.reviseFoundation("legacy-book", "升级到段落式");
 
-      // New files created
-      await expect(access(join(bookDir, "story", "outline", "story_frame.md"))).resolves.not.toThrow();
-      await expect(access(join(bookDir, "story", "outline", "volume_map.md"))).resolves.not.toThrow();
-      await expect(access(join(bookDir, "story", "roles", "主要角色", "林辞.md"))).resolves.not.toThrow();
+      // G3: live canon is not written until confirm
+      await expect(access(join(bookDir, "story", "outline", "story_frame.md"))).rejects.toThrow();
+      await expect(access(join(bookDir, "story", "outline", "volume_map.md"))).rejects.toThrow();
+      await expect(access(join(bookDir, "story", "roles", "主要角色", "林辞.md"))).rejects.toThrow();
+      expect(revised.proposals.map((proposal) => proposal.fileName)).toEqual(
+        expect.arrayContaining([
+          "outline/story_frame.md",
+          "outline/volume_map.md",
+          "roles/主要角色/林辞.md",
+          "book_rules.md",
+        ]),
+      );
       // Backup exists
       const storyEntries = await readdir(join(bookDir, "story"));
       const backupDir = storyEntries.find((e) => e.startsWith(".backup-phase4-"));
@@ -320,8 +328,8 @@ describe("pipeline.reviseFoundation", () => {
     }
   });
 
-  it("revise 清空旧 role 文件（删除/改名角色后旧卡片不残留）", async () => {
-    const { mkdtemp, writeFile, mkdir, rm, access } = await import("node:fs/promises");
+  it("revise 不删除旧 role 文件（删除须等 G3 确认，P1 不自动抹掉现网角色卡）", async () => {
+    const { mkdtemp, writeFile, mkdir, rm, access, readFile } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const { PipelineRunner } = await import("../pipeline/runner.js");
@@ -372,16 +380,18 @@ describe("pipeline.reviseFoundation", () => {
         state, projectRoot: root, client: TEST_CLIENT, model: "test-model",
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
-      await runner.reviseFoundation("ghost-book", "精简角色");
+      const revised = await runner.reviseFoundation("ghost-book", "精简角色");
 
-      // 新输出的 2 个 role 应该存在
-      await expect(access(join(bookDir, "story", "roles", "主要角色", "林辞.md"))).resolves.not.toThrow();
-      await expect(access(join(bookDir, "story", "roles", "主要角色", "改名后的B.md"))).resolves.not.toThrow();
-      // 旧的 5 个 role 文件里没出现在新输出的，**必须被清空**
-      await expect(access(join(bookDir, "story", "roles", "主要角色", "要删掉的人.md"))).rejects.toThrow();
-      await expect(access(join(bookDir, "story", "roles", "主要角色", "要改名的A.md"))).rejects.toThrow();
-      await expect(access(join(bookDir, "story", "roles", "次要角色", "老配角.md"))).rejects.toThrow();
-      await expect(access(join(bookDir, "story", "roles", "次要角色", "要删掉的次要.md"))).rejects.toThrow();
+      // Live roles stay until confirm. New cards are staged, not written.
+      await expect(readFile(join(bookDir, "story", "roles", "主要角色", "林辞.md"), "utf-8")).resolves.toBe("老卡");
+      await expect(access(join(bookDir, "story", "roles", "主要角色", "改名后的B.md"))).rejects.toThrow();
+      await expect(access(join(bookDir, "story", "roles", "主要角色", "要删掉的人.md"))).resolves.not.toThrow();
+      await expect(access(join(bookDir, "story", "roles", "主要角色", "要改名的A.md"))).resolves.not.toThrow();
+      await expect(access(join(bookDir, "story", "roles", "次要角色", "老配角.md"))).resolves.not.toThrow();
+      await expect(access(join(bookDir, "story", "roles", "次要角色", "要删掉的次要.md"))).resolves.not.toThrow();
+      expect(revised.proposals.map((proposal) => proposal.fileName)).toEqual(
+        expect.arrayContaining(["roles/主要角色/林辞.md", "roles/主要角色/改名后的B.md"]),
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -507,6 +517,92 @@ describe("pipeline.reviseFoundation", () => {
       await expect(access(join(bookDir, "story", backupDir!, "outline", "story_frame.md"))).resolves.not.toThrow();
       await expect(access(join(bookDir, "story", backupDir!, "outline", "volume_map.md"))).resolves.not.toThrow();
       await expect(access(join(bookDir, "story", backupDir!, "roles", "主要角色", "A.md"))).resolves.not.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("architect revise does not write foundation until G3 confirm", async () => {
+    const { mkdtemp, writeFile, mkdir, rm, readFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { PipelineRunner } = await import("../pipeline/runner.js");
+    const { StateManager } = await import("../state/manager.js");
+    const { applyTruthProposal, listTruthProposals } = await import("../interaction/truth-proposals.js");
+
+    const root = await mkdtemp(join(tmpdir(), "inkos-revise-g3-"));
+    const bookDir = join(root, "books", "gated-book");
+
+    try {
+      await mkdir(join(bookDir, "story", "outline"), { recursive: true });
+      await mkdir(join(bookDir, "story", "roles", "主要角色"), { recursive: true });
+      await writeFile(join(bookDir, "story", "outline", "story_frame.md"), "## 主题\n旧骨架", "utf-8");
+      await writeFile(join(bookDir, "story", "outline", "volume_map.md"), "## 第 1-10 章 旧卷", "utf-8");
+      await writeFile(join(bookDir, "story", "roles", "主要角色", "林辞.md"), "旧卡", "utf-8");
+      await writeFile(join(bookDir, "story", "book_rules.md"), "# 旧规则\n", "utf-8");
+      await writeFile(join(bookDir, "story", "character_matrix.md"), "", "utf-8");
+      await writeFile(join(bookDir, "story", "story_bible.md"), "", "utf-8");
+      await writeFile(join(bookDir, "story", "volume_outline.md"), "", "utf-8");
+      await writeFile(join(bookDir, "book.json"), JSON.stringify({
+        id: "gated-book", title: "G3", platform: "qidian", genre: "xuanhuan",
+        status: "active", targetChapters: 50, chapterWordCount: 3000, language: "zh",
+        createdAt: "2026-04-01T00:00:00.000Z", updatedAt: "2026-04-10T00:00:00.000Z",
+      }), "utf-8");
+
+      vi.spyOn(ArchitectAgent.prototype, "generateFoundation").mockResolvedValue({
+        storyBible: "(shim)", volumeOutline: "(shim)",
+        bookRules: "---\nversion: \"1.0\"\n---\n新规则\n",
+        currentState: "", pendingHooks: "| hook_id |",
+        storyFrame: "## 主题\n新骨架不该直接落盘",
+        volumeMap: "## 第 1-10 章 新卷",
+        roles: [{ tier: "major", name: "林辞", content: "新卡不该直接落盘" }],
+      });
+      vi.spyOn(FoundationReviewerAgent.prototype, "review").mockResolvedValue({
+        passed: true, totalScore: 90, dimensions: [], overallFeedback: "ok",
+      } as unknown as Awaited<ReturnType<FoundationReviewerAgent["review"]>>);
+
+      const state = new StateManager(root);
+      const runner = new PipelineRunner({
+        state, projectRoot: root, client: TEST_CLIENT, model: "test-model",
+      } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
+
+      const revised = await runner.reviseFoundation("gated-book", "改骨架");
+
+      await expect(readFile(join(bookDir, "story", "outline", "story_frame.md"), "utf-8"))
+        .resolves.toBe("## 主题\n旧骨架");
+      await expect(readFile(join(bookDir, "story", "outline", "volume_map.md"), "utf-8"))
+        .resolves.toBe("## 第 1-10 章 旧卷");
+      await expect(readFile(join(bookDir, "story", "roles", "主要角色", "林辞.md"), "utf-8"))
+        .resolves.toBe("旧卡");
+      await expect(readFile(join(bookDir, "story", "book_rules.md"), "utf-8"))
+        .resolves.toBe("# 旧规则\n");
+
+      const pending = await listTruthProposals(bookDir, "pending");
+      expect(pending.length).toBeGreaterThan(0);
+      expect(revised.proposals).toHaveLength(pending.length);
+      expect(pending.map((proposal) => proposal.fileName)).toEqual(
+        expect.arrayContaining([
+          "outline/story_frame.md",
+          "outline/volume_map.md",
+          "roles/主要角色/林辞.md",
+          "book_rules.md",
+        ]),
+      );
+
+      const frameProposal = pending.find((proposal) => proposal.fileName === "outline/story_frame.md");
+      expect(frameProposal).toBeDefined();
+      await applyTruthProposal({
+        bookDir,
+        proposalId: frameProposal!.id,
+        currentContent: await readFile(join(bookDir, "story", "outline", "story_frame.md"), "utf-8"),
+        writeFile: async (fileName, content) => {
+          await writeFile(join(bookDir, "story", fileName), content, "utf-8");
+        },
+      });
+      await expect(readFile(join(bookDir, "story", "outline", "story_frame.md"), "utf-8"))
+        .resolves.toContain("新骨架不该直接落盘");
+      await expect(readFile(join(bookDir, "story", "outline", "volume_map.md"), "utf-8"))
+        .resolves.toBe("## 第 1-10 章 旧卷");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -111,6 +111,8 @@ async function seedStoryFiles(bookDir: string): Promise<void> {
     writeFile(join(storyDir, "emotional_arcs.md"), "# Arcs\n", "utf-8"),
     writeFile(join(storyDir, "character_matrix.md"), "# Matrix\n", "utf-8"),
   ]);
+  const { seedWritePreflightCanon } = await import("./helpers/seed-write-preflight-canon.js");
+  await seedWritePreflightCanon(bookDir);
 }
 
 describe("PlannerAgent.planChapter memo generation", () => {

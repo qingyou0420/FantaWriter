@@ -20,7 +20,7 @@ import {
 } from "../components/ai-elements/reasoning";
 import { ChatMessage } from "../components/chat/ChatMessage";
 import { QuickActions } from "../components/chat/QuickActions";
-import { ToolExecutionSteps, type ProposedActionDetails } from "../components/chat/ToolExecutionSteps";
+import { ToolExecutionSteps, type ProposedActionDetails, type ProposedTruthDiffDetails } from "../components/chat/ToolExecutionSteps";
 import {
   buildNarrativeForecastRecheckInstruction,
   buildNarrativeForecastSelectionInstruction,
@@ -679,6 +679,24 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
     });
   };
 
+  const handleConfirmTruthDiff = async (details: ProposedTruthDiffDetails) => {
+    markProposalResolved(details.execId, "confirmed");
+    try {
+      await postApi(`/books/${details.bookId}/truth-proposals/${details.proposalId}/apply`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Apply failed");
+    }
+  };
+
+  const handleRejectTruthDiff = async (details: ProposedTruthDiffDetails) => {
+    markProposalResolved(details.execId, "rejected");
+    try {
+      await postApi(`/books/${details.bookId}/truth-proposals/${details.proposalId}/reject`);
+    } catch {
+      // card already locked
+    }
+  };
+
   const handleRejectProposedAction = async (details: ProposedActionDetails) => {
     markProposalResolved(details.execId, "rejected");
     if (!activeSessionId) return;
@@ -884,6 +902,8 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                               executions={item.parts.map(p => p.execution)}
                               onProposedAction={handleProposedAction}
                               onRejectProposedAction={handleRejectProposedAction}
+                              onConfirmTruthDiff={handleConfirmTruthDiff}
+                              onRejectTruthDiff={handleRejectTruthDiff}
                               onOpenFilmStudio={nav.toFilmStudio}
                               onSelectNarrativeBranch={handleSelectNarrativeBranch}
                               onRecheckNarrativeForecast={handleRecheckNarrativeForecast}

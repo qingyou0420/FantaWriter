@@ -37,6 +37,11 @@ export const ChapterMetaSchema = z.object({
     completionTokens: z.number().int().default(0),
     totalTokens: z.number().int().default(0),
   }).optional(),
+  approveOverride: z.object({
+    who: z.string().min(1),
+    when: z.string().datetime(),
+    why: z.string().min(1),
+  }).optional(),
 });
 
 export type ChapterMeta = z.infer<typeof ChapterMetaSchema>;

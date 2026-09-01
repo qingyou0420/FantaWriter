@@ -32,6 +32,8 @@ describe("truth authority", () => {
     expect(classifyTruthAuthority("author_intent.md")).toBe("direction");
     expect(classifyTruthAuthority("current_focus.md")).toBe("direction");
     expect(classifyTruthAuthority("story_bible.md")).toBe("foundation");
+    expect(classifyTruthAuthority("outline/volume_map.md")).toBe("foundation");
+    expect(classifyTruthAuthority("roles/major/Lin.md")).toBe("foundation");
     expect(classifyTruthAuthority("book_rules.md")).toBe("rules");
     expect(classifyTruthAuthority("current_state.md")).toBe("runtime-truth");
   });

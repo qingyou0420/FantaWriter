@@ -980,17 +980,18 @@ export function createSubAgentTool(
               }
               const targetBookId = resolveToolBookId("architect", bookId, activeBookId);
               progress(`Revising foundation for "${targetBookId}"...`);
-              await runPipelineWithAgentContext(
+              const revised = await runPipelineWithAgentContext(
                 pipeline,
                 _signal,
                 activatedSkills,
                 () => pipeline.reviseFoundation(targetBookId, feedback ?? instruction),
               );
-              progress(`Foundation revised for "${targetBookId}".`);
+              const proposalCount = revised?.proposals?.length ?? 0;
+              progress(`Foundation revise staged for "${targetBookId}" (${proposalCount} proposal(s)).`);
               return textResult(
                 sessionIsZh
-                  ? `Book "${targetBookId}" 架构稿已按要求重写。原书的条目式架构稿已备份到 story/.backup-phase4-<时间戳>/。`
-                  : `Book "${targetBookId}" foundation has been rewritten as requested. The previous itemized foundation was backed up to story/.backup-phase4-<timestamp>/.`,
+                  ? `Book "${targetBookId}" 架构稿改写已暂存为 ${proposalCount} 个待确认提案（story/runtime/proposals/），未直接覆写典籍。点确认后才会落盘。原书已备份到 story/.backup-phase4-<时间戳>/。`
+                  : `Book "${targetBookId}" foundation rewrite is staged as ${proposalCount} proposal(s) under story/runtime/proposals/ and was not written yet. Confirm to apply. Previous foundation was backed up to story/.backup-phase4-<timestamp>/.`,
               );
             }
             const confirmedTitle = createBookPayload?.title?.trim();
@@ -3328,14 +3329,43 @@ export function createWriteTruthFileTool(
   const tools = createDeterministicInteractionTools(pipeline, projectRoot);
   return {
     name: "write_truth_file",
-    description: "Replace a truth/control file under story/ using deterministic project tools.",
+    description: "Replace a truth/control file under story/ using deterministic project tools. Direction, foundation, and rules files are staged as a diff for the author to confirm — they are not written until the confirm button is pressed.",
     label: "Write Truth File",
     parameters: WriteTruthFileParams,
-    async execute(_toolCallId, params): Promise<AgentToolResult<undefined>> {
+    async execute(_toolCallId, params): Promise<AgentToolResult<unknown>> {
       try {
         const bookId = resolveToolBookId("write_truth_file", params.bookId, activeBookId);
         const fileName = assertSafeTruthFileName(params.fileName);
-        await tools.writeTruthFile(bookId, fileName, params.content);
+        const result = await tools.writeTruthFile(bookId, fileName, params.content) as {
+          readonly kind?: string;
+          readonly fileName?: string;
+          readonly proposal?: {
+            readonly id: string;
+            readonly baseRevision: string;
+            readonly unifiedDiff: string;
+          };
+        };
+        if (result.kind === "unchanged") {
+          return textResult(`No change for "${fileName}" on "${bookId}".`);
+        }
+        if (result.kind === "proposed" && result.proposal) {
+          return textResult(
+            [
+              `Staged canon change for "${fileName}". Waiting for a confirm button — the file was not written.`,
+              `Proposal ${result.proposal.id}.`,
+            ].join("\n"),
+            {
+              kind: "proposed_truth_diff",
+              proposalId: result.proposal.id,
+              bookId,
+              fileName,
+              baseRevision: result.proposal.baseRevision,
+              unifiedDiff: result.proposal.unifiedDiff,
+              title: `确认改正典 · ${fileName}`,
+              summary: `将改写 story/${fileName}。刷新后提案仍在 story/runtime/proposals/。`,
+            },
+          );
+        }
         return textResult(`Updated "${fileName}" for "${bookId}".`);
       } catch (err: any) {
         return textResult(`write_truth_file failed: ${err?.message ?? String(err)}`);

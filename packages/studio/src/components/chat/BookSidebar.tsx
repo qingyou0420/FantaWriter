@@ -14,6 +14,7 @@ import { ChaptersSection } from "../sidebar/ChaptersSection";
 import { CharacterSection } from "../sidebar/CharacterSection";
 import { FrontmatterCards } from "../sidebar/FrontmatterCards";
 import { PendingHooksView } from "../sidebar/PendingHooksView";
+import { SerialCockpitStrip } from "../SerialCockpitStrip";
 import {
   FOUNDATION_FILE_LABELS,
   frontmatterToCards,
@@ -251,6 +252,13 @@ function PanelView({ bookId, theme: _theme, t, sse }: BookSidebarProps) {
         </div>
       )}
       <ProgressSection sse={sse} />
+      <SerialCockpitStrip
+        bookId={bookId}
+        isZh={isZh}
+        skipPreviousApproval={false}
+        onSkipChange={() => undefined}
+        showSkip={false}
+      />
       <ChaptersSection bookId={bookId} isZh={isZh} />
       <CharacterSection bookId={bookId} />
       <FoundationSection bookId={bookId} />

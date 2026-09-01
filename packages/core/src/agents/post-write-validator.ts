@@ -8,6 +8,7 @@
 import { analyzeChapterCadence } from "../utils/chapter-cadence.js";
 import type { BookRules } from "../models/book-rules.js";
 import type { GenreProfile } from "../models/genre-profile.js";
+import { matchCraftPatterns } from "../craft/load-craft-rules.js";
 
 export interface PostWriteViolation {
   readonly rule: string;
@@ -298,6 +299,7 @@ export function validatePostWrite(
   const personViolation = detectNarrativePersonDrift(content, bookRules);
   if (personViolation) violations.push(personViolation);
 
+  violations.push(...collectCraftViolations(content, "zh"));
   return violations;
 }
 
@@ -537,7 +539,31 @@ function validatePostWriteEnglish(
     }
   }
 
+  violations.push(...collectCraftViolations(content, "en"));
   return violations;
+}
+
+function collectCraftViolations(
+  content: string,
+  language: "zh" | "en",
+): PostWriteViolation[] {
+  const alreadyCovered = new Set([
+    "not-but",
+    "em-dash",
+    "sermon",
+    "report-terms",
+    "collective-shock",
+  ]);
+  return matchCraftPatterns(content, language)
+    .filter((hit) => !alreadyCovered.has(hit.id))
+    .map((hit) => ({
+      rule: hit.name,
+      severity: hit.severity,
+      description: hit.matched && hit.matched !== hit.name
+        ? `${hit.description}（${hit.matched}）`
+        : hit.description,
+      suggestion: hit.suggestion,
+    }));
 }
 
 function appendParagraphShapeWarnings(

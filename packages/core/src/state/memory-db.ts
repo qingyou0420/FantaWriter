@@ -64,6 +64,7 @@ export interface StoredHook {
   // (architect-time structural rules + consolidator-time advanced_count rule).
   // Reviewer uses this to gate critical-severity escalation.
   readonly promoted?: boolean;
+  readonly targetChapter?: number;
 }
 
 export class MemoryDB {

@@ -1,0 +1,49 @@
+# FantaWriter default craft — humanization / style bans
+# Derived from OpenWrite craft/humanization.yaml (Apache-2.0)
+# Copyright (c) LiPu-jpg / OpenWrite authors
+# https://github.com/LiPu-jpg/Openwrite
+# See NOTICE for attribution.
+
+version: 1
+source: openwrite-humanization
+bans:
+  - id: sermon
+    name: 作者说教
+    severity: error
+    language: zh
+    words: ["显然", "毋庸置疑", "不言而喻", "众所周知", "不难看出"]
+    description: 出现了作者说教词
+    suggestion: 删掉评判，只留人物能看见的事实
+  - id: report-terms
+    name: 分析报告术语
+    severity: error
+    language: zh
+    words:
+      - 核心动机
+      - 信息边界
+      - 信息落差
+      - 核心风险
+      - 利益最大化
+      - 当前处境
+      - 行为约束
+      - 性格过滤
+      - 情绪外化
+      - 锚定效应
+      - 沉没成本
+      - 认知共鸣
+    description: 正文出现了分析报告式术语
+    suggestion: 改成人物能说出口或做出来的事
+  - id: collective-shock
+    name: 全场震惊
+    severity: error
+    language: zh
+    regex: "(?:全场|众人|所有人|在场的人)[，,]?(?:都|全|齐齐|纷纷)?(?:震惊|惊呆|倒吸凉气|目瞪口呆|哗然|惊呼)"
+    description: 出现了全场统一震惊
+    suggestion: 只写一两个人的具体反应
+  - id: meta-narration
+    name: 元叙事旁白
+    severity: error
+    language: zh
+    regex: "(?:到这里[，,]?算是|接下来[，,]?(?:就是|将会|即将)|读者[，,]?(?:可能|应该|也许)|我们[，,]?(?:可以|不妨|来看))"
+    description: 出现了编剧/作者旁白
+    suggestion: 回到场面，不要对读者解释剧情

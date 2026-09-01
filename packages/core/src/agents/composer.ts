@@ -22,6 +22,7 @@ import {
   isProtectedContextSource,
 } from "../utils/context-assembly.js";
 import { writeGovernedRuntimeArtifacts } from "../utils/runtime-writer.js";
+import { classifyHookDue, selectDueHooks } from "../utils/hook-overdue.js";
 import { estimateTextTokens, type LLMClient } from "../llm/provider.js";
 import type { ContextCompressionCallback } from "../models/context-compression.js";
 import type {
@@ -86,6 +87,7 @@ export interface ComposeChapterOutput {
   readonly contextPath: string;
   readonly ruleStackPath: string;
   readonly tracePath: string;
+  readonly packetPath?: string;
 }
 
 export async function composeGovernedChapter(input: ComposeChapterInput): Promise<ComposeChapterOutput> {
@@ -138,6 +140,7 @@ export async function composeGovernedChapter(input: ComposeChapterInput): Promis
     contextPath,
     ruleStackPath,
     tracePath,
+    packetPath,
   } = await writeGovernedRuntimeArtifacts({
     runtimeDir,
     chapterNumber: input.chapterNumber,
@@ -153,6 +156,7 @@ export async function composeGovernedChapter(input: ComposeChapterInput): Promis
     contextPath,
     ruleStackPath,
     tracePath,
+    packetPath,
   };
 }
 
@@ -687,6 +691,26 @@ async function collectSelectedContext(
         .filter(Boolean)
         .join(" | "),
     }));
+    const dueHooks = selectDueHooks(memorySelection.activeHooks, plan.intent.chapter);
+    const overdueEntries = dueHooks
+      .filter((hook) => !hookDebtEntries.some((entry) => entry.source === `runtime/hook_debt#${hook.hookId}`))
+      .map((hook) => {
+        const due = classifyHookDue(hook, plan.intent.chapter);
+        return {
+          source: `runtime/hook_debt#${hook.hookId}`,
+          reason: due === "overdue"
+            ? (language === "en" ? "Overdue hook — must be addressed this chapter." : "逾期伏笔，本章必须处理。")
+            : (language === "en" ? "Hook is due this chapter." : "伏笔于本章到期。"),
+          excerpt: [
+            hook.hookId,
+            hook.type,
+            hook.status,
+            due,
+            hook.expectedPayoff,
+            "targetChapter" in hook && hook.targetChapter ? `target=${hook.targetChapter}` : undefined,
+          ].filter(Boolean).join(" | "),
+        };
+      });
     const volumeSummaryEntries = memorySelection.volumeSummaries.map((summary) => ({
       source: `story/volume_summaries.md#${summary.anchor}`,
       reason: "Carry forward long-span arc memory compressed from earlier volumes.",
@@ -700,6 +724,7 @@ async function collectSelectedContext(
         ...outlineEntries,
         ...canonEntries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
         ...trailEntries,
+        ...overdueEntries,
         ...hookDebtEntries,
         ...factEntries,
         ...summaryEntries,

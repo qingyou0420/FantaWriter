@@ -4,6 +4,7 @@
  */
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -55,7 +56,7 @@ const port = await pickPort();
 const token = "smoke-token";
 const args = existsSync(entryJs)
   ? [entryJs, root]
-  : ["--import", "tsx", entryTs, root];
+  : ["--import", createRequire(join(repoRoot, "packages", "studio", "package.json")).resolve("tsx"), entryTs, root];
 
 const child = spawn(process.execPath, args, {
   env: {

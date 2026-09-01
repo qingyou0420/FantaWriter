@@ -137,6 +137,22 @@ import {
   type RequestedIntent,
   type SessionKind,
   type AgentSessionAttachment,
+  WritePreflightError,
+  ApproveBlockedError,
+  TruthRevisionConflictError,
+  TruthProposalNotFoundError,
+  evaluateWritePreflight,
+  approveChapterRecord,
+  buildReviewQueue,
+  readChapterAuditSnapshot,
+  listTruthProposals,
+  applyTruthProposal,
+  rejectTruthProposal,
+  loadTruthProposal,
+  selectDueHooks,
+  classifyHookDue,
+  parsePendingHooksMarkdown,
+  chapterRuntimeSlug,
 } from "@actalk/inkos-core";
 import { isConfirmedProductionAction } from "../shared/confirmed-production.js";
 import { summarizeToolResult } from "../shared/tool-result.js";
@@ -2719,8 +2735,44 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
         409,
       );
     }
+    if (error instanceof WritePreflightError) {
+      return c.json({
+        error: {
+          code: error.code,
+          message: error.message,
+          details: { chapterNumber: error.chapterNumber, reasons: error.reasons },
+        },
+      }, 409);
+    }
+    if (error instanceof ApproveBlockedError) {
+      return c.json({
+        error: {
+          code: error.code,
+          message: error.message,
+          details: { chapterNumber: error.chapterNumber, criticalCount: error.criticalCount, issues: error.issues },
+        },
+      }, 409);
+    }
+    if (error instanceof TruthRevisionConflictError) {
+      return c.json({
+        error: {
+          code: error.code,
+          message: error.message,
+          details: { fileName: error.fileName, expectedRevision: error.expectedRevision, actualRevision: error.actualRevision },
+        },
+      }, 409);
+    }
+    if (error instanceof TruthProposalNotFoundError) {
+      return c.json({ error: { code: error.code, message: error.message } }, 404);
+    }
     if (error instanceof ApiError) {
-      return c.json({ error: { code: error.code, message: error.message } }, error.status as 400);
+      return c.json({
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.details !== undefined ? { details: error.details } : {}),
+        },
+      }, error.status as 400);
     }
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("LLM API key not set") || message.includes("INKOS_LLM_API_KEY not set")) {
@@ -3363,8 +3415,23 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     if (!isSafeBookId(id)) {
       throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
     }
-    const body = await c.req.json<{ wordCount?: number }>().catch(() => ({ wordCount: undefined }));
+    const body = await c.req.json<{ wordCount?: number; skipPreviousApproval?: boolean }>().catch(() => ({
+      wordCount: undefined as number | undefined,
+      skipPreviousApproval: undefined as boolean | undefined,
+    }));
     throwIfBookBusy(id);
+    {
+      const chapterNumber = await state.getNextChapterNumber(id);
+      const index = await state.loadChapterIndex(id);
+      const previous = index.find((chapter) => chapter.number === chapterNumber - 1);
+      const evaluation = await evaluateWritePreflight({
+        bookDir: state.bookDir(id),
+        chapterNumber,
+        previousChapter: previous ? { number: previous.number, status: previous.status } : undefined,
+        skipPreviousApproval: body.skipPreviousApproval === true,
+      });
+      if (!evaluation.ok) throw new WritePreflightError(evaluation);
+    }
     const taskId = `write-next-${id}-${randomUUID()}`;
     const taskController = new AbortController();
     activeConfirmedTasks.set(taskId, taskController);
@@ -3393,7 +3460,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           resolveLock();
         },
       },
-      () => pipeline.writeNextChapter(id, body.wordCount),
+      () => pipeline.writeNextChapter(id, body.wordCount, undefined, undefined, {
+        skipPreviousApproval: body.skipPreviousApproval === true,
+      }),
     );
     void work.then(
       (result) => {
@@ -3438,8 +3507,24 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     if (!isSafeBookId(id)) {
       throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
     }
-    const body = await c.req.json<{ wordCount?: number; context?: string }>().catch(() => ({ wordCount: undefined, context: undefined }));
+    const body = await c.req.json<{ wordCount?: number; context?: string; skipPreviousApproval?: boolean }>().catch(() => ({
+      wordCount: undefined as number | undefined,
+      context: undefined as string | undefined,
+      skipPreviousApproval: undefined as boolean | undefined,
+    }));
     throwIfBookBusy(id);
+    {
+      const chapterNumber = await state.getNextChapterNumber(id);
+      const index = await state.loadChapterIndex(id);
+      const previous = index.find((chapter) => chapter.number === chapterNumber - 1);
+      const evaluation = await evaluateWritePreflight({
+        bookDir: state.bookDir(id),
+        chapterNumber,
+        previousChapter: previous ? { number: previous.number, status: previous.status } : undefined,
+        skipPreviousApproval: body.skipPreviousApproval === true,
+      });
+      if (!evaluation.ok) throw new WritePreflightError(evaluation);
+    }
     const taskId = `draft-${id}-${randomUUID()}`;
     const taskController = new AbortController();
     activeConfirmedTasks.set(taskId, taskController);
@@ -3468,7 +3553,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           resolveLock();
         },
       },
-      () => pipeline.writeDraft(id, body.context, body.wordCount),
+      () => pipeline.writeDraft(id, body.context, body.wordCount, {
+        skipPreviousApproval: body.skipPreviousApproval === true,
+      }),
     );
     void work.then(
       (result) => {
@@ -3505,6 +3592,112 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
 
     return c.json({ status: "drafting", bookId: id, taskId });
+  });
+
+  app.get("/api/v1/books/:id/write-preflight", async (c) => {
+    const id = c.req.param("id");
+    const skip = c.req.query("skipPreviousApproval") === "1" || c.req.query("skipPreviousApproval") === "true";
+    const chapterNumber = await state.getNextChapterNumber(id);
+    const index = await state.loadChapterIndex(id);
+    const previous = index.find((chapter) => chapter.number === chapterNumber - 1);
+    return c.json(await evaluateWritePreflight({
+      bookDir: state.bookDir(id),
+      chapterNumber,
+      previousChapter: previous ? { number: previous.number, status: previous.status } : undefined,
+      skipPreviousApproval: skip,
+    }));
+  });
+
+  app.get("/api/v1/books/:id/review-queue", async (c) => {
+    const id = c.req.param("id");
+    const severity = c.req.query("severity") as "critical" | "warning" | "info" | undefined;
+    const chapterNumber = c.req.query("chapter") ? Number.parseInt(c.req.query("chapter")!, 10) : undefined;
+    const chapters = await state.loadChapterIndex(id);
+    const items = await buildReviewQueue({
+      bookDir: state.bookDir(id),
+      chapters,
+      severity: severity === "critical" || severity === "warning" || severity === "info" ? severity : undefined,
+      chapterNumber: Number.isInteger(chapterNumber) ? chapterNumber : undefined,
+    });
+    return c.json({ items });
+  });
+
+  app.get("/api/v1/books/:id/chapters/:num/packet", async (c) => {
+    const id = c.req.param("id");
+    const num = parseInt(c.req.param("num"), 10);
+    const packetPath = join(state.bookDir(id), "story", "runtime", `${chapterRuntimeSlug(num)}.packet.json`);
+    try {
+      const raw = await readFile(packetPath, "utf-8");
+      return c.json(JSON.parse(raw));
+    } catch {
+      throw new ApiError(404, "PACKET_NOT_FOUND", `No packet snapshot for chapter ${num}`);
+    }
+  });
+
+  app.get("/api/v1/books/:id/hooks/due", async (c) => {
+    const id = c.req.param("id");
+    const chapterNumber = await state.getNextChapterNumber(id);
+    let hooks: Array<{
+      hookId: string;
+      startChapter: number;
+      status: string;
+      notes?: string;
+      targetChapter?: number;
+      type?: string;
+    }> = [];
+    try {
+      const raw = await readFile(join(state.bookDir(id), "story", "state", "hooks.json"), "utf-8");
+      hooks = (JSON.parse(raw) as { hooks?: typeof hooks }).hooks ?? [];
+    } catch {
+      hooks = [];
+    }
+    if (hooks.length === 0) {
+      const markdown = await readFile(join(state.bookDir(id), "story", "pending_hooks.md"), "utf-8").catch(() => "");
+      hooks = parsePendingHooksMarkdown(markdown);
+    }
+    const due = selectDueHooks(hooks, chapterNumber).map((hook) => ({
+      ...hook,
+      dueState: classifyHookDue(hook, chapterNumber),
+    }));
+    return c.json({ chapterNumber, hooks: due });
+  });
+
+  app.get("/api/v1/books/:id/truth-proposals", async (c) => {
+    const id = c.req.param("id");
+    const queried = c.req.query("status");
+    const status = queried === "applied" || queried === "rejected" ? queried : "pending";
+    const proposals = await listTruthProposals(state.bookDir(id), status);
+    return c.json({ proposals });
+  });
+
+  app.post("/api/v1/books/:id/truth-proposals/:proposalId/apply", async (c) => {
+    const id = c.req.param("id");
+    const proposalId = c.req.param("proposalId");
+    throwIfBookBusy(id);
+    const staged = await loadTruthProposal(state.bookDir(id), proposalId);
+    const releaseLock = await state.acquireBookLock(id, { stage: "truth-proposal-apply" });
+    try {
+      const proposal = await applyTruthProposal({
+        bookDir: state.bookDir(id),
+        proposalId,
+        currentContent: await readFile(join(state.bookDir(id), "story", staged.fileName), "utf-8").catch(() => ""),
+        writeFile: async (fileName, content) => {
+          const target = join(state.bookDir(id), "story", fileName);
+          await mkdir(dirname(target), { recursive: true });
+          await writeFile(target, content, "utf-8");
+        },
+      });
+      return c.json({ ok: true, proposal });
+    } finally {
+      await releaseLock();
+    }
+  });
+
+  app.post("/api/v1/books/:id/truth-proposals/:proposalId/reject", async (c) => {
+    const id = c.req.param("id");
+    const proposalId = c.req.param("proposalId");
+    const proposal = await rejectTruthProposal(state.bookDir(id), proposalId);
+    return c.json({ ok: true, proposal });
   });
 
   app.get("/api/v1/books/:id/eval", async (c) => {
@@ -3579,9 +3772,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
     try {
       const pipeline = new PipelineRunner(await buildPipelineConfig());
-      await pipeline.reviseFoundation(id, feedback.trim());
+      const revised = await pipeline.reviseFoundation(id, feedback.trim());
       broadcast("foundation:revised", { bookId: id });
-      return c.json({ ok: true });
+      return c.json({ ok: true, proposals: revised.proposals });
     } catch (e) {
       broadcast("foundation:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
@@ -3591,17 +3784,32 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   app.post("/api/v1/books/:id/chapters/:num/approve", async (c) => {
     const id = c.req.param("id");
     const num = parseInt(c.req.param("num"), 10);
+    const body = await c.req.json<{ override?: { who?: string; why?: string } }>().catch(() => ({
+      override: undefined as { who?: string; why?: string } | undefined,
+    }));
 
-    try {
-      const index = await state.loadChapterIndex(id);
-      const updated = index.map((ch) =>
-        ch.number === num ? { ...ch, status: "approved" as const } : ch,
-      );
-      await state.saveChapterIndex(id, updated);
-      return c.json({ ok: true, chapterNumber: num, status: "approved" });
-    } catch (e) {
-      return c.json({ error: String(e) }, 500);
+    const index = await state.loadChapterIndex(id);
+    const chapter = index.find((ch) => ch.number === num);
+    if (!chapter) {
+      throw new ApiError(404, "CHAPTER_NOT_FOUND", `Chapter ${num} not found`);
     }
+    const audit = await readChapterAuditSnapshot(state.bookDir(id), num);
+    const override = body.override?.why?.trim()
+      ? {
+          who: body.override.who?.trim() || "author",
+          when: new Date().toISOString(),
+          why: body.override.why.trim(),
+        }
+      : undefined;
+    const approved = approveChapterRecord({ chapter, audit, override });
+    const updated = index.map((ch) => (ch.number === num ? approved : ch));
+    await state.saveChapterIndex(id, updated);
+    return c.json({
+      ok: true,
+      chapterNumber: num,
+      status: "approved",
+      ...(override ? { override } : {}),
+    });
   });
 
   app.post("/api/v1/books/:id/chapters/:num/reject", async (c) => {
