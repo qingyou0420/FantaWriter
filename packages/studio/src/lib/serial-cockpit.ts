@@ -6,7 +6,6 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { findVolumeMapEntry } from "@actalk/inkos-core";
 import {
   findChapterNode,
   findVolumeForChapter,
@@ -248,9 +247,8 @@ export function assembleCockpitSnapshot(input: CockpitAssemblyInput): CockpitSna
   const nextNumber = input.preflight.chapterNumber || input.nextChapter;
   const chapterNode = findChapterNode(tree, nextNumber);
   const volume = findVolumeForChapter(tree, nextNumber);
-  const mapLine = findVolumeMapEntry(input.volumeMap, nextNumber);
   const title = chapterNode?.title || null;
-  const oneLine = (chapterNode?.summary || mapLine || "").trim() || null;
+  const oneLine = (chapterNode?.summary || chapterNode?.title || "").trim() || null;
 
   const last = input.chapters
     .filter((chapter) => chapter.number === nextNumber - 1)
