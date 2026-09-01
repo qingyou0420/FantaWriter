@@ -3416,7 +3416,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     if (!isSafeBookId(id)) {
       throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
     }
-    const body = await c.req.json<{ wordCount?: number; skipPreviousApproval?: boolean }>().catch(() => ({ wordCount: undefined }));
+    const body = await c.req.json<{ wordCount?: number; skipPreviousApproval?: boolean }>().catch(() => ({
+      wordCount: undefined as number | undefined,
+      skipPreviousApproval: undefined as boolean | undefined,
+    }));
+    throwIfBookBusy(id);
     {
       const chapterNumber = await state.getNextChapterNumber(id);
       const index = await state.loadChapterIndex(id);
@@ -3429,7 +3433,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       });
       if (!evaluation.ok) throw new WritePreflightError(evaluation);
     }
-    throwIfBookBusy(id);
     const taskId = `write-next-${id}-${randomUUID()}`;
     const taskController = new AbortController();
     activeConfirmedTasks.set(taskId, taskController);
@@ -3505,7 +3508,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     if (!isSafeBookId(id)) {
       throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
     }
-    const body = await c.req.json<{ wordCount?: number; context?: string; skipPreviousApproval?: boolean }>().catch(() => ({ wordCount: undefined, context: undefined }));
+    const body = await c.req.json<{ wordCount?: number; context?: string; skipPreviousApproval?: boolean }>().catch(() => ({
+      wordCount: undefined as number | undefined,
+      context: undefined as string | undefined,
+      skipPreviousApproval: undefined as boolean | undefined,
+    }));
+    throwIfBookBusy(id);
     {
       const chapterNumber = await state.getNextChapterNumber(id);
       const index = await state.loadChapterIndex(id);
@@ -3518,7 +3526,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       });
       if (!evaluation.ok) throw new WritePreflightError(evaluation);
     }
-    throwIfBookBusy(id);
     const taskId = `draft-${id}-${randomUUID()}`;
     const taskController = new AbortController();
     activeConfirmedTasks.set(taskId, taskController);
@@ -3779,7 +3786,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   app.post("/api/v1/books/:id/chapters/:num/approve", async (c) => {
     const id = c.req.param("id");
     const num = parseInt(c.req.param("num"), 10);
-    const body = await c.req.json<{ override?: { who?: string; why?: string } }>().catch(() => ({}));
+    const body = await c.req.json<{ override?: { who?: string; why?: string } }>().catch(() => ({
+      override: undefined as { who?: string; why?: string } | undefined,
+    }));
 
     const index = await state.loadChapterIndex(id);
     const chapter = index.find((ch) => ch.number === num);

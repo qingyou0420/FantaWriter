@@ -87,7 +87,7 @@ describe("agent deterministic writing tools", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("writes truth files through the deterministic tool path", async () => {
+  it("stages foundation truth files through the G3 proposal path", async () => {
     const tool = createWriteTruthFileTool({} as never, root, "harbor");
 
     const result = await tool.execute("tool-1", {
@@ -96,8 +96,12 @@ describe("agent deterministic writing tools", () => {
     });
 
     expect(result.content[0]?.type).toBe("text");
+    expect(result.details).toMatchObject({
+      kind: "proposed_truth_diff",
+      fileName: "story_bible.md",
+    });
     await expect(readFile(join(state.bookDir("harbor"), "story", "story_bible.md"), "utf-8"))
-      .resolves.toContain("distrusts the guild");
+      .resolves.not.toContain("distrusts the guild");
   });
 
   it("binds, lists, and unbinds project reference assets for the active book", async () => {
@@ -1482,7 +1486,7 @@ describe("agent deterministic writing tools", () => {
 
     expect(result.content[0]?.type).toBe("text");
     expect(result.details).toMatchObject({ kind: "proposed_truth_diff", fileName: "outline/story_frame.md" });
-    await expect(readFile(join(state.bookDir("harbor"), "story", "outline", "story_frame.md"), "utf-8"))
+    await expect(readFile(join(state.bookDir("harbor"), "story", "outline", "story_frame.md"), "utf-8").catch(() => ""))
       .resolves.not.toContain("central pressure");
   });
 
