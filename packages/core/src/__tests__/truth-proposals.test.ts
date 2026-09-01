@@ -11,6 +11,8 @@ import {
   TruthRevisionConflictError,
 } from "../interaction/truth-proposals.js";
 import { classifyTruthAuthority } from "../interaction/truth-authority.js";
+import { createInteractionToolsFromDeps } from "../interaction/project-tools.js";
+import { StateManager } from "../state/manager.js";
 
 describe("G3 canon diff proposals", () => {
   const temps: string[] = [];
@@ -83,6 +85,40 @@ describe("G3 canon diff proposals", () => {
     expect(applied.status).toBe("applied");
     await expect(readFile(join(bookDir, "story", "author_intent.md"), "utf-8")).resolves.toContain("B");
     expect(contentRevision("# intent\n\nA\n")).toHaveLength(64);
+  });
+
+  it("writeTruthFile and edit_truth share the G3 sink — canon is not written until apply", async () => {
+    const root = await mkdtemp(join(tmpdir(), "fw-g3-sink-"));
+    temps.push(root);
+    const state = new StateManager(root);
+    const bookDir = state.bookDir("harbor");
+    await mkdir(join(bookDir, "story", "outline"), { recursive: true });
+    await writeFile(join(bookDir, "story", "outline", "story_frame.md"), "# Story Frame\n\nOld.\n", "utf-8");
+    await writeFile(join(bookDir, "book.json"), JSON.stringify({
+      id: "harbor",
+      title: "Harbor",
+      platform: "other",
+      genre: "other",
+      status: "active",
+      targetChapters: 10,
+      chapterWordCount: 2000,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    }), "utf-8");
+
+    const tools = createInteractionToolsFromDeps({} as never, state);
+    const result = await tools.writeTruthFile(
+      "harbor",
+      "outline/story_frame.md",
+      "# Story Frame\n\nNew pressure line.\n",
+    ) as { kind?: string; proposal?: { id: string } };
+
+    expect(result.kind).toBe("proposed");
+    expect(result.proposal?.id).toBeTruthy();
+    await expect(readFile(join(bookDir, "story", "outline", "story_frame.md"), "utf-8"))
+      .resolves.toContain("Old.");
+    const proposals = await listTruthProposals(bookDir, "pending");
+    expect(proposals).toHaveLength(1);
   });
 
   it("still writes runtime-truth immediately", async () => {

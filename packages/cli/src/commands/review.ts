@@ -1,5 +1,13 @@
 import { Command } from "commander";
-import { StateManager, formatLengthCount, readGenreProfile, resolveLengthCountingMode } from "@actalk/inkos-core";
+import {
+  ApproveBlockedError,
+  StateManager,
+  approveChapterRecord,
+  formatLengthCount,
+  readChapterAuditSnapshot,
+  readGenreProfile,
+  resolveLengthCountingMode,
+} from "@actalk/inkos-core";
 import { findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const reviewCommand = new Command("review")
@@ -109,6 +117,8 @@ reviewCommand
   .description("Approve a chapter and commit its state: approve [book-id] <chapter>")
   .argument("<args...>", "Book ID (optional) and chapter number")
   .option("--json", "Output JSON")
+  .option("--override-why <why>", "Approve despite critical audit issues (G5 override reason)")
+  .option("--override-who <who>", "Who is recording the G5 override")
   .action(async (args: ReadonlyArray<string>, opts) => {
     try {
       const root = findProjectRoot();
@@ -122,21 +132,41 @@ reviewCommand
         throw new Error(`Chapter ${chapterNum} not found in "${bookId}"`);
       }
 
-      index[idx] = {
-        ...index[idx]!,
-        status: "approved",
-        updatedAt: new Date().toISOString(),
-      };
+      const now = new Date().toISOString();
+      const override = typeof opts.overrideWhy === "string" && opts.overrideWhy.trim()
+        ? {
+            who: (typeof opts.overrideWho === "string" && opts.overrideWho.trim()) || "author",
+            when: now,
+            why: opts.overrideWhy.trim(),
+          }
+        : undefined;
+      const audit = await readChapterAuditSnapshot(state.bookDir(bookId), chapterNum);
+      index[idx] = approveChapterRecord({
+        chapter: index[idx]!,
+        audit,
+        override,
+        now,
+      });
       await state.saveChapterIndex(bookId, index);
 
       if (opts.json) {
-        log(JSON.stringify({ bookId, chapter: chapterNum, status: "approved" }));
+        log(JSON.stringify({
+          bookId,
+          chapter: chapterNum,
+          status: "approved",
+          ...(override ? { override } : {}),
+        }));
       } else {
         log(`Chapter ${chapterNum} approved (state committed).`);
       }
     } catch (e) {
       if (opts.json) {
-        log(JSON.stringify({ error: String(e) }));
+        log(JSON.stringify({
+          error: String(e),
+          ...(e instanceof ApproveBlockedError
+            ? { code: e.code, chapter: e.chapterNumber, criticalCount: e.criticalCount }
+            : {}),
+        }));
       } else {
         logError(`Failed to approve: ${e}`);
       }
@@ -149,6 +179,8 @@ reviewCommand
   .description("Approve all pending chapters for a book")
   .argument("[book-id]", "Book ID (auto-detected if only one book)")
   .option("--json", "Output JSON")
+  .option("--override-why <why>", "Approve despite critical audit issues (G5 override reason)")
+  .option("--override-who <who>", "Who is recording the G5 override")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
       const root = findProjectRoot();
@@ -158,25 +190,40 @@ reviewCommand
       const index = [...(await state.loadChapterIndex(bookId))];
       let count = 0;
       const now = new Date().toISOString();
+      const override = typeof opts.overrideWhy === "string" && opts.overrideWhy.trim()
+        ? {
+            who: (typeof opts.overrideWho === "string" && opts.overrideWho.trim()) || "author",
+            when: now,
+            why: opts.overrideWhy.trim(),
+          }
+        : undefined;
 
-      const updated = index.map((ch) => {
+      const updated = [];
+      for (const ch of index) {
         if (ch.status === "ready-for-review" || ch.status === "audit-failed") {
+          const audit = await readChapterAuditSnapshot(state.bookDir(bookId), ch.number);
+          updated.push(approveChapterRecord({ chapter: ch, audit, override, now }));
           count++;
-          return { ...ch, status: "approved" as const, updatedAt: now };
+          continue;
         }
-        return ch;
-      });
+        updated.push(ch);
+      }
 
       await state.saveChapterIndex(bookId, updated);
 
       if (opts.json) {
-        log(JSON.stringify({ bookId, approvedCount: count }));
+        log(JSON.stringify({ bookId, approvedCount: count, ...(override ? { override } : {}) }));
       } else {
         log(`${count} chapter(s) approved.`);
       }
     } catch (e) {
       if (opts.json) {
-        log(JSON.stringify({ error: String(e) }));
+        log(JSON.stringify({
+          error: String(e),
+          ...(e instanceof ApproveBlockedError
+            ? { code: e.code, chapter: e.chapterNumber, criticalCount: e.criticalCount }
+            : {}),
+        }));
       } else {
         logError(`Failed to approve: ${e}`);
       }

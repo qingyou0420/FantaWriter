@@ -291,6 +291,8 @@ async function createRunnerFixture(
   await state.saveBookConfig(bookId, book);
   await mkdir(join(state.bookDir(bookId), "story"), { recursive: true });
   await mkdir(join(state.bookDir(bookId), "chapters"), { recursive: true });
+  const { seedWritePreflightCanon } = await import("./helpers/seed-write-preflight-canon.js");
+  await seedWritePreflightCanon(state.bookDir(bookId));
 
   const runner = new PipelineRunner({
     client: {

@@ -200,6 +200,8 @@ describe("PipelineRunner structured-state memory sync", () => {
     const storyDir = join(bookDir, "story");
     await mkdir(storyDir, { recursive: true });
     await mkdir(join(bookDir, "chapters"), { recursive: true });
+    const { seedWritePreflightCanon } = await import("./helpers/seed-write-preflight-canon.js");
+    await seedWritePreflightCanon(bookDir);
     await Promise.all([
       writeFile(join(storyDir, "current_state.md"), createStateCard({
         chapter: 0,

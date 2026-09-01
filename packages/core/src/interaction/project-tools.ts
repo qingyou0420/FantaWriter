@@ -1,5 +1,3 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import type {
   InteractionEvent,
   Logger,
@@ -14,9 +12,9 @@ import { executeEditTransaction } from "./edit-controller.js";
 import { defaultChapterLength } from "../utils/length-metrics.js";
 import type { InteractionRuntimeTools } from "./runtime.js";
 import { writeExportArtifact } from "./export-artifact.js";
-import { safeChildPath } from "../utils/path-safety.js";
 import { deriveBookIdFromTitle } from "../utils/book-id.js";
 import { normalizePlatformOrOther } from "../models/book.js";
+import { commitOrStageTruthFile } from "./truth-proposals.js";
 
 const SAFE_TRUTH_FLAT_FILE_NAMES = new Set([
   "author_intent.md",
@@ -521,19 +519,48 @@ export function createInteractionToolsFromDeps(
     }),
     updateCurrentFocus: async (bookId, content) => withBookMutationLock(state, bookId, async () => {
       await state.ensureControlDocuments(bookId);
-      await writeFile(join(state.bookDir(bookId), "story", "current_focus.md"), content, "utf-8");
+      return commitOrStageTruthFile({
+        bookDir: state.bookDir(bookId),
+        bookId,
+        fileName: "current_focus.md",
+        content,
+      });
     }),
     updateAuthorIntent: async (bookId, content) => withBookMutationLock(state, bookId, async () => {
       await state.ensureControlDocuments(bookId);
-      await writeFile(join(state.bookDir(bookId), "story", "author_intent.md"), content, "utf-8");
+      return commitOrStageTruthFile({
+        bookDir: state.bookDir(bookId),
+        bookId,
+        fileName: "author_intent.md",
+        content,
+      });
     }),
     writeTruthFile: async (bookId, fileName, content) => withBookMutationLock(state, bookId, async () => {
       await state.ensureControlDocuments(bookId);
-      const storyDir = join(state.bookDir(bookId), "story");
       const safeFileName = assertSafeTruthFileName(fileName);
-      const targetPath = safeChildPath(storyDir, safeFileName);
-      await mkdir(dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, content, "utf-8");
+      const result = await commitOrStageTruthFile({
+        bookDir: state.bookDir(bookId),
+        bookId,
+        fileName: safeFileName,
+        content,
+      });
+      if (result.kind !== "proposed") return result;
+      return {
+        ...result,
+        __interaction: {
+          responseText: `Staged canon change for "${safeFileName}". Waiting for confirm — the file was not written.`,
+          details: {
+            kind: "proposed_truth_diff",
+            proposalId: result.proposal.id,
+            bookId,
+            fileName: safeFileName,
+            baseRevision: result.proposal.baseRevision,
+            unifiedDiff: result.proposal.unifiedDiff,
+            title: `确认改正典 · ${safeFileName}`,
+            summary: `将改写 story/${safeFileName}。刷新后提案仍在 story/runtime/proposals/。`,
+          },
+        },
+      };
     }),
   };
 }

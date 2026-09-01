@@ -142,8 +142,7 @@ import {
   TruthRevisionConflictError,
   TruthProposalNotFoundError,
   evaluateWritePreflight,
-  assertChapterApprovable,
-  applyApproveOverride,
+  approveChapterRecord,
   buildReviewQueue,
   readChapterAuditSnapshot,
   listTruthProposals,
@@ -3773,9 +3772,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
     try {
       const pipeline = new PipelineRunner(await buildPipelineConfig());
-      await pipeline.reviseFoundation(id, feedback.trim());
+      const revised = await pipeline.reviseFoundation(id, feedback.trim());
       broadcast("foundation:revised", { bookId: id });
-      return c.json({ ok: true });
+      return c.json({ ok: true, proposals: revised.proposals });
     } catch (e) {
       broadcast("foundation:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
@@ -3802,12 +3801,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           why: body.override.why.trim(),
         }
       : undefined;
-    assertChapterApprovable({ chapter, audit, override });
-    const updated = index.map((ch) =>
-      ch.number === num
-        ? (override ? applyApproveOverride(ch, override) : { ...ch, status: "approved" as const, updatedAt: new Date().toISOString() })
-        : ch,
-    );
+    const approved = approveChapterRecord({ chapter, audit, override });
+    const updated = index.map((ch) => (ch.number === num ? approved : ch));
     await state.saveChapterIndex(id, updated);
     return c.json({
       ok: true,

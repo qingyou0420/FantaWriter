@@ -97,6 +97,27 @@ export function applyApproveOverride(
   };
 }
 
+/**
+ * Shared G5 approve path for Studio HTTP and `inkos review approve`.
+ * Critical issues block unless an explicit override is recorded.
+ */
+export function approveChapterRecord(params: {
+  readonly chapter: ChapterMeta;
+  readonly audit?: Pick<AuditResult, "issues">;
+  readonly override?: ApproveOverride;
+  readonly now?: string;
+}): ChapterMeta {
+  assertChapterApprovable(params);
+  if (params.override?.why.trim()) {
+    return applyApproveOverride(params.chapter, params.override);
+  }
+  return {
+    ...params.chapter,
+    status: "approved",
+    updatedAt: params.now ?? new Date().toISOString(),
+  };
+}
+
 export async function writeChapterAuditSnapshot(params: {
   readonly bookDir: string;
   readonly chapterNumber: number;

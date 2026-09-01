@@ -7,7 +7,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import { classifyTruthAuthority, type TruthAuthority } from "./truth-authority.js";
 
@@ -203,3 +203,49 @@ export async function removeTruthProposal(bookDir: string, proposalId: string): 
 }
 
 export type GatedTruthAuthority = Extract<TruthAuthority, "direction" | "foundation" | "rules">;
+
+export type CommitTruthFileResult =
+  | { readonly kind: "written"; readonly fileName: string }
+  | { readonly kind: "unchanged"; readonly fileName: string }
+  | { readonly kind: "proposed"; readonly fileName: string; readonly proposal: TruthProposal };
+
+/**
+ * Single write path for story/ truth files. Direction / foundation / rules
+ * are staged as G3 proposals unless `forceImmediate` (confirm-apply).
+ */
+export async function commitOrStageTruthFile(params: {
+  readonly bookDir: string;
+  readonly bookId: string;
+  readonly fileName: string;
+  readonly content: string;
+  readonly forceImmediate?: boolean;
+}): Promise<CommitTruthFileResult> {
+  const fileName = params.fileName;
+  if (
+    !fileName
+    || fileName.startsWith("/")
+    || fileName.includes("\\")
+    || fileName.includes("\0")
+    || fileName.includes("..")
+  ) {
+    throw new Error(`Invalid truth file name: ${JSON.stringify(fileName)}`);
+  }
+  const targetPath = join(params.bookDir, "story", fileName);
+  const currentContent = await readFile(targetPath, "utf-8").catch(() => "");
+  if (!params.forceImmediate && requiresCanonDiffGate(fileName)) {
+    if (currentContent === params.content) {
+      return { kind: "unchanged", fileName };
+    }
+    const proposal = await stageTruthProposal({
+      bookDir: params.bookDir,
+      bookId: params.bookId,
+      fileName,
+      proposedContent: params.content,
+      currentContent,
+    });
+    return { kind: "proposed", fileName, proposal };
+  }
+  await mkdir(dirname(targetPath), { recursive: true });
+  await writeFile(targetPath, params.content, "utf-8");
+  return { kind: "written", fileName };
+}

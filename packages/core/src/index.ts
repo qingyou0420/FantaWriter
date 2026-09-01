@@ -14,6 +14,7 @@ export {
 export {
   assertChapterApprovable,
   applyApproveOverride,
+  approveChapterRecord,
   buildReviewQueue,
   collectCriticalIssues,
   parseAuditIssueLine,
@@ -27,6 +28,7 @@ export {
 export {
   requiresCanonDiffGate,
   stageTruthProposal,
+  commitOrStageTruthFile,
   loadTruthProposal,
   listTruthProposals,
   applyTruthProposal,
@@ -37,6 +39,7 @@ export {
   TruthProposalNotFoundError,
   TruthProposalSchema,
   type TruthProposal,
+  type CommitTruthFileResult,
 } from "./interaction/truth-proposals.js";
 export {
   classifyHookDue,

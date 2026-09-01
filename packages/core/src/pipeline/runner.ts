@@ -56,6 +56,7 @@ import {
 } from "./chapter-state-recovery.js";
 import { persistChapterArtifacts } from "./chapter-persistence.js";
 import { writeChapterAuditSnapshot } from "./approve-gate.js";
+import type { TruthProposal } from "../interaction/truth-proposals.js";
 import {
   assertWritePreflight,
   evaluateWritePreflight,
@@ -881,7 +882,9 @@ export class PipelineRunner {
    * the authoritative outline/ and roles/ files instead of the compatibility
    * shims, otherwise large role/story details can be lost during rewrite.
    */
-  async reviseFoundation(bookId: string, feedback: string): Promise<void> {
+  async reviseFoundation(bookId: string, feedback: string): Promise<{
+    readonly proposals: ReadonlyArray<TruthProposal>;
+  }> {
     const bookDir = this.state.bookDir(bookId);
     const storyDir = join(bookDir, "story");
     const isPhase5 = await isNewLayoutBook(bookDir);
@@ -965,13 +968,15 @@ export class PipelineRunner {
     await mkdir(join(storyDir, "roles", "次要角色"), { recursive: true });
 
     const { profile: gp } = await this.loadGenreProfile(book.genre);
-    await architect.writeFoundationFiles(
+    const written = await architect.writeFoundationFiles(
       bookDir,
       foundation,
       gp.numericalSystem,
       book.language ?? gp.language,
       "revise",
+      { bookId },
     );
+    return { proposals: written.proposals };
   }
 
   private async copyDirShallow(src: string, dest: string): Promise<void> {

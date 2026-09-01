@@ -2,8 +2,9 @@ import { BaseAgent } from "./base.js";
 import type { BookConfig, FanficMode } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { readGenreProfile } from "./rules-reader.js";
-import { writeFile, mkdir, rm } from "node:fs/promises";
+import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { commitOrStageTruthFile, type TruthProposal } from "../interaction/truth-proposals.js";
 import { renderHookSnapshot } from "../utils/memory-retrieval.js";
 import {
   shouldPromoteHook,
@@ -845,7 +846,8 @@ You MUST emit all **5 SECTION blocks in order**: story_frame → volume_map → 
     _numericalSystem: boolean = true,
     language: "zh" | "en" = "zh",
     mode: "init" | "revise" = "init",
-  ): Promise<void> {
+    options?: { readonly bookId?: string },
+  ): Promise<{ readonly proposals: ReadonlyArray<TruthProposal> }> {
     const storyDir = join(bookDir, "story");
     const outlineDir = join(storyDir, "outline");
     const rolesDir = join(storyDir, "roles");
@@ -860,11 +862,6 @@ You MUST emit all **5 SECTION blocks in order**: story_frame → volume_map → 
     ]);
 
     const writes: Array<Promise<void>> = [];
-
-    const storyFrameBody = output.storyFrame ?? output.storyBible;
-    const volumeMap = output.volumeMap ?? output.volumeOutline;
-    const rhythmPrinciples = output.rhythmPrinciples ?? "";
-    const roles = output.roles ?? [];
     const isPhase5Output = Boolean(output.storyFrame?.trim());
 
     if (mode === "revise" && !isPhase5Output) {
@@ -875,10 +872,22 @@ You MUST emit all **5 SECTION blocks in order**: story_frame → volume_map → 
     }
 
     if (mode === "revise") {
-      await rm(rolesMajorDir, { recursive: true, force: true });
-      await rm(rolesMinorDir, { recursive: true, force: true });
-      await mkdir(rolesMajorDir, { recursive: true });
-      await mkdir(rolesMinorDir, { recursive: true });
+      const bookId = options?.bookId;
+      if (!bookId) {
+        throw new Error("writeFoundationFiles revise mode requires bookId so G3 can stage canon diffs.");
+      }
+      const planned = this.collectPhase5FoundationWrites(output, language);
+      const proposals: TruthProposal[] = [];
+      for (const file of planned) {
+        const result = await commitOrStageTruthFile({
+          bookDir,
+          bookId,
+          fileName: file.fileName,
+          content: file.content,
+        });
+        if (result.kind === "proposed") proposals.push(result.proposal);
+      }
+      return { proposals };
     }
 
     if (!isPhase5Output) {
@@ -911,52 +920,12 @@ You MUST emit all **5 SECTION blocks in order**: story_frame → volume_map → 
       }
 
       await Promise.all(writes);
-      return;
+      return { proposals: [] };
     }
 
-    const storyFrame = storyFrameBody.trim();
-
-    // Phase 5 primary prose files
-    writes.push(writeFile(join(outlineDir, "story_frame.md"), storyFrame, "utf-8"));
-    writes.push(writeFile(join(outlineDir, "volume_map.md"), volumeMap, "utf-8"));
-    // Phase 5 consolidation: rhythm principles live inside the last paragraph
-    // of volume_map. A separate 节奏原则.md / rhythm_principles.md file is only
-    // written when the architect happened to produce a standalone block (legacy
-    // 7-section output / foundation-reviewer round-trips that still split it
-    // out). Skipping the empty write avoids 0-byte files that mislead the UI
-    // and fight against the "no duplication" rule — readers who need the rhythm
-    // content already pull it from volume_map's closing paragraph.
-    if (rhythmPrinciples.trim()) {
-      const rhythmFileName = language === "en" ? "rhythm_principles.md" : "节奏原则.md";
-      writes.push(writeFile(join(outlineDir, rhythmFileName), rhythmPrinciples, "utf-8"));
+    for (const file of this.collectPhase5FoundationWrites(output, language)) {
+      writes.push(writeFile(join(storyDir, file.fileName), file.content, "utf-8"));
     }
-
-    // Roles — one file per character
-    for (const role of roles) {
-      const targetDir = role.tier === "major" ? rolesMajorDir : rolesMinorDir;
-      const safeName = role.name.replace(/[/\\:*?"<>|]/g, "_").trim();
-      if (!safeName) continue;
-      writes.push(writeFile(join(targetDir, `${safeName}.md`), role.content, "utf-8"));
-    }
-
-    // Compat shims — these are pointer files, not authoritative content.
-    writes.push(writeFile(
-      join(storyDir, "story_bible.md"),
-      this.buildStoryBibleShim(language),
-      "utf-8",
-    ));
-    writes.push(writeFile(
-      join(storyDir, "character_matrix.md"),
-      this.buildCharacterMatrixShim(roles, language),
-      "utf-8",
-    ));
-
-    // Cleanup #1: volume_outline.md mirror removed. All readers now resolve
-    // through readVolumeMap() in utils/outline-paths.ts, which prefers
-    // outline/volume_map.md and falls back to legacy volume_outline.md for
-    // books initialized before Phase 5.
-
-    writes.push(writeFile(join(storyDir, "book_rules.md"), output.bookRules.trim() + "\n", "utf-8"));
 
     // Runtime state files.
     // Phase 5 consolidation: the architect no longer emits a current_state
@@ -995,6 +964,35 @@ You MUST emit all **5 SECTION blocks in order**: story_frame → volume_map → 
     // compatibility with existing callers.
 
     await Promise.all(writes);
+    return { proposals: [] };
+  }
+
+  private collectPhase5FoundationWrites(
+    output: ArchitectOutput,
+    language: "zh" | "en",
+  ): Array<{ fileName: string; content: string }> {
+    const storyFrame = (output.storyFrame ?? output.storyBible).trim();
+    const volumeMap = output.volumeMap ?? output.volumeOutline;
+    const rhythmPrinciples = output.rhythmPrinciples ?? "";
+    const roles = output.roles ?? [];
+    const files: Array<{ fileName: string; content: string }> = [
+      { fileName: "outline/story_frame.md", content: storyFrame },
+      { fileName: "outline/volume_map.md", content: volumeMap },
+    ];
+    if (rhythmPrinciples.trim()) {
+      const rhythmFileName = language === "en" ? "outline/rhythm_principles.md" : "outline/节奏原则.md";
+      files.push({ fileName: rhythmFileName, content: rhythmPrinciples });
+    }
+    for (const role of roles) {
+      const dir = role.tier === "major" ? "roles/主要角色" : "roles/次要角色";
+      const safeName = role.name.replace(/[/\\:*?"<>|]/g, "_").trim();
+      if (!safeName) continue;
+      files.push({ fileName: `${dir}/${safeName}.md`, content: role.content });
+    }
+    files.push({ fileName: "story_bible.md", content: this.buildStoryBibleShim(language) });
+    files.push({ fileName: "character_matrix.md", content: this.buildCharacterMatrixShim(roles, language) });
+    files.push({ fileName: "book_rules.md", content: output.bookRules.trim() + "\n" });
+    return files;
   }
 
   /**

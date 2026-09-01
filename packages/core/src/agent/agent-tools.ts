@@ -10,10 +10,6 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { StateManager } from "../state/manager.js";
 import { deleteLatestChapter } from "../state/chapter-delete.js";
 import { assertSafeTruthFileName, createInteractionToolsFromDeps } from "../interaction/project-tools.js";
-import {
-  requiresCanonDiffGate,
-  stageTruthProposal,
-} from "../interaction/truth-proposals.js";
 import { writeExportArtifact } from "../interaction/export-artifact.js";
 import { assertSafeBookId, deriveBookIdFromTitle } from "../utils/book-id.js";
 import { safeChildPath } from "../utils/path-safety.js";
@@ -984,17 +980,18 @@ export function createSubAgentTool(
               }
               const targetBookId = resolveToolBookId("architect", bookId, activeBookId);
               progress(`Revising foundation for "${targetBookId}"...`);
-              await runPipelineWithAgentContext(
+              const revised = await runPipelineWithAgentContext(
                 pipeline,
                 _signal,
                 activatedSkills,
                 () => pipeline.reviseFoundation(targetBookId, feedback ?? instruction),
               );
-              progress(`Foundation revised for "${targetBookId}".`);
+              const proposalCount = revised?.proposals?.length ?? 0;
+              progress(`Foundation revise staged for "${targetBookId}" (${proposalCount} proposal(s)).`);
               return textResult(
                 sessionIsZh
-                  ? `Book "${targetBookId}" 架构稿已按要求重写。原书的条目式架构稿已备份到 story/.backup-phase4-<时间戳>/。`
-                  : `Book "${targetBookId}" foundation has been rewritten as requested. The previous itemized foundation was backed up to story/.backup-phase4-<timestamp>/.`,
+                  ? `Book "${targetBookId}" 架构稿改写已暂存为 ${proposalCount} 个待确认提案（story/runtime/proposals/），未直接覆写典籍。点确认后才会落盘。原书已备份到 story/.backup-phase4-<时间戳>/。`
+                  : `Book "${targetBookId}" foundation rewrite is staged as ${proposalCount} proposal(s) under story/runtime/proposals/ and was not written yet. Confirm to apply. Previous foundation was backed up to story/.backup-phase4-<timestamp>/.`,
               );
             }
             const confirmedTitle = createBookPayload?.title?.trim();
@@ -3339,38 +3336,36 @@ export function createWriteTruthFileTool(
       try {
         const bookId = resolveToolBookId("write_truth_file", params.bookId, activeBookId);
         const fileName = assertSafeTruthFileName(params.fileName);
-        if (requiresCanonDiffGate(fileName)) {
-          const state = new StateManager(projectRoot);
-          const storyDir = join(state.bookDir(bookId), "story");
-          const currentContent = await readFile(join(storyDir, fileName), "utf-8").catch(() => "");
-          if (currentContent === params.content) {
-            return textResult(`No change for "${fileName}" on "${bookId}".`);
-          }
-          const proposal = await stageTruthProposal({
-            bookDir: state.bookDir(bookId),
-            bookId,
-            fileName,
-            proposedContent: params.content,
-            currentContent,
-          });
+        const result = await tools.writeTruthFile(bookId, fileName, params.content) as {
+          readonly kind?: string;
+          readonly fileName?: string;
+          readonly proposal?: {
+            readonly id: string;
+            readonly baseRevision: string;
+            readonly unifiedDiff: string;
+          };
+        };
+        if (result.kind === "unchanged") {
+          return textResult(`No change for "${fileName}" on "${bookId}".`);
+        }
+        if (result.kind === "proposed" && result.proposal) {
           return textResult(
             [
               `Staged canon change for "${fileName}". Waiting for a confirm button — the file was not written.`,
-              `Proposal ${proposal.id}.`,
+              `Proposal ${result.proposal.id}.`,
             ].join("\n"),
             {
               kind: "proposed_truth_diff",
-              proposalId: proposal.id,
+              proposalId: result.proposal.id,
               bookId,
               fileName,
-              baseRevision: proposal.baseRevision,
-              unifiedDiff: proposal.unifiedDiff,
+              baseRevision: result.proposal.baseRevision,
+              unifiedDiff: result.proposal.unifiedDiff,
               title: `确认改正典 · ${fileName}`,
               summary: `将改写 story/${fileName}。刷新后提案仍在 story/runtime/proposals/。`,
             },
           );
         }
-        await tools.writeTruthFile(bookId, fileName, params.content);
         return textResult(`Updated "${fileName}" for "${bookId}".`);
       } catch (err: any) {
         return textResult(`write_truth_file failed: ${err?.message ?? String(err)}`);

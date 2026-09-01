@@ -3,6 +3,7 @@ import {
   assertChapterApprovable,
   ApproveBlockedError,
   applyApproveOverride,
+  approveChapterRecord,
   collectCriticalIssues,
 } from "../pipeline/approve-gate.js";
 import type { ChapterMeta } from "../models/chapter.js";
@@ -44,5 +45,25 @@ describe("G5 approve gate", () => {
     expect(() => assertChapterApprovable({
       chapter: chapter({ auditIssues: ["[warning] 节奏偏慢"] }),
     })).not.toThrow();
+  });
+
+  it("approveChapterRecord is the shared G5 path used by HTTP and CLI", () => {
+    expect(() => approveChapterRecord({ chapter: chapter() })).toThrow(ApproveBlockedError);
+    expect(approveChapterRecord({
+      chapter: chapter({ auditIssues: ["[warning] 节奏偏慢"] }),
+      now: "2026-09-01T13:00:00.000Z",
+    })).toMatchObject({
+      status: "approved",
+      updatedAt: "2026-09-01T13:00:00.000Z",
+    });
+    const override = {
+      who: "cli",
+      when: "2026-09-01T13:01:00.000Z",
+      why: "带病定稿：人设改动是刻意的。",
+    };
+    expect(approveChapterRecord({ chapter: chapter(), override })).toMatchObject({
+      status: "approved",
+      approveOverride: override,
+    });
   });
 });
