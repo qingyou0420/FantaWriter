@@ -1,6 +1,7 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import { SerialCockpitStrip, startDraft, startWriteNext } from "../components/SerialCockpitStrip";
+import { BookWorkspaceNav } from "../components/BookWorkspaceNav";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -58,6 +59,10 @@ type BookStatus = "active" | "paused" | "outlining" | "completed" | "dropped";
 
 interface Nav {
   toDashboard: () => void;
+  toBook: (bookId: string) => void;
+  toOutline: (bookId: string) => void;
+  toBookChat: (bookId: string) => void;
+  toBookSettings: (bookId: string) => void;
   toChapter: (bookId: string, num: number) => void;
   toAnalytics: (bookId: string) => void;
   toTruth: (bookId: string) => void;
@@ -479,7 +484,7 @@ export function BookDetail({
 
   return (
     <div className="space-y-8 fade-in">
-      {/* Breadcrumbs */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
       <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
         <button
           onClick={nav.toDashboard}
@@ -489,8 +494,14 @@ export function BookDetail({
           {t("bread.books")}
         </button>
         <span className="text-border">/</span>
-        <span className="text-foreground">{book.title}</span>
+        <button type="button" onClick={() => nav.toBook(bookId)} className="hover:text-primary">
+          {book.title}
+        </button>
+        <span className="text-border">/</span>
+        <span className="text-foreground">{t("book.settings")}</span>
       </nav>
+      <BookWorkspaceNav bookId={bookId} active="manuscript" nav={nav} isZh={book.language !== "en"} />
+      </div>
 
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border/40 pb-8">
@@ -564,7 +575,7 @@ export function BookDetail({
         isZh={book.language !== "en"}
         skipPreviousApproval={skipPreviousApproval}
         onSkipChange={setSkipPreviousApproval}
-        onJumpOutline={() => nav.toTruth(bookId)}
+        onJumpOutline={() => nav.toOutline(bookId)}
         onJumpReview={(chapterNumber) => {
           if (chapterNumber) nav.toChapter(bookId, chapterNumber);
         }}

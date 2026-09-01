@@ -5,6 +5,9 @@ import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./pages/Dashboard";
 import { ChatPage } from "./pages/ChatPage";
 import { BookDetail } from "./pages/BookDetail";
+import { SerialCockpit } from "./pages/SerialCockpit";
+import { OutlineWorkspace } from "./pages/OutlineWorkspace";
+import { BookWorkspaceNav } from "./components/BookWorkspaceNav";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { ServiceListPage } from "./pages/ServiceListPage";
@@ -94,6 +97,8 @@ export function App() {
     toDashboard: () => setRoute({ page: "dashboard" }),
     toChat: () => setRoute({ page: "chat" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
+    toOutline: (bookId: string) => setRoute({ page: "book-outline", bookId }),
+    toBookChat: (bookId: string) => setRoute({ page: "book-chat", bookId }),
     toBookSettings: (bookId: string) => setRoute({ page: "book-settings", bookId }),
     toBookCreate: () => setRoute({ page: "book-create" }),
     toChapter: (bookId: string, chapterNumber: number) =>
@@ -256,17 +261,32 @@ export function App() {
             </div>
           )}
           {route.page === "book" && (
-            <div className="absolute inset-0 flex min-w-0">
-              <ChatPage
-                activeBookId={route.bookId}
-                mode="book"
-                nav={nav}
-                theme={theme}
-                t={t}
-                sse={sse}
-              />
-              <BookSidebar bookId={route.bookId} theme={theme} t={t} sse={sse} />
-              <BookSidebarToggle bookId={route.bookId} theme={theme} t={t} sse={sse} />
+            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <SerialCockpit bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
+            </div>
+          )}
+          {route.page === "book-outline" && (
+            <div className="mx-auto w-full max-w-[1400px] px-4 py-12 sm:px-6 lg:px-10 lg:py-16 fade-in">
+              <OutlineWorkspace bookId={route.bookId} nav={nav} theme={theme} t={t} />
+            </div>
+          )}
+          {route.page === "book-chat" && (
+            <div className="absolute inset-0 flex min-w-0 flex-col">
+              <div className="shrink-0 border-b border-border/40 px-4 py-2">
+                <BookWorkspaceNav bookId={route.bookId} active="chat" nav={nav} isZh={currentLang !== "en"} />
+              </div>
+              <div className="flex min-h-0 flex-1">
+                <ChatPage
+                  activeBookId={route.bookId}
+                  mode="book"
+                  nav={nav}
+                  theme={theme}
+                  t={t}
+                  sse={sse}
+                />
+                <BookSidebar bookId={route.bookId} theme={theme} t={t} sse={sse} />
+                <BookSidebarToggle bookId={route.bookId} theme={theme} t={t} sse={sse} />
+              </div>
             </div>
           )}
           {route.page === "book-settings" && (

@@ -36,6 +36,14 @@ const strings = {
   "dash.chapters": { zh: "章", en: "chapters" },
   "dash.recentEvents": { zh: "最近事件", en: "Recent Events" },
   "dash.writingProgress": { zh: "写作进度", en: "Writing Progress" },
+  "dash.subtitle": { zh: "打开一本书进入连载驾驶舱", en: "Open a book to enter the serialization cockpit" },
+
+  "cockpit.title": { zh: "连载驾驶舱", en: "Serialization cockpit" },
+  "cockpit.nextChapter": { zh: "下一章", en: "Next chapter" },
+  "cockpit.writeNext": { zh: "落墨 · 写下一章", en: "落墨 · Write next" },
+  "cockpit.outline": { zh: "大纲", en: "Outline" },
+  "cockpit.weave": { zh: "织卷", en: "织卷" },
+  "cockpit.manuscript": { zh: "书稿", en: "Manuscript" },
 
   // Book Detail
   "book.writeNext": { zh: "写下一章", en: "Write Next" },
@@ -334,9 +342,6 @@ const strings = {
   "truth.notFound": { zh: "文件未找到", en: "File not found" },
   "truth.selectFile": { zh: "选择文件查看内容", en: "Select a file to view" },
   "truth.selectHint": { zh: "选择文件查看内容", en: "Select a file to view" },
-
-  // Dashboard
-  "dash.subtitle": { zh: "管理你的文学宇宙和 AI 辅助草稿。", en: "Manage your literary universe and AI-assisted drafts." },
 
   // Chapter Reader extras
   "reader.openingManuscript": { zh: "打开书稿中...", en: "Opening manuscript..." },
