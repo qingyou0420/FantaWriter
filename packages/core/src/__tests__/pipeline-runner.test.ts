@@ -4100,7 +4100,7 @@ describe("PipelineRunner", () => {
       {
         number: 1,
         title: "旧路",
-        status: "ready-for-review",
+        status: "approved",
         wordCount: 36,
         createdAt: now,
         updatedAt: now,
@@ -4110,7 +4110,7 @@ describe("PipelineRunner", () => {
       {
         number: 2,
         title: "暗巷",
-        status: "ready-for-review",
+        status: "approved",
         wordCount: 36,
         createdAt: now,
         updatedAt: now,
@@ -4180,7 +4180,7 @@ describe("PipelineRunner", () => {
       {
         number: 1,
         title: "旧路",
-        status: "ready-for-review",
+        status: "approved",
         wordCount: 27,
         createdAt: now,
         updatedAt: now,
@@ -4190,7 +4190,7 @@ describe("PipelineRunner", () => {
       {
         number: 2,
         title: "暗巷",
-        status: "ready-for-review",
+        status: "approved",
         wordCount: 29,
         createdAt: now,
         updatedAt: now,
@@ -4355,7 +4355,7 @@ describe("PipelineRunner", () => {
     await state.saveChapterIndex(bookId, [{
       number: 1,
       title: "回声",
-      status: "ready-for-review",
+      status: "approved",
       wordCount: 12,
       createdAt: now,
       updatedAt: now,
@@ -4410,7 +4410,7 @@ describe("PipelineRunner", () => {
     await state.saveChapterIndex(bookId, [{
       number: 1,
       title: "回声",
-      status: "ready-for-review",
+      status: "approved",
       wordCount: 12,
       createdAt: now,
       updatedAt: now,

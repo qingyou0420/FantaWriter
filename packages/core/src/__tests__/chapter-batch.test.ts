@@ -57,7 +57,10 @@ describe("PipelineRunner.writeChapters", () => {
 
     expect(results.map((result) => result.chapterNumber)).toEqual([3, 4, 5]);
     expect(acquireBookLock).toHaveBeenCalledOnce();
-    expect(acquireBookLock).toHaveBeenCalledWith("demo-book");
+    expect(acquireBookLock).toHaveBeenCalledWith(
+      "demo-book",
+      expect.objectContaining({ stage: "write-next" }),
+    );
     expect(writeLocked).toHaveBeenCalledTimes(3);
     expect(onChapterComplete).toHaveBeenNthCalledWith(1, chapter(3), 1, 3);
     expect(onChapterComplete).toHaveBeenNthCalledWith(3, chapter(5), 3, 3);
