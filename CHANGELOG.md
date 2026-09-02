@@ -4,9 +4,13 @@
 
 ## [未发布]
 
+## [2.0.2] - 2026-09-02
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.2.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。2.0.1 还没有应用内「检查更新」按钮，需要先从 Releases 手动装这一版。
+
 ### 新增
 
-- 工作台左侧「系统 → 检查更新」与菜单「帮助 → 检查更新」：发现新版本后可下载并安装重启（沿用现有桌面 IPC；启动时不会访问 GitHub）。
+- 侧栏「系统」和帮助菜单恢复检查更新，可从 GitHub Release 下载安装包并安装重启。
 
 ## [2.0.1] - 2026-09-02
 
@@ -264,6 +268,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.2
 [2.0.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.1
 [2.0.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.0
 [2.0.0-dev.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.0-dev.1

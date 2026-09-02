@@ -14,17 +14,17 @@ const { setupFileNameForVersion } = require("../lib/setup-artifact.cjs") as {
   setupFileNameForVersion: (version: string) => string;
 };
 
-describe("2.0.1 Windows installer contract", () => {
-  it("keeps root and desktop on the same stable 2.0.1", () => {
-    expect(rootPkg.version).toBe("2.0.1");
-    expect(desktopPkg.version).toBe("2.0.1");
+describe("2.0.2 Windows installer contract", () => {
+  it("keeps root and desktop on the same stable 2.0.2", () => {
+    expect(rootPkg.version).toBe("2.0.2");
+    expect(desktopPkg.version).toBe("2.0.2");
     expect(desktopPkg.license).toBe("AGPL-3.0-only");
     expect(rootPkg.scripts["dist:win"]).toBe("node scripts/dist-win.mjs");
     expect(rootPkg.scripts["dist:win"]).not.toMatch(/exit 1/);
   });
 
-  it("names the NSIS artifact FantaWriter-Setup-2.0.1.exe", () => {
-    expect(setupFileNameForVersion(rootPkg.version)).toBe("FantaWriter-Setup-2.0.1.exe");
+  it("names the NSIS artifact FantaWriter-Setup-2.0.2.exe", () => {
+    expect(setupFileNameForVersion(rootPkg.version)).toBe("FantaWriter-Setup-2.0.2.exe");
     const yml = readFileSync(join(desktopDir, "electron-builder.yml"), "utf8");
     expect(yml).toMatch(/artifactName:\s*FantaWriter-Setup-\$\{version\}\.\$\{ext\}/);
     expect(yml).toMatch(/from:\s*\.\.\/\.\.\/dist-engine/);
