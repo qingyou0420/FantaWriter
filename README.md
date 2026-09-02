@@ -40,13 +40,13 @@ pnpm dev            # 缺 dist 时先 build，再开 Electron
 pnpm engine:smoke
 ```
 
-打 Windows 安装包（需在 Windows 上，或 CI `windows-latest`）：
+打 Windows 安装包（**必须在 Windows 上**，或 CI `windows-latest`；Linux 上 electron-builder 打 NSIS 需要 wine，本仓发版不走这条路）：
 
 ```bash
 pnpm dist:win
 ```
 
-产物在 `dist-installer/FantaWriter-Setup-2.0.0.exe`（另有 `Fantasy-Writer-Setup-2.0.0.exe` 别名）。打包前会预构建 Studio、`INKOS_DISABLE_VITE_BUILD=1`，并拒绝把 `.env` / `secrets.json` 打进安装包。
+产物在 `dist-installer/FantaWriter-Setup-2.0.0.exe`（另有 `Fantasy-Writer-Setup-2.0.0.exe` 别名）。打包前会预构建 Studio、`INKOS_DISABLE_VITE_BUILD=1`，把 `packages/studio/dist` + core 装进 extraResources，并拒绝把 `.env` / `secrets.json` 打进安装包。
 
 调试 CLI（显式根，不要靠 cwd）：
 

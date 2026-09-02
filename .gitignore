@@ -9,6 +9,8 @@
 /packages/*/dist
 /dist/
 /dist-engine/
+/dist-engine.staging/
+/packages/*/dist-engine/
 /dist-installer/
 /.next/
 /out/

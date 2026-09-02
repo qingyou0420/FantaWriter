@@ -1,9 +1,10 @@
 /**
- * H3: flatten the pnpm workspace Studio+core graph into dist-engine/
- * so electron-builder extraResources can copy a self-contained Node tree.
+ * H3: assemble extraResources/engine from prebuilt Studio dist + core build.
+ * Server runtime is only hono + @hono/node-server + @actalk/inkos-core
+ * (and core's registry deps). Do not deploy the Studio SPA's frontend graph.
  */
 import { spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,43 +38,79 @@ function mustExist(rel, label = rel) {
   return abs;
 }
 
-const studioEntry = join(repoRoot, "packages", "studio", "dist", "api", "index.js");
-const studioHtml = join(repoRoot, "packages", "studio", "dist", "index.html");
-const coreEntry = join(repoRoot, "packages", "core", "dist", "index.js");
+const studioDist = join(repoRoot, "packages", "studio", "dist");
+const studioEntry = join(studioDist, "api", "index.js");
+const studioHtml = join(studioDist, "index.html");
+const coreDir = join(repoRoot, "packages", "core");
+const coreEntry = join(coreDir, "dist", "index.js");
 if (!existsSync(studioEntry) || !existsSync(studioHtml) || !existsSync(coreEntry)) {
   console.log("[assemble-engine] building @actalk/inkos-core + @actalk/inkos-studio");
   await run("pnpm", ["--filter", "@actalk/inkos-core", "build"]);
   await run("pnpm", ["--filter", "@actalk/inkos-studio", "build"]);
 }
 
+const studioPkg = JSON.parse(readFileSync(join(repoRoot, "packages", "studio", "package.json"), "utf8"));
+const hono = studioPkg.dependencies.hono;
+const honoNode = studioPkg.dependencies["@hono/node-server"];
+if (!hono || !honoNode) {
+  throw new Error("assemble-engine: studio package.json missing hono / @hono/node-server");
+}
+
 if (existsSync(dest)) {
   rmSync(dest, { recursive: true, force: true });
 }
+mkdirSync(dest, { recursive: true });
 
-console.log("[assemble-engine] pnpm deploy @actalk/inkos-studio → dist-engine");
-await run("pnpm", ["--filter", "@actalk/inkos-studio", "deploy", "--prod", "--legacy", dest]);
+console.log("[assemble-engine] copy packages/studio/dist");
+cpSync(studioDist, join(dest, "dist"), { recursive: true });
+
+console.log("[assemble-engine] copy packages/core build + genres/skills/craft");
+const vendorCore = join(dest, "vendor", "inkos-core");
+mkdirSync(vendorCore, { recursive: true });
+for (const part of ["dist", "genres", "skills", "craft", "package.json"]) {
+  const from = join(coreDir, part);
+  if (!existsSync(from)) throw new Error(`assemble-engine: 缺少 core ${part}`);
+  cpSync(from, join(vendorCore, part), { recursive: true });
+}
+
+writeFileSync(
+  join(dest, "package.json"),
+  `${JSON.stringify(
+    {
+      name: "@fantawriter/engine",
+      version: studioPkg.version,
+      private: true,
+      type: "module",
+      main: "dist/api/index.js",
+      license: "AGPL-3.0-only",
+      dependencies: {
+        "@actalk/inkos-core": "file:./vendor/inkos-core",
+        "@hono/node-server": honoNode,
+        hono,
+      },
+    },
+    null,
+    2,
+  )}\n`,
+);
+
+console.log("[assemble-engine] npm install server runtime (core + hono)");
+await run(
+  "npm",
+  ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"],
+  dest,
+);
 
 mustExist("dist/api/index.js", "packages/studio/dist/api/index.js");
 mustExist("dist/index.html", "packages/studio/dist/index.html");
 mustExist("node_modules/@actalk/inkos-core/dist/index.js", "core build");
-mustExist("node_modules/@actalk/inkos-core/package.json", "core package.json");
-
-const coreRoot = join(dest, "node_modules", "@actalk", "inkos-core");
-for (const extra of ["genres", "skills", "craft"]) {
-  const p = join(coreRoot, extra);
-  if (!existsSync(p)) {
-    throw new Error(`assemble-engine: core 缺少 ${extra}/（import.meta.url 资源）`);
-  }
-}
-
-for (const dep of ["hono", "@hono/node-server"]) {
-  const pkg = join(dest, "node_modules", ...dep.split("/"), "package.json");
-  if (!existsSync(pkg)) {
-    throw new Error(`assemble-engine: 缺少运行时依赖 ${dep}`);
-  }
-}
+mustExist("vendor/inkos-core/genres", "core genres");
+mustExist("vendor/inkos-core/skills", "core skills");
+mustExist("vendor/inkos-core/craft", "core craft");
+mustExist("node_modules/hono/package.json", "hono");
+mustExist("node_modules/@hono/node-server/package.json", "@hono/node-server");
 
 assertNoSecrets(dest, "dist-engine");
 await run(process.execPath, [join(repoRoot, "scripts", "engine-pack-smoke.mjs")]);
 console.log(`[assemble-engine] ok ${dest}`);
-console.log("[assemble-engine] studio dist + core build + flattened node_modules ready for extraResources");
+console.log("[assemble-engine] studio dist + core build + slim server node_modules ready for extraResources");

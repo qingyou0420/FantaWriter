@@ -4,7 +4,7 @@
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,6 +89,12 @@ if (!dirOnly) {
   const assetPath = join(distDir, asset);
   if (!existsSync(assetPath)) {
     throw new Error(`找不到安装包 ${assetPath}`);
+  }
+  const bytes = statSync(assetPath).size;
+  if (bytes < 10 * 1024 * 1024) {
+    throw new Error(
+      `安装包过小（${bytes} bytes）。NSIS 可能没打完（Linux 上需要 wine；发版请用 windows-latest）。`,
+    );
   }
   const sha = createHash("sha256").update(readFileSync(assetPath)).digest("hex");
   writeFileSync(`${assetPath}.sha256`, `${sha}  ${asset}\n`);
