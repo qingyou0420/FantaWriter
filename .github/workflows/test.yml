@@ -25,3 +25,5 @@ jobs:
             echo "tracked env/secrets files are forbidden"
             exit 1
           fi
+      - name: Refuse 1.x Next installer leftovers
+        run: node scripts/refuse-next-1x.mjs

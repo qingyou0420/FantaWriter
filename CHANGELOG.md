@@ -4,6 +4,24 @@
 
 ## [未发布]
 
+## [2.0.0] - 2026-09-02
+
+第一份正式 **2.0 桌面安装包**：`FantaWriter-Setup-2.0.0.exe`（同时上传 `Fantasy-Writer-Setup-2.0.0.exe` 别名，给仍认旧文件名的 1.7 端）。这是 InkOS 内核 + Electron 壳的首发，不是「P2 已经打磨完毕」的声明。
+
+### 新增
+
+- **InkOS 内核**：稿件落在你选的项目根（默认 `%USERPROFILE%\Documents\幻想作家\`），标准目录 `inkos.json`、`books/`、`.inkos/secrets.json`。密钥只写在本机项目里，**不进 git、不进安装包**。
+- **Electron 壳**：单实例、钉端口（从 17831 扫，不用 4567）、首启向导、退出杀引擎、从本仓 GitHub Release 检查更新。
+- **连载驾驶舱**：打开书先看今天写哪章、卷进度、到期/逾期伏笔和审稿待办，而不是 1.x Next 的「写下一章」向导。
+- **防跑偏闸**：写前必须有大纲条目（可显式带病续写）；正典（方向/骨架/规则）改动先 diff 再确认；审稿问题进队列，critical 默认挡通过；伏笔可标目标章，逾期升为 hook-debt。
+- **锁可强制释放**：进程内租约可回收；界面可强释书锁并中止占用任务，避免卡死只能重启。
+
+### 变更
+
+- 产品入口是 Electron + fork 的 InkOS Studio，**不再是** 1.7.x Next.js / IndexedDB 向导。
+- 仓库与安装包许可证为 **AGPL-3.0-only**（1.x 已发布的 MIT 安装包不受影响）。
+- `pnpm dist:win` 产出 NSIS；GitHub Actions 在 tag `v2.0.0` 上构建并上传安装包与 sha256。
+
 ## [2.0.0-dev.1] - 2026-09-01
 
 P1 硬闸（仍是开发快照，不是正式 2.0.0）。
@@ -22,7 +40,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 
 - 连载驾驶舱完整重写。
 - 1.x IndexedDB 备份迁移器。
-- 正式 Windows NSIS 安装包装配。
+- 正式 Windows NSIS 安装包装配（见 [2.0.0]）。
 
 ## [2.0.0-dev] - 2026-09-01
 
@@ -43,7 +61,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 
 - P1 硬闸见 [2.0.0-dev.1]；连载驾驶舱完整重写仍待 P2。
 - 1.x 备份迁移器。
-- 正式 Windows 安装包装配。
+- 正式 Windows 安装包装配（见 [2.0.0]）。
 
 ## [1.7.1] - 2026-08-29
 
@@ -230,6 +248,8 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.0
+[2.0.0-dev.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.0-dev.1
 [1.7.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.7.1
 [1.7.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.7.0
 [1.6.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.6.0

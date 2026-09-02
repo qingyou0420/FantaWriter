@@ -1,6 +1,6 @@
 /**
  * GitHub Releases 检查更新：解析 latest、挑 Setup.exe、校验下载地址。
- * 打进 app.asar（builder files 只有 electron/**）。
+ * 打进 app.asar。
  */
 const { versionFromSetupName, preferSetupRank } = require("./setup-artifact.cjs");
 

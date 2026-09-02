@@ -1,0 +1,42 @@
+appId: com.fantawriter.app
+productName: FantaWriter
+copyright: Copyright © 2026 FantaWriter / 幻想作家. InkOS © upstream authors.
+afterPack: ./scripts/after-pack.cjs
+electronVersion: 37.10.3
+npmRebuild: false
+nodeGypRebuild: false
+asar: true
+directories:
+  output: ../../dist-installer
+  buildResources: ../../build
+files:
+  - main.cjs
+  - preload.cjs
+  - first-run.html
+  - lib/**/*
+  - package.json
+extraResources:
+  - from: ../../dist-engine
+    to: engine
+    filter:
+      - "**/*"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: FantaWriter-Setup-${version}.${ext}
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FantaWriter
+  uninstallDisplayName: FantaWriter
+  installerLanguages:
+    - zh_CN
+    - en_US
+  language: "2052"

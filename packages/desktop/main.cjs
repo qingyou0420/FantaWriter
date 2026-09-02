@@ -35,6 +35,7 @@ const {
   parseCheckUpdateRequest,
   shouldUseRemoteUpdateCheck,
 } = require("./lib/update-search.cjs");
+const { resolveStudioEntry, resolveEngineRoot } = require("./lib/studio-entry.cjs");
 
 app.setName("fantawriter");
 app.setPath("userData", path.join(app.getPath("appData"), "fantawriter"));
@@ -151,16 +152,13 @@ function saveShellConfig(partial) {
   applyConfigFile(getConfigPath());
 }
 
-function resolveStudioEntry() {
-  const root = workspaceRoot();
-  const candidates = [
-    path.join(root, "packages", "studio", "dist", "api", "index.js"),
-    path.join(__dirname, "..", "studio", "dist", "api", "index.js"),
-  ];
-  for (const file of candidates) {
-    if (fs.existsSync(file)) return file;
-  }
-  return null;
+function studioEntry() {
+  return resolveStudioEntry({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    desktopDir: __dirname,
+    workspaceRoot: workspaceRoot(),
+  });
 }
 
 function engineEnv(listenPort, root) {
@@ -247,18 +245,20 @@ function probeHealth(port) {
 }
 
 function startEngine(listenPort, root) {
-  const entry = resolveStudioEntry();
+  const entry = studioEntry();
   if (!entry) {
     throw new Error(
       "找不到 InkOS Studio 引擎入口 packages/studio/dist/api/index.js。请先运行 pnpm build。",
     );
   }
+  const engineRoot = resolveEngineRoot(entry) || path.dirname(entry);
   appendLog(`engine entry=${entry}`);
+  appendLog(`engineRoot=${engineRoot}`);
   appendLog(`projectRoot=${root}`);
   appendLog(`enginePort=${listenPort}`);
 
   const child = spawn(process.execPath, [entry, root], {
-    cwd: path.dirname(entry),
+    cwd: engineRoot,
     env: engineEnv(listenPort, root),
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -415,7 +415,7 @@ function showAbout() {
   dialog.showMessageBox(mainWindow || undefined, {
     type: "info",
     title: "关于幻想作家",
-    message: "幻想作家 / FantaWriter 2.0-dev",
+    message: "幻想作家 / FantaWriter 2.0",
     detail: [
       "内核与工作台 fork 自 InkOS (https://github.com/Narcooo/inkos) v1.8.x。",
       "许可证：GNU Affero General Public License v3.0。",

@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.0
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。正式 Windows 安装包 `FantaWriter-Setup-2.0.0.exe`（InkOS 内核 + Electron 壳，不是 1.x Next）。
+
 ## 1.7.1
 
 大纲工作区收成一棵树。已安装的 1.7.0 桌面端可从本仓 GitHub Release 检查到此版本。安装包 `FantaWriter-Setup-1.7.1.exe`。
