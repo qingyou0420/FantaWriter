@@ -194,6 +194,8 @@ describe("chatCompletion via pi-ai", () => {
 
     expect(error.message).toContain("API 返回 400");
     expect(error.message).toContain("temperature");
+    expect(error.message).toContain("kimi-k3");
+    expect(error.message).toContain("kimi-k2.X");
     expect(error.message).not.toMatch(/kkaiapi/i);
   });
 
@@ -1023,6 +1025,92 @@ describe("chatCompletion fixed-temperature clamp (thinking models)", () => {
     expect(opts.temperature).toBe(1);
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("forces temperature=1 for moonshot preset + kimi-k3", async () => {
+    const client = makeClient(0.7, { service: "moonshot" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await chatCompletion(client, "kimi-k3", [{ role: "user", content: "hi" }]);
+
+    const opts = mockStreamSimple.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(opts.temperature).toBe(1);
+  });
+
+  it("omits temperature and thinking for custom service + kimi-k3 on Moonshot host", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "ok" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      stream: false,
+      defaults: {
+        temperature: 0.7,
+        maxTokens: 512,
+        thinkingBudget: 0,
+        extra: { thinking: { type: "enabled" }, top_p: 0.5 },
+      },
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "https://api.moonshot.cn/v1",
+      },
+    });
+
+    await chatCompletion(client, "kimi-k3", [{ role: "user", content: "hi" }], {
+      temperature: 0.7,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(mockStreamSimple).not.toHaveBeenCalled();
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>;
+    expect(body.model).toBe("kimi-k3");
+    expect(body).not.toHaveProperty("temperature");
+    expect(body).not.toHaveProperty("top_p");
+    expect(body).not.toHaveProperty("thinking");
+    expect(body).not.toHaveProperty("n");
+    expect(body).not.toHaveProperty("presence_penalty");
+    expect(body).not.toHaveProperty("frequency_penalty");
+    expect(body.max_tokens).toBe(512);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("sends temperature=1 for custom service + kimi-k2.5 (still in the request body)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "ok" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      stream: false,
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "https://api.moonshot.ai/v1",
+      },
+    });
+
+    await chatCompletion(client, "kimi-k2.5", [{ role: "user", content: "hi" }]);
+
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>;
+    expect(body.temperature).toBe(1);
+    expect(mockStreamSimple).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
   });
 });
 
