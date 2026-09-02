@@ -73,15 +73,18 @@ describe("packaged studio extraResources", () => {
   });
 
   it("lists extraResources before the workspace tree", () => {
+    const resourcesPath = join("/pack", "resources");
+    const workspaceRoot = join("/repo");
+    const desktopDir = join("/repo", "packages", "desktop");
     const candidates = studioEntryCandidates({
       isPackaged: true,
-      resourcesPath: "/pack/resources",
-      desktopDir: "/repo/packages/desktop",
-      workspaceRoot: "/repo",
+      resourcesPath,
+      desktopDir,
+      workspaceRoot,
     });
-    const extra = join("engine", "dist", "api", "index.js");
-    const workspace = join("packages", "studio", "dist", "api", "index.js");
-    expect(candidates[0].endsWith(extra)).toBe(true);
-    expect(candidates.some((c) => c.endsWith(workspace))).toBe(true);
+    const extraEngine = join(resourcesPath, "engine", "dist", "api", "index.js");
+    const workspaceEngine = join(workspaceRoot, "packages", "studio", "dist", "api", "index.js");
+    expect(candidates[0]).toBe(extraEngine);
+    expect(candidates.indexOf(workspaceEngine)).toBeGreaterThan(0);
   });
 });
