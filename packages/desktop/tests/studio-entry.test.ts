@@ -79,7 +79,9 @@ describe("packaged studio extraResources", () => {
       desktopDir: "/repo/packages/desktop",
       workspaceRoot: "/repo",
     });
-    expect(candidates[0]).toContain("/engine/dist/api/index.js");
-    expect(candidates.some((c) => c.endsWith("/packages/studio/dist/api/index.js"))).toBe(true);
+    const extra = join("engine", "dist", "api", "index.js");
+    const workspace = join("packages", "studio", "dist", "api", "index.js");
+    expect(candidates[0].endsWith(extra)).toBe(true);
+    expect(candidates.some((c) => c.endsWith(workspace))).toBe(true);
   });
 });
