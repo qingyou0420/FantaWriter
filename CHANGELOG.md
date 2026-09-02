@@ -4,9 +4,13 @@
 
 ## [未发布]
 
+## [2.0.3] - 2026-09-02
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.3.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
 ### 修复
 
-- 侧栏顶部不再显示破损的 LOGO / 产品名块；打开后第一项就是「开始创作」。窗口标题、首次设置页和 Windows 图标不变。
+- 去掉侧栏左上角坏掉的 LOGO 区域，顶上直接是开始创作。窗口标题、首次设置和安装包图标不动。
 
 ## [2.0.2] - 2026-09-02
 
@@ -272,6 +276,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.3
 [2.0.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.2
 [2.0.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.1
 [2.0.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.0
