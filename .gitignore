@@ -8,6 +8,7 @@
 # build
 /packages/*/dist
 /dist/
+/dist-engine/
 /dist-installer/
 /.next/
 /out/

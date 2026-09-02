@@ -33,5 +33,5 @@ git fetch inkos-upstream v1.8.0
 
 - **H1**：系统 Node 22.14 的 `node:sqlite` 可 `require`，FTS5 虚拟表不可用（`no such module: fts5`）。记忆检索/管线全套测试会因此失败。同一台机器上 **Electron 37 `ELECTRON_RUN_AS_NODE` 的 `node:sqlite` 有 FTS5**。桌面引擎走 Electron 自带 Node 时记忆检索应可用；CI 的系统 Node 仍跑锁/绑定子集。退路仍是捆一份带 FTS5 的 Node 22，或只换 `memory-db.ts` / `local-search.ts` 驱动。
 - **H2**：Studio 生产必须预构建 `packages/studio/dist/`。桌面引擎设 `INKOS_DISABLE_VITE_BUILD=1`，缺 `index.html` 直接退出。
-- **H3**：pnpm workspace → electron-builder NSIS 未在本 PR 做完，`pnpm dist:win` 会明确失败。
+- **H3**：`pnpm deploy @actalk/inkos-studio --prod dist-engine` 打平 workspace 依赖；`packages/desktop/electron-builder.yml` 把该树放进 `extraResources/engine`。壳在 packaged 下从 `process.resourcesPath/engine/dist/api/index.js`（以及 `app.asar.unpacked` 回退）拉引擎。`pnpm dist:win` 在 Windows / `windows-latest` 上产 NSIS。
 - **H4**：`@mariozechner/pi-agent-core` / `pi-ai@0.67.1` 可从 npm 装到（包已 deprecated），许可证需后续 `license-checker` 清单。

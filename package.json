@@ -1,6 +1,6 @@
 {
   "name": "fantawriter",
-  "version": "2.0.0-dev.1",
+  "version": "2.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "FantaWriter / 幻想作家 — InkOS-kernel Windows desktop writing studio",
@@ -21,7 +21,12 @@
     "test:desktop": "pnpm --filter @fantawriter/desktop test",
     "typecheck": "pnpm --filter @actalk/inkos-core typecheck && pnpm --filter @actalk/inkos-studio exec tsc -p tsconfig.server.json --noEmit",
     "engine:smoke": "node scripts/engine-smoke.mjs",
-    "dist:win": "echo \"P0 ships a working pnpm start / pnpm dev desktop path. electron-builder NSIS pack is a follow-up (H3).\" && exit 1"
+    "engine:pack-smoke": "node scripts/engine-pack-smoke.mjs",
+    "assemble:engine": "node scripts/assemble-engine.mjs",
+    "dist:win": "node scripts/dist-win.mjs",
+    "dist:win:ci": "node scripts/dist-win.mjs --publish-never",
+    "dist:dir": "node scripts/dist-win.mjs --dir --publish-never",
+    "publish:update": "node scripts/publish-update.mjs"
   },
   "pnpm": {
     "overrides": {
@@ -32,39 +37,5 @@
       "electron",
       "esbuild"
     ]
-  },
-  "build": {
-    "appId": "com.fantawriter.app",
-    "productName": "FantaWriter",
-    "copyright": "Copyright © 2026 FantaWriter / 幻想作家. InkOS © upstream authors.",
-    "directories": {
-      "output": "dist-installer",
-      "buildResources": "build"
-    },
-    "files": [
-      "packages/desktop/**/*",
-      "package.json"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
-      "artifactName": "FantaWriter-Setup-${version}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "FantaWriter",
-      "uninstallDisplayName": "FantaWriter",
-      "installerLanguages": ["zh_CN", "en_US"],
-      "language": "2052"
-    },
-    "asar": true
   }
 }
