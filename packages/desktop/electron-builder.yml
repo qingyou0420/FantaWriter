@@ -13,6 +13,7 @@ files:
   - main.cjs
   - preload.cjs
   - first-run.html
+  - icon.png
   - lib/**/*
   - package.json
 extraResources:
@@ -21,6 +22,7 @@ extraResources:
     filter:
       - "**/*"
 win:
+  icon: icon.ico
   target:
     - target: nsis
       arch:

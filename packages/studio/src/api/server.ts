@@ -1113,7 +1113,7 @@ function formatAgentFailure(
   if (kind === "internal") {
     return {
       code: "AGENT_INTERNAL_ERROR",
-      message: pick(lang, `InkOS 内部流程错误：${message}`, `InkOS internal pipeline error: ${message}`),
+      message: pick(lang, `幻想作家内部流程错误：${message}`, `FantaWriter internal pipeline error: ${message}`),
       status: 500,
     };
   }
@@ -7047,7 +7047,7 @@ export async function startStudioServer(
   }
 
   const hostname = options?.hostname ?? "127.0.0.1";
-  console.log(`FantaWriter engine (InkOS Studio) listening on http://${hostname}:${port}`);
+  console.log(`FantaWriter engine listening on http://${hostname}:${port}`);
   const server = serve({ fetch: app.fetch, port, hostname });
   return {
     close: () =>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FantaWriterLogo } from "../components/FantaWriterLogo";
 
 export function LanguageSelector({ onSelect }: { onSelect: (lang: "zh" | "en") => void }) {
   const [hovering, setHovering] = useState<"zh" | "en" | null>(null);
@@ -12,13 +13,10 @@ export function LanguageSelector({ onSelect }: { onSelect: (lang: "zh" | "en") =
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-8">
-      {/* Logo — cinematic scale */}
       <div className="mb-16 text-center">
-        <div className="flex items-baseline justify-center gap-1.5 mb-4">
-          <span className="font-serif text-6xl italic text-primary">Ink</span>
-          <span className="text-5xl font-semibold tracking-tight text-foreground">OS</span>
-        </div>
-        <div className="text-base text-muted-foreground tracking-widest uppercase">Studio</div>
+        <FantaWriterLogo className="w-24 h-24 mx-auto mb-5 rounded-[22%]" />
+        <div className="font-serif text-5xl font-medium text-foreground">幻想作家</div>
+        <div className="mt-2 text-base text-muted-foreground tracking-[0.18em]">FantaWriter</div>
       </div>
 
       {/* Language cards — generous, distinct, immersive */}

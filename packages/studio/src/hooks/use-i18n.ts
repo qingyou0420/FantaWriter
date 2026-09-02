@@ -13,7 +13,7 @@ const strings = {
   "nav.createScript": { zh: "剧本创作", en: "Script" },
   "nav.createStoryboard": { zh: "分镜创作", en: "Storyboard" },
   "nav.createInteractiveFilm": { zh: "互动影游", en: "Interactive Film" },
-  "nav.createPlay": { zh: "InkOS 互动", en: "InkOS Play" },
+  "nav.createPlay": { zh: "互动", en: "Play" },
   "nav.createBranching": { zh: "分支互动", en: "Branching Play" },
   "nav.createFree": { zh: "开放世界", en: "Open World" },
   "nav.createFanfic": { zh: "同人创作", en: "Fanfic" },

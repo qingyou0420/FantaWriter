@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,4 +31,33 @@ describe("2.0.0 Windows installer contract", () => {
     expect(yml).toMatch(/to:\s*engine/);
     expect(yml).not.toMatch(/src\/app|next\.config/);
   });
+
+  it("ships icon.ico so the Windows installer is not the default Electron icon", () => {
+    const ico = join(repoRoot, "build", "icon.ico");
+    const png = join(repoRoot, "build", "icon.png");
+    const mark = join(repoRoot, "build", "fantawriter-mark.png");
+    const yml = readFileSync(join(desktopDir, "electron-builder.yml"), "utf8");
+    expect(existsSync(ico)).toBe(true);
+    expect(existsSync(png)).toBe(true);
+    expect(existsSync(mark)).toBe(true);
+    const header = readFileSync(ico).subarray(0, 4);
+    expect(header.equals(Buffer.from([0, 0, 1, 0]))).toBe(true);
+    expect(yml).toMatch(/buildResources:\s*\.\.\/\.\.\/build/);
+    expect(yml).toMatch(/icon:\s*icon\.ico/);
+    expect(yml).toMatch(/^\s*- icon\.png$/m);
+  });
+
+  it("brands first-run and the Electron window as 幻想作家, not InkOS", () => {
+    const firstRun = readFileSync(join(desktopDir, "first-run.html"), "utf8");
+    const main = readFileSync(join(desktopDir, "main.cjs"), "utf8");
+    expect(firstRun).toMatch(/<h1>幻想作家<\/h1>/);
+    expect(firstRun).toMatch(/src="icon\.png"/);
+    expect(firstRun).toMatch(/id="serviceName"/);
+    expect(firstRun).toMatch(/name: \$\("serviceName"\)\.value/);
+    expect(firstRun).not.toMatch(/InkOS Studio|InkosLogo|>InkOS</);
+    expect(main).toMatch(/title: "幻想作家 \/ FantaWriter"/);
+    expect(main).toMatch(/icon: path\.join\(__dirname, "icon\.png"\)/);
+    expect(main).not.toMatch(/title: "InkOS/);
+  });
 });
+
