@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.4
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.4.exe`（#66 修 Moonshot kimi-k3 建书 400：K3 固定温度，自定义服务不再发送 0.7）。
+
 ## 2.0.3
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.3.exe`（#64 去掉侧栏左上角坏掉的 LOGO 区域，顶上直接是开始创作）。窗口标题 / 首次设置 / `icon.ico` 不动。

@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [2.0.4] - 2026-09-02
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.4.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
+### 修复
+
+- 修 Moonshot kimi-k3 建书 400：K3 固定温度，自定义服务不再发送 0.7。
+
 ## [2.0.3] - 2026-09-02
 
 Windows 补丁安装包：`FantaWriter-Setup-2.0.3.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
@@ -276,6 +284,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.4
 [2.0.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.3
 [2.0.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.2
 [2.0.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.1
