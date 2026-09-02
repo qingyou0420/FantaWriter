@@ -60,6 +60,10 @@ describe("hash route", () => {
       expect(parseHash("#/translation")).toEqual({ page: "translation" });
     });
 
+    it("parses #/update as the in-app update page", () => {
+      expect(parseHash("#/update")).toEqual({ page: "update" });
+    });
+
     it("decodes encoded serviceId", () => {
       expect(parseHash("#/services/%E8%87%AA%E5%AE%9A%E4%B9%89")).toEqual({ page: "service-detail", serviceId: "自定义" });
     });
@@ -119,6 +123,10 @@ describe("hash route", () => {
 
     it("translation -> #/translation", () => {
       expect(routeToHash({ page: "translation" })).toBe("#/translation");
+    });
+
+    it("update -> #/update", () => {
+      expect(routeToHash({ page: "update" })).toBe("#/update");
     });
 
     it("encodes Chinese serviceId", () => {

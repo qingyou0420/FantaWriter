@@ -13,6 +13,7 @@ files:
   - main.cjs
   - preload.cjs
   - first-run.html
+  - update-panel.html
   - icon.png
   - lib/**/*
   - package.json

@@ -136,6 +136,7 @@ const strings = {
   "nav.import": { zh: "导入", en: "Import" },
   "nav.radar": { zh: "市场雷达", en: "Radar" },
   "nav.doctor": { zh: "环境诊断", en: "Doctor" },
+  "nav.checkUpdate": { zh: "检查更新", en: "Check for Updates" },
 
   // Translation
   "translation.title": { zh: "多语翻译 / 译介", en: "Multilingual Translation" },
@@ -392,6 +393,27 @@ const strings = {
   "logs.title": { zh: "日志", en: "Logs" },
   "logs.empty": { zh: "暂无日志", en: "No log entries yet" },
   "logs.showingRecent": { zh: "当前展示最近日志记录。", en: "Showing recent log entries." },
+
+  // In-app update (desktop shell IPC)
+  "update.title": { zh: "检查更新", en: "Check for Updates" },
+  "update.subtitle": { zh: "从 GitHub 检查幻想作家新版本。发现新版本后可下载安装包，再安装并重启。启动时不会自动访问 GitHub。", en: "Check GitHub for a newer FantaWriter. Download the installer, then install and restart. Startup never hits GitHub by itself." },
+  "update.current": { zh: "当前版本", en: "Current version" },
+  "update.latestLabel": { zh: "最新版本", en: "Latest version" },
+  "update.repo": { zh: "更新源", en: "Update source" },
+  "update.check": { zh: "检查更新", en: "Check for Updates" },
+  "update.checking": { zh: "正在检查…", en: "Checking…" },
+  "update.download": { zh: "下载", en: "Download" },
+  "update.downloading": { zh: "正在下载…", en: "Downloading…" },
+  "update.downloaded": { zh: "下载完成，可以安装并重启。", en: "Download finished. You can install and restart." },
+  "update.downloadFailed": { zh: "下载失败", en: "Download failed" },
+  "update.install": { zh: "安装并重启", en: "Install and Restart" },
+  "update.installing": { zh: "正在打开安装包…", en: "Opening installer…" },
+  "update.installFailed": { zh: "安装失败", en: "Install failed" },
+  "update.found": { zh: "发现新版本", en: "New version found" },
+  "update.latest": { zh: "已是最新版本", en: "You are up to date" },
+  "update.pick": { zh: "手动选择安装包", en: "Choose installer…" },
+  "update.picked": { zh: "已选择安装包", en: "Installer selected" },
+  "update.noDesktop": { zh: "当前页面未连接到桌面壳。请使用菜单栏「帮助 → 检查更新」。", en: "This page is not connected to the desktop shell. Use Help → Check for Updates." },
 } as const;
 
 export type StringKey = keyof typeof strings;

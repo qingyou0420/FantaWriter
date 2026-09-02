@@ -18,6 +18,7 @@ const desktopBridge = {
   openPath: (target) => ipcRenderer.invoke("app:openPath", target),
   openUpdateDir: () => ipcRenderer.invoke("app:openUpdateDir"),
   showAbout: () => ipcRenderer.invoke("app:showAbout"),
+  openUpdatePanel: () => ipcRenderer.invoke("app:openUpdatePanel"),
 };
 
 contextBridge.exposeInMainWorld("fantaWriter", desktopBridge);

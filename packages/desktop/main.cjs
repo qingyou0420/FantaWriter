@@ -403,6 +403,15 @@ function createWindow(targetUrl) {
   mainWindow.loadURL(targetUrl.startsWith("http") || targetUrl.startsWith("file:")
     ? targetUrl
     : `file://${targetUrl}`);
+  mainWindow.webContents.on("did-finish-load", () => {
+    const url = mainWindow?.webContents.getURL() || "";
+    if (!url.startsWith("http")) return;
+    studioHasUpdateBridge().then((has) => {
+      appendLog(has
+        ? "Studio 页可访问 window.fantaWriter.checkUpdate"
+        : "Studio 页没有 fantaWriter 桥；请用菜单「帮助 → 检查更新」打开独立更新窗");
+    }).catch(() => undefined);
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -410,6 +419,70 @@ function createWindow(targetUrl) {
 
 function firstRunFileUrl() {
   return `file://${path.join(__dirname, "first-run.html")}`;
+}
+
+/** @type {Electron.BrowserWindow | null} */
+let updatePanelWindow = null;
+
+function updatePanelFileUrl() {
+  return `file://${path.join(__dirname, "update-panel.html")}`;
+}
+
+function openUpdatePanel() {
+  if (updatePanelWindow && !updatePanelWindow.isDestroyed()) {
+    updatePanelWindow.focus();
+    return { ok: true };
+  }
+  updatePanelWindow = new BrowserWindow({
+    width: 540,
+    height: 580,
+    parent: mainWindow || undefined,
+    modal: false,
+    autoHideMenuBar: true,
+    title: "检查更新",
+    icon: path.join(__dirname, "icon.png"),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  updatePanelWindow.loadURL(updatePanelFileUrl());
+  updatePanelWindow.on("closed", () => {
+    updatePanelWindow = null;
+  });
+  return { ok: true };
+}
+
+async function studioHasUpdateBridge() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const url = mainWindow.webContents.getURL() || "";
+  if (!url.startsWith("http")) return false;
+  try {
+    return Boolean(await mainWindow.webContents.executeJavaScript(
+      "Boolean((window.fantaWriter||window.fantasyWriter)&& (window.fantaWriter||window.fantasyWriter).checkUpdate)",
+    ));
+  } catch {
+    return false;
+  }
+}
+
+async function openCheckUpdateUi() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const hasBridge = await studioHasUpdateBridge();
+    if (hasBridge) {
+      try {
+        await mainWindow.webContents.executeJavaScript("window.location.hash='#/update'");
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+        return { ok: true, via: "studio" };
+      } catch {
+        /* fall through to overlay */
+      }
+    }
+  }
+  return openUpdatePanel();
 }
 
 function showAbout() {
@@ -423,7 +496,13 @@ function showAbout() {
       "许可证：GNU Affero General Public License v3.0。",
       "源码：https://github.com/qingyou0420/FantaWriter",
       `版本：${app.getVersion()}`,
+      "检查更新：工作台「系统 → 检查更新」，或本对话框 / 菜单「帮助 → 检查更新」。",
     ].join("\n"),
+    buttons: ["检查更新", "关闭"],
+    defaultId: 1,
+    cancelId: 1,
+  }).then(({ response }) => {
+    if (response === 0) openCheckUpdateUi();
   });
 }
 
@@ -433,6 +512,7 @@ function buildMenu() {
       label: "幻想作家",
       submenu: [
         { label: "关于幻想作家", click: () => showAbout() },
+        { label: "检查更新", click: () => { openCheckUpdateUi(); } },
         { type: "separator" },
         { label: "重启引擎", click: () => restartEngine().catch((e) => dialog.showErrorBox("重启失败", String(e))) },
         { type: "separator" },
@@ -441,6 +521,14 @@ function buildMenu() {
     },
     { role: "editMenu", label: "编辑" },
     { role: "viewMenu", label: "查看" },
+    {
+      label: "帮助",
+      submenu: [
+        { label: "检查更新", click: () => { openCheckUpdateUi(); } },
+        { type: "separator" },
+        { label: "关于幻想作家", click: () => showAbout() },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -770,6 +858,7 @@ function registerIpc() {
     showAbout();
     return { ok: true };
   });
+  ipcMain.handle("app:openUpdatePanel", () => openUpdatePanel());
 
   ipcMain.handle("app:getFirstRunState", () => {
     const cfg = loadShellConfig();
