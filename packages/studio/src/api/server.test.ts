@@ -2229,7 +2229,7 @@ describe("createStudioServer daemon lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock as typeof fetch);
     createLLMClientMock.mockImplementation(((cfg: unknown) => cfg) as any);
     chatCompletionMock.mockRejectedValue(
-      new Error("API 返回 400（请求参数错误）。常见原因：\n  1. temperature / max_tokens 超出模型约束（如 Moonshot kimi-k2.X 强制 temperature=1）\n  (baseUrl: https://generativelanguage.googleapis.com/v1beta/openai, model: gemini-2.5-flash)"),
+      new Error("API 返回 400（请求参数错误）。常见原因：\n  1. temperature / max_tokens 超出模型约束（如 Moonshot kimi-k3 / kimi-k2.X 强制 temperature=1）\n  (baseUrl: https://generativelanguage.googleapis.com/v1beta/openai, model: gemini-2.5-flash)"),
     );
 
     const { createStudioServer } = await import("./server.js");

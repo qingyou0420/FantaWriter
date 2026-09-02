@@ -15,6 +15,10 @@ import type {
 import { resolveServicePreset } from "./service-presets.js";
 import { getEndpoint } from "./providers/index.js";
 import { lookupModel } from "./providers/lookup.js";
+import {
+  applyKimiK3RequestConstraints,
+  resolveMoonshotLockedTemperature,
+} from "./moonshot-sampling.js";
 import { fetchWithProxy } from "../utils/proxy-fetch.js";
 import { isApiKeyOptionalForEndpoint } from "../utils/llm-endpoint-auth.js";
 import { isLlmStubEnabled, stubChatCompletion } from "../agent/llm-stub.js";
@@ -468,12 +472,13 @@ function stripReservedKeys(extra: Record<string, unknown>): Record<string, unkno
 
 // === Fixed-Temperature Model Clamp ===
 //
-// 部分 thinking 模型（如 Moonshot kimi-k2.5/k2.6、kimi-k2-thinking）的 API
-// 硬要求 temperature === 1，其他值会被直接 400 拒绝（Moonshot 返回
+// 部分 thinking 模型（如 Moonshot kimi-k3 / kimi-k2.5/k2.6/k2.7、kimi-k2-thinking）
+// 的 API 硬要求 temperature === 1，其他值会被直接 400 拒绝（Moonshot 返回
 // `invalid temperature: only 1 is allowed for this model`）。
 //
 // inkos 让 writer/validator/architect 各自带 per-call 温度（0.1~1.5），
 // 所以 provider 层统一夹制：如果 bank 里模型卡标了 temperature 字段，
+// 或模型 id / Moonshot host 命中当前固定采样家族（custom 服务也算），
 // 就把 per-call 温度 clamp 到那个值，并对每个模型名打一次 warning。
 //
 // 这个字段只表达"服务端硬约束"，普通模型不要标，避免误伤 per-call 调参。
@@ -484,10 +489,11 @@ function clampTemperatureForModel(
   service: string | undefined,
   model: string,
   requested: number,
+  baseUrl?: string,
 ): number {
   const card = service ? lookupModel(service, model) : undefined;
-  if (card?.temperature === undefined) return requested;
-  const locked = card.temperature;
+  const locked = card?.temperature ?? resolveMoonshotLockedTemperature(model, baseUrl);
+  if (locked === undefined) return requested;
   if (requested === locked) return locked;
   if (!warnedFixedTemperatureModels.has(model)) {
     warnedFixedTemperatureModels.add(model);
@@ -617,7 +623,7 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
     return new Error(
       `API 返回 400（请求参数错误）。${detail ? `上游详情：${detail}。\n` : ""}` +
       `常见原因：\n` +
-      `  1. temperature / max_tokens 超出模型约束（如 Moonshot kimi-k2.X 强制 temperature=1）\n` +
+      `  1. temperature / max_tokens 超出模型约束（如 Moonshot kimi-k3 / kimi-k2.X 强制 temperature=1）\n` +
       `  2. 模型名称不正确或未上架\n` +
       `  3. 消息格式不兼容（部分服务不支持 system role 或 developer role）${ctxLine}`,
     );
@@ -1046,14 +1052,14 @@ async function chatCompletionViaCustomAnthropicCompatible(
   const baseUrl = client._piModel?.baseUrl ?? "";
   const errorCtx = { baseUrl, model, service: client.service };
   const extra = stripReservedKeys(resolved.extra);
-  const payload: Record<string, unknown> = {
+  const payload: Record<string, unknown> = applyKimiK3RequestConstraints({
     model,
     messages: buildAnthropicMessages(messages),
     stream: client.stream,
     max_tokens: resolved.maxTokens,
     temperature: resolved.temperature,
     ...extra,
-  };
+  }, model);
   const system = joinSystemPrompt(messages);
   if (system) payload.system = system;
 
@@ -1178,7 +1184,7 @@ async function chatCompletionViaCustomOpenAICompatible(
   const extra = stripReservedKeys(resolved.extra);
 
   if (client.apiFormat === "responses") {
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = applyKimiK3RequestConstraints({
       model,
       input: buildResponsesInput(messages),
       stream: client.stream,
@@ -1186,7 +1192,7 @@ async function chatCompletionViaCustomOpenAICompatible(
       max_output_tokens: resolved.maxTokens,
       temperature: resolved.temperature,
       ...extra,
-    };
+    }, model);
     const instructions = joinSystemPrompt(messages);
     if (instructions) payload.instructions = instructions;
 
@@ -1273,7 +1279,7 @@ async function chatCompletionViaCustomOpenAICompatible(
     return { content, usage };
   }
 
-  const payload: Record<string, unknown> = {
+  const payload: Record<string, unknown> = applyKimiK3RequestConstraints({
     model,
     messages: [
       ...messages
@@ -1286,7 +1292,7 @@ async function chatCompletionViaCustomOpenAICompatible(
     max_tokens: resolved.maxTokens,
     ...defaultOpenAIChatExtra(client, model),
     ...extra,
-  };
+  }, model);
   if (client.stream) {
     payload.stream_options = { include_usage: true };
   }
@@ -1456,6 +1462,7 @@ export async function chatCompletion(
       client.service,
       model,
       options?.temperature ?? client.defaults.temperature,
+      client._piModel?.baseUrl,
     ),
     maxTokens: options?.maxTokens ?? client.defaults.maxTokens,
     extra: client.defaults.extra,

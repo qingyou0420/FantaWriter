@@ -33,7 +33,7 @@ export interface InkosModel {
   /** 发布日期 ISO 字符串，可选（用于 UI 的"新模型"徽章） */
   readonly releasedAt?: string;
   /**
-   * API 硬要求的 temperature 值（例：Moonshot kimi-k2.5/k2.6 强制 1，违反直接 400）。
+   * API 硬要求的 temperature 值（例：Moonshot kimi-k3 / k2.5/k2.6/k2.7 强制 1，违反直接 400）。
    * 有值时 provider 层会 clamp 所有 per-call 温度到该值——这是服务端约束，
    * 不是"推荐值"。普通模型不要设这个字段。
    */
