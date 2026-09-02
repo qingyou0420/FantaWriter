@@ -12,6 +12,7 @@ import type {
 } from "../../types";
 import { fetchJson } from "../../../../hooks/use-api";
 import { tr } from "../../../../lib/app-language";
+import { forgetBookCreateSessionIfMatches } from "../../../../pages/chat-page-state";
 import { isConfirmedProductionSend } from "../../message-policy";
 import { attachSessionStreamListeners } from "./stream-events";
 import {
@@ -321,6 +322,7 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
   deleteSession: async (sessionId) => {
     const session = get().sessions[sessionId];
     session?.stream?.close();
+    forgetBookCreateSessionIfMatches(sessionId);
     // 草稿会话还没写到磁盘，跳过 DELETE 请求避免后端返回 404
     if (session && !session.isDraft) {
       try {

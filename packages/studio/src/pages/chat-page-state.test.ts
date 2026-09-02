@@ -2,13 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearBookCreateSessionId,
   filterModelGroups,
+  forgetBookCreateSessionIfMatches,
   getBookCreateSessionId,
   getChatScrollBehavior,
   getProjectChatSessionId,
+  isReusableBookCreateSession,
   pickModelSelection,
   pickProjectChatSessionId,
   setBookCreateSessionId,
   setProjectChatSessionId,
+  startFreshBookCreateSession,
   isChatScrollNearBottom,
   shouldShowPlayChoicePanel,
 } from "./chat-page-state";
@@ -68,6 +71,111 @@ describe("book-create session localStorage helpers", () => {
     setProjectChatSessionId("project-chat-session");
     expect(getBookCreateSessionId()).toBe("book-create-session");
     expect(getProjectChatSessionId()).toBe("project-chat-session");
+  });
+
+  it("startFreshBookCreateSession always writes a new draft id", () => {
+    setBookCreateSessionId("1788325716279-jn0y2m");
+    const created: string[] = [];
+    const first = startFreshBookCreateSession(() => {
+      created.push("draft-1");
+      return "draft-1";
+    });
+    const second = startFreshBookCreateSession(() => {
+      created.push("draft-2");
+      return "draft-2";
+    });
+
+    expect(first).toBe("draft-1");
+    expect(second).toBe("draft-2");
+    expect(created).toEqual(["draft-1", "draft-2"]);
+    expect(getBookCreateSessionId()).toBe("draft-2");
+  });
+
+  it("创建 after delete opens a new session instead of resurrecting the old id", () => {
+    setBookCreateSessionId("1788325716279-jn0y2m");
+    forgetBookCreateSessionIfMatches("1788325716279-jn0y2m");
+    expect(getBookCreateSessionId()).toBeNull();
+
+    const nextId = startFreshBookCreateSession(() => "fresh-after-delete");
+    expect(nextId).toBe("fresh-after-delete");
+    expect(getBookCreateSessionId()).toBe("fresh-after-delete");
+    expect(getBookCreateSessionId()).not.toBe("1788325716279-jn0y2m");
+  });
+
+  it("forgetBookCreateSessionIfMatches leaves a different stored session alone", () => {
+    setBookCreateSessionId("keep-me");
+    forgetBookCreateSessionIfMatches("other-session");
+    expect(getBookCreateSessionId()).toBe("keep-me");
+  });
+});
+
+describe("isReusableBookCreateSession", () => {
+  it("allows an unused empty book-create draft", () => {
+    expect(isReusableBookCreateSession({
+      sessionId: "draft-empty",
+      bookId: null,
+      sessionKind: "book-create",
+      isDraft: true,
+      messageCount: 0,
+    })).toBe(true);
+  });
+
+  it("does not auto-reopen a failed book-create session", () => {
+    expect(isReusableBookCreateSession({
+      sessionId: "1788325716279-jn0y2m",
+      bookId: null,
+      sessionKind: "book-create",
+      messageCount: 4,
+      lastError: "architect failed",
+      taskStatus: "error",
+    })).toBe(false);
+    expect(isReusableBookCreateSession({
+      sessionId: "1788325716279-jn0y2m",
+      bookId: null,
+      sessionKind: "book-create",
+      messageCount: 2,
+    })).toBe(false);
+    expect(isReusableBookCreateSession({
+      sessionId: "1788325716279-jn0y2m",
+      bookId: null,
+      sessionKind: "book-create",
+      messageCount: 0,
+      lastError: "kimi-k3 architect timed out",
+    })).toBe(false);
+    expect(isReusableBookCreateSession({
+      sessionId: "1788325716279-jn0y2m",
+      bookId: null,
+      sessionKind: "book-create",
+      messageCount: 0,
+      taskStatus: "failed",
+    })).toBe(false);
+  });
+
+  it("does not auto-reopen an in-progress or deleted book-create session", () => {
+    expect(isReusableBookCreateSession({
+      sessionId: "running-create",
+      bookId: null,
+      sessionKind: "book-create",
+      messageCount: 1,
+      taskStatus: "running",
+    })).toBe(false);
+    expect(isReusableBookCreateSession({
+      sessionId: "deleted-create",
+      bookId: null,
+      sessionKind: "book-create",
+      messageCount: 0,
+      exists: false,
+    })).toBe(false);
+  });
+
+  it("does not treat a missing or already-bound session as reusable", () => {
+    expect(isReusableBookCreateSession(null)).toBe(false);
+    expect(isReusableBookCreateSession({
+      sessionId: "bound",
+      bookId: "night-port",
+      sessionKind: "book-create",
+      messageCount: 0,
+    })).toBe(false);
   });
 });
 

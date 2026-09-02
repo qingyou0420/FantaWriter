@@ -50,10 +50,12 @@ import {
 } from "../components/ai-elements/message";
 import {
   type ChatPageModelPreference,
+  clearBookCreateSessionId,
   filterModelGroups,
   getChatScrollBehavior,
   getBookCreateSessionId,
   getProjectChatSessionId,
+  isReusableBookCreateSession,
   pickProjectChatSessionId,
   pickModelSelection,
   setBookCreateSessionId,
@@ -499,7 +501,9 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
     autoScrollPinnedRef.current = true;
   }, [activeSessionId]);
 
-  // Entering a book loads its latest session; book-create mode persists its orphan session in localStorage.
+  // Entering a book loads its latest session. Book-create only keeps an unused
+  // empty draft (the launcher just created one); failed / in-progress chats
+  // stay in the sidebar until the user picks them explicitly.
   useEffect(() => {
     let cancelled = false;
 
@@ -533,41 +537,81 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
         return;
       }
 
-      const existingId = mode === "project-chat"
-        ? getProjectChatSessionId()
-        : getBookCreateSessionId();
+      if (mode === "book-create") {
+        const state = useChatStore.getState();
+        const currentSession = state.activeSessionId ? state.sessions[state.activeSessionId] : null;
+        if (
+          currentSession
+          && currentSession.isDraft
+          && isReusableBookCreateSession({
+            sessionId: currentSession.sessionId,
+            bookId: currentSession.bookId,
+            sessionKind: currentSession.sessionKind,
+            isDraft: currentSession.isDraft,
+            messageCount: currentSession.messages.length,
+            lastError: currentSession.lastError,
+          })
+        ) {
+          setBookCreateSessionId(currentSession.sessionId);
+          return;
+        }
+
+        const storedId = getBookCreateSessionId();
+        if (storedId) {
+          await loadSessionDetail(storedId);
+          if (cancelled) return;
+          const storedSession = useChatStore.getState().sessions[storedId];
+          if (
+            storedSession
+            && isReusableBookCreateSession({
+              sessionId: storedSession.sessionId,
+              bookId: storedSession.bookId,
+              sessionKind: storedSession.sessionKind,
+              isDraft: storedSession.isDraft,
+              messageCount: storedSession.messages.length,
+              lastError: storedSession.lastError,
+            })
+          ) {
+            activateSession(storedId);
+            return;
+          }
+          clearBookCreateSessionId();
+        }
+
+        const newSessionId = await createSession(null, "book-create");
+        if (!cancelled) {
+          setBookCreateSessionId(newSessionId);
+        }
+        return;
+      }
+
+      const existingId = getProjectChatSessionId();
       if (existingId) {
         await loadSessionDetail(existingId);
         if (cancelled) return;
 
         const state = useChatStore.getState();
         const session = state.sessions[existingId];
-        if (session && session.bookId === null && (mode !== "project-chat" || session.messages.length > 0)) {
+        if (session && session.bookId === null && session.messages.length > 0) {
           activateSession(existingId);
           return;
         }
       }
 
-      if (mode === "project-chat") {
-        const projectSessions = await loadSessionList(null);
-        if (cancelled) return;
+      const projectSessions = await loadSessionList(null);
+      if (cancelled) return;
 
-        const reusableSessionId = pickProjectChatSessionId(projectSessions);
-        if (reusableSessionId) {
-          activateSession(reusableSessionId);
-          await loadSessionDetail(reusableSessionId);
-          if (!cancelled) setProjectChatSessionId(reusableSessionId);
-          return;
-        }
+      const reusableSessionId = pickProjectChatSessionId(projectSessions);
+      if (reusableSessionId) {
+        activateSession(reusableSessionId);
+        await loadSessionDetail(reusableSessionId);
+        if (!cancelled) setProjectChatSessionId(reusableSessionId);
+        return;
       }
 
-      const newSessionId = await createSession(null, mode === "book-create" ? "book-create" : "chat");
+      const newSessionId = await createSession(null, "chat");
       if (!cancelled) {
-        if (mode === "project-chat") {
-          setProjectChatSessionId(newSessionId);
-        } else {
-          setBookCreateSessionId(newSessionId);
-        }
+        setProjectChatSessionId(newSessionId);
       }
     })();
 
