@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.1
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.1.exe`（#59 首次配置可列出的自定义服务商，#60 用户可见标志换成幻想作家）。
+
 ## 2.0.0
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。正式 Windows 安装包 `FantaWriter-Setup-2.0.0.exe`（InkOS 内核 + Electron 壳，不是 1.x Next）。
