@@ -4,7 +4,9 @@
 
 ## Unreleased
 
-- 创建长篇 always starts a fresh book-create draft. ChatPage no longer auto-reopens a failed/in-progress stored session (`inkos.book-create.session-id`). Deleting that chat calls `clearBookCreateSessionId`. Sidebar history pick still reopens the chosen session.
+## 2.0.5
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.5.exe`（#68 点创建长篇会开新会话，删除对话后不会再钻回失败的旧建书）。
 
 ## 2.0.4
 
