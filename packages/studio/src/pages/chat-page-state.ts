@@ -35,6 +35,47 @@ export function clearBookCreateSessionId(): void {
   globalThis.localStorage?.removeItem(BOOK_CREATE_SESSION_KEY);
 }
 
+export function forgetBookCreateSessionIfMatches(sessionId: string): void {
+  if (getBookCreateSessionId() === sessionId) {
+    clearBookCreateSessionId();
+  }
+}
+
+export function startFreshBookCreateSession(
+  createDraftSession: (bookId: null, sessionKind: "book-create") => string,
+): string {
+  const sessionId = createDraftSession(null, "book-create");
+  setBookCreateSessionId(sessionId);
+  return sessionId;
+}
+
+export interface BookCreateSessionReuseSnapshot {
+  readonly sessionId: string;
+  readonly bookId?: string | null;
+  readonly sessionKind?: string;
+  readonly isDraft?: boolean;
+  readonly messageCount: number;
+  readonly lastError?: string | null;
+  readonly taskStatus?: string | null;
+  readonly exists?: boolean;
+}
+
+const BOOK_CREATE_TASK_REUSABLE = new Set(["", "idle"]);
+
+export function isReusableBookCreateSession(
+  session: BookCreateSessionReuseSnapshot | null | undefined,
+): boolean {
+  if (!session) return false;
+  if (session.exists === false) return false;
+  if (session.bookId != null) return false;
+  if (session.sessionKind && session.sessionKind !== "book-create") return false;
+  if (session.messageCount > 0) return false;
+  if (session.lastError?.trim()) return false;
+  const taskStatus = session.taskStatus?.trim() ?? "";
+  if (!BOOK_CREATE_TASK_REUSABLE.has(taskStatus)) return false;
+  return true;
+}
+
 export function getProjectChatSessionId(): string | null {
   return globalThis.localStorage?.getItem(PROJECT_CHAT_SESSION_KEY) ?? null;
 }

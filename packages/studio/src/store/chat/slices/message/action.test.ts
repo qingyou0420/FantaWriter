@@ -4,6 +4,12 @@ import type { ChatStore } from "../../types";
 import { initialChatState } from "../../initialState";
 import { createCreateSlice } from "../create/action";
 import { createMessageSlice } from "./action";
+import {
+  getBookCreateSessionId,
+  isReusableBookCreateSession,
+  setBookCreateSessionId,
+  startFreshBookCreateSession,
+} from "../../../../pages/chat-page-state";
 
 const { fetchJson } = vi.hoisted(() => ({
   fetchJson: vi.fn(),
@@ -1427,5 +1433,124 @@ describe("chat message actions", () => {
 
     resolveAgent({ response: "聊完了。", session: { sessionId, sessionKind: "short" } });
     await sent;
+  });
+
+  it("deleting a book-create session forgets the stored id so 创建 opens a new draft", async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+      clear: () => {
+        storage.clear();
+      },
+    });
+
+    try {
+      const store = createTestStore();
+      const failedId = store.getState().createDraftSession(null, "book-create");
+      store.setState((state) => ({
+        sessions: {
+          ...state.sessions,
+          [failedId]: {
+            ...state.sessions[failedId]!,
+            isDraft: false,
+            lastError: "kimi-k3 architect failed",
+            messages: [{
+              role: "assistant",
+              content: "建书失败",
+              timestamp: 1,
+            }],
+          },
+        },
+      }));
+      setBookCreateSessionId(failedId);
+      expect(isReusableBookCreateSession({
+        sessionId: failedId,
+        bookId: null,
+        sessionKind: "book-create",
+        messageCount: 1,
+        lastError: "kimi-k3 architect failed",
+      })).toBe(false);
+
+      await store.getState().deleteSession(failedId);
+
+      expect(store.getState().sessions[failedId]).toBeUndefined();
+      expect(getBookCreateSessionId()).toBeNull();
+
+      const nextId = startFreshBookCreateSession(store.getState().createDraftSession);
+      expect(nextId).not.toBe(failedId);
+      expect(getBookCreateSessionId()).toBe(nextId);
+      expect(store.getState().sessions[nextId]).toMatchObject({
+        sessionKind: "book-create",
+        isDraft: true,
+        bookId: null,
+        messages: [],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not auto-reopen a failed book-create session after 创建 starts a fresh draft", () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+      clear: () => {
+        storage.clear();
+      },
+    });
+
+    try {
+      const store = createTestStore();
+      const failedId = "1788325716279-jn0y2m";
+      store.setState({
+        sessions: {
+          [failedId]: {
+            sessionId: failedId,
+            bookId: null,
+            sessionKind: "book-create",
+            title: "失败的建书",
+            messages: [{
+              role: "user",
+              content: "写一本港口悬疑",
+              timestamp: 1,
+            }],
+            stream: null,
+            isStreaming: false,
+            isChatStreaming: false,
+            lastError: "architect failed",
+            isDraft: false,
+          },
+        },
+        activeSessionId: failedId,
+      });
+      setBookCreateSessionId(failedId);
+
+      const nextId = startFreshBookCreateSession(store.getState().createDraftSession);
+
+      expect(nextId).not.toBe(failedId);
+      expect(getBookCreateSessionId()).toBe(nextId);
+      expect(isReusableBookCreateSession({
+        sessionId: failedId,
+        bookId: store.getState().sessions[failedId]?.bookId ?? null,
+        sessionKind: store.getState().sessions[failedId]?.sessionKind,
+        messageCount: store.getState().sessions[failedId]?.messages.length ?? 0,
+        lastError: store.getState().sessions[failedId]?.lastError,
+      })).toBe(false);
+      expect(store.getState().activeSessionId).toBe(nextId);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

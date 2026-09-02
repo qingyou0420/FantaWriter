@@ -1,5 +1,7 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState, useRef } from "react";
+import { startFreshBookCreateSession } from "./chat-page-state";
+import { useChatStore } from "../store/chat";
 import { useServiceStore } from "../store/service";
 import type { SSEMessage } from "../hooks/use-sse";
 import type { Theme } from "../hooks/use-theme";
@@ -127,6 +129,13 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete, onOpenChange }: {
 export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: ReadonlyArray<SSEMessage> }; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
   const [menuOpenBookId, setMenuOpenBookId] = useState<string | null>(null);
+  const createDraftSession = useChatStore((s) => s.createDraftSession);
+  const setInput = useChatStore((s) => s.setInput);
+  const openFreshBookCreate = () => {
+    startFreshBookCreateSession(createDraftSession);
+    setInput("");
+    nav.toBookCreate();
+  };
   const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const writingBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
   const serviceStoreServices = useServiceStore((s) => s.services);
@@ -171,7 +180,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
           {t("dash.createFirst")}
         </p>
         <button
-          onClick={nav.toBookCreate}
+          onClick={openFreshBookCreate}
           className="group flex items-center gap-2 px-8 py-3.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
         >
           <Plus size={18} />
@@ -203,7 +212,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
           <p className="text-sm text-muted-foreground">{t("dash.subtitle")}</p>
         </div>
         <button
-          onClick={nav.toBookCreate}
+          onClick={openFreshBookCreate}
           className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
         >
           <Plus size={16} />

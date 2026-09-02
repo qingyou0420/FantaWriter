@@ -4,7 +4,12 @@ import type { SSEMessage } from "../hooks/use-sse";
 import { applyBookCollectionEvent, shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
 import { tr } from "../lib/app-language";
-import { setProjectChatSessionId } from "../pages/chat-page-state";
+import {
+  forgetBookCreateSessionIfMatches,
+  setBookCreateSessionId,
+  setProjectChatSessionId,
+  startFreshBookCreateSession,
+} from "../pages/chat-page-state";
 import { useChatStore } from "../store/chat";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
@@ -243,7 +248,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const openProjectChatSession = (sessionId: string) => {
     setInput("");
     activateSession(sessionId);
-    setProjectChatSessionId(sessionId);
+    const kind = sessions[sessionId]?.sessionKind;
+    if (kind === "book-create") {
+      setBookCreateSessionId(sessionId);
+    } else {
+      setProjectChatSessionId(sessionId);
+    }
     nav.toChat();
     void loadSessionDetail(sessionId);
   };
@@ -257,6 +267,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
   };
 
   const handleOpenBookCreate = () => {
+    setProjectChatExpanded(true);
+    startFreshBookCreateSession(createDraftSession);
     setInput("");
     nav.toBookCreate();
   };
@@ -282,7 +294,9 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
-    await deleteSession(deleteTarget.sessionId);
+    const sessionId = deleteTarget.sessionId;
+    await deleteSession(sessionId);
+    forgetBookCreateSessionIfMatches(sessionId);
     setDeleteTarget(null);
   };
 
