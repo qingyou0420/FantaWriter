@@ -4,9 +4,13 @@
 
 ## [未发布]
 
+## [2.0.5] - 2026-09-02
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.5.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
 ### 修复
 
-- 开始创作 → 长篇小说 / 首页创建书籍会开一个新的建书会话，不再自动钻回失败或进行中的旧对话。删除该会话会清掉本地记录，下次创建不会复活。侧栏点开历史会话仍可继续那一次。
+- 点创建长篇会开新会话，删除对话后不会再钻回失败的旧建书。
 
 ## [2.0.4] - 2026-09-02
 
@@ -288,6 +292,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.5]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.5
 [2.0.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.4
 [2.0.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.3
 [2.0.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.2
