@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>检查更新</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f1ea;
+        --card: #fffdf9;
+        --ink: #2d1b0e;
+        --muted: #6b5344;
+        --line: #e6d5c3;
+        --accent: #c45c26;
+        --ok: #1f7a3a;
+        --err: #9b1c1c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", sans-serif;
+        background: radial-gradient(circle at top, #fff7ee, var(--bg));
+        color: var(--ink);
+      }
+      main {
+        max-width: 480px;
+        margin: 28px auto;
+        padding: 28px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        box-shadow: 0 16px 40px rgba(45, 27, 14, 0.08);
+      }
+      h1 { margin: 0 0 8px; font-size: 24px; }
+      p.lead { margin: 0 0 20px; color: var(--muted); line-height: 1.55; font-size: 14px; }
+      .row { display: flex; justify-content: space-between; gap: 12px; margin: 8px 0; font-size: 14px; }
+      .muted { color: var(--muted); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.45; cursor: default; }
+      .primary { background: var(--accent); color: white; font-weight: 600; }
+      .secondary { background: #f0e4d6; color: var(--ink); }
+      .success { background: #2f7a3d; color: white; font-weight: 600; }
+      .linkish { background: none; color: var(--muted); padding: 8px 0; }
+      .note { margin-top: 16px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+      .note.ok { color: var(--ok); }
+      .note.err { color: var(--err); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>检查更新</h1>
+      <p class="lead">从 GitHub 检查幻想作家新版本。发现新版本后可下载安装包，再安装并重启。</p>
+      <div class="row"><span class="muted">当前版本</span><span id="current" class="mono">—</span></div>
+      <div class="row"><span class="muted">最新版本</span><span id="latest" class="mono">—</span></div>
+      <div class="row"><span class="muted">更新源</span><span id="repo" class="mono">qingyou0420/FantaWriter</span></div>
+      <div class="actions">
+        <button class="primary" id="check" type="button">检查更新</button>
+        <button class="secondary" id="download" type="button" disabled>下载</button>
+        <button class="success" id="install" type="button" disabled>安装并重启</button>
+      </div>
+      <button class="linkish" id="pick" type="button">手动选择安装包</button>
+      <p id="msg" class="note">公开仓库无需填写令牌。启动时不会自动访问 GitHub。</p>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const api = window.fantaWriter || window.fantasyWriter;
+      const msg = $("msg");
+      let last = null;
+      let installerPath = "";
+
+      function show(text, kind) {
+        msg.textContent = text;
+        msg.className = kind === "ok" ? "note ok" : kind === "err" ? "note err" : "note";
+      }
+
+      function syncButtons() {
+        const canDownload = Boolean(last && last.hasUpdate && (last.downloadUrl || last.assetApiUrl));
+        $("download").disabled = !canDownload;
+        $("install").disabled = !installerPath;
+      }
+
+      async function boot() {
+        if (!api) {
+          show("桌面桥未就绪。请从安装包启动幻想作家。", "err");
+          $("check").disabled = true;
+          return;
+        }
+        try {
+          const info = await api.getAppInfo();
+          $("current").textContent = info.version || "—";
+          const settings = await api.getUpdateSettings();
+          if (settings && settings.repo) $("repo").textContent = settings.repo;
+        } catch (err) {
+          show(String(err), "err");
+        }
+      }
+
+      $("check").onclick = async () => {
+        show("正在检查…");
+        $("check").disabled = true;
+        try {
+          last = await api.checkUpdate();
+          $("latest").textContent = last.latest || "—";
+          installerPath = last.installerPath || "";
+          if (last.hasUpdate) {
+            show(last.message || ("发现新版本 " + (last.latest || "")), "ok");
+          } else {
+            show(last.message || "已是最新版本", "ok");
+          }
+        } catch (err) {
+          show(String(err), "err");
+        } finally {
+          $("check").disabled = false;
+          syncButtons();
+        }
+      };
+
+      $("download").onclick = async () => {
+        if (!last) return;
+        show("正在下载…");
+        $("download").disabled = true;
+        try {
+          const res = await api.downloadUpdate({
+            downloadUrl: last.downloadUrl,
+            assetApiUrl: last.assetApiUrl,
+            version: last.latest,
+          });
+          if (!res.ok) {
+            show(res.message || "下载失败", "err");
+            return;
+          }
+          installerPath = res.path || "";
+          show("下载完成，可以安装并重启。", "ok");
+        } catch (err) {
+          show(String(err), "err");
+        } finally {
+          syncButtons();
+        }
+      };
+
+      $("install").onclick = async () => {
+        if (!installerPath) return;
+        show("正在打开安装包…");
+        try {
+          const res = await api.installUpdate(installerPath);
+          if (!res.ok) show(res.message || "安装失败", "err");
+        } catch (err) {
+          show(String(err), "err");
+        }
+      };
+
+      $("pick").onclick = async () => {
+        if (!api.pickInstaller) return;
+        const res = await api.pickInstaller();
+        if (res.ok && res.path) {
+          installerPath = res.path;
+          show("已选择安装包" + (res.version ? " " + res.version : ""), "ok");
+          syncButtons();
+        }
+      };
+
+      boot();
+    </script>
+  </body>
+</html>

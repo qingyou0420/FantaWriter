@@ -104,5 +104,5 @@ for (const dir of targets) {
   }
 }
 console.log(
-  "[publish-update] 完成。已装客户端可在应用内「设置 → 检查更新」后一键安装。"
+  "[publish-update] 完成。已装客户端可在应用内「系统 → 检查更新」后一键安装。"
 );

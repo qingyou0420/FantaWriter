@@ -36,6 +36,7 @@ import {
   FileInput,
   TrendingUp,
   Stethoscope,
+  RefreshCw,
   Zap,
   FolderOpen,
   ChevronRight,
@@ -89,6 +90,7 @@ interface Nav {
   toImport: (tab?: "chapters" | "canon" | "fanfic" | "spinoff" | "imitation") => void;
   toRadar: () => void;
   toDoctor: () => void;
+  toCheckUpdate: () => void;
   toFilmStudio: (id: string) => void;
 }
 
@@ -583,6 +585,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
               onClick={nav.toProjectSettings}
             />
             <SidebarItem
+              label={t("nav.checkUpdate")}
+              icon={<RefreshCw size={16} />}
+              active={activePage === "update"}
+              onClick={nav.toCheckUpdate}
+              testId="nav-check-update"
+            />
+            <SidebarItem
               label={t("nav.daemon")}
               icon={<Zap size={16} />}
               active={activePage === "daemon"}
@@ -803,16 +812,19 @@ function CreateItem({ icon, label, active, onClick }: {
   );
 }
 
-function SidebarItem({ label, icon, active, onClick, badge, badgeColor }: {
+function SidebarItem({ label, icon, active, onClick, badge, badgeColor, testId }: {
   label: string;
   icon: React.ReactNode;
   active: boolean;
   onClick: () => void;
   badge?: string;
   badgeColor?: string;
+  testId?: string;
 }) {
   return (
     <button
+      type="button"
+      data-testid={testId}
       onClick={onClick}
       className={`w-full group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
         active
