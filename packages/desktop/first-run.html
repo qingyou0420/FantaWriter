@@ -62,13 +62,15 @@
       <h1>幻想作家</h1>
       <p class="lead">
         选一个本机项目根目录（默认「文档/幻想作家」），再填 OpenAI 兼容接口。
-        密钥只写在该目录的 <code>.inkos/secrets.json</code>，不会进安装包。
+        保存后会出现在工作台「服务商管理」。密钥只写在该目录的 <code>.inkos/secrets.json</code>，不会进安装包，也不会写入 <code>~/.inkos/.env</code>。
       </p>
       <label>项目根目录</label>
       <div class="row">
         <input id="root" readonly />
         <button class="secondary" id="pick" type="button">选择…</button>
       </div>
+      <label>服务名称</label>
+      <input id="serviceName" placeholder="自定义" />
       <label>Base URL</label>
       <input id="baseUrl" placeholder="https://api.deepseek.com" />
       <label>API Key</label>
@@ -94,6 +96,7 @@
       async function boot() {
         const state = await api.getFirstRunState();
         $("root").value = state.projectRoot || "";
+        $("serviceName").value = state.name || "自定义";
         $("baseUrl").value = state.baseUrl || "https://api.deepseek.com";
         $("model").value = state.model || "deepseek-v4-pro";
       }
@@ -117,6 +120,7 @@
         show("正在写入项目根…", true);
         const res = await api.saveFirstRun({
           projectRoot: $("root").value,
+          name: $("serviceName").value,
           baseUrl: $("baseUrl").value,
           apiKey: $("apiKey").value,
           model: $("model").value,

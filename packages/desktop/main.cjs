@@ -8,7 +8,7 @@ const fs = require("fs");
 const http = require("http");
 const crypto = require("crypto");
 const { spawn, execFile } = require("child_process");
-const { defaultProjectRoot, ensureProjectLayout, writeSecrets, writeProjectLlm } = require("./lib/project.cjs");
+const { defaultProjectRoot, ensureProjectLayout, saveFirstRunLlm } = require("./lib/project.cjs");
 const { HOST, SCAN_START, normalizePinnedPort, pickListenPort, canBindPort } = require("./lib/port.cjs");
 const {
   emptyEngineHandle,
@@ -774,16 +774,25 @@ function registerIpc() {
     const root = cfg.projectRoot || defaultProjectRoot(tryAppPath("documents") || undefined);
     let baseUrl = "https://api.deepseek.com";
     let model = "deepseek-v4-pro";
+    let name = "自定义";
     try {
       if (cfg.projectRoot && fs.existsSync(path.join(cfg.projectRoot, "inkos.json"))) {
         const raw = JSON.parse(fs.readFileSync(path.join(cfg.projectRoot, "inkos.json"), "utf8"));
-        baseUrl = raw?.llm?.baseUrl || baseUrl;
-        model = raw?.llm?.model || model;
+        const llm = raw?.llm && typeof raw.llm === "object" ? raw.llm : {};
+        const selected = typeof llm.service === "string" && llm.service.startsWith("custom:")
+          ? llm.service.slice("custom:".length)
+          : "";
+        const listed = Array.isArray(llm.services)
+          ? llm.services.find((svc) => svc && svc.service === "custom" && svc.name === (selected || svc.name))
+          : null;
+        baseUrl = listed?.baseUrl || llm.baseUrl || baseUrl;
+        model = (Array.isArray(listed?.models) && listed.models[0]) || llm.defaultModel || llm.model || model;
+        name = listed?.name || selected || name;
       }
     } catch {
       /* ignore */
     }
-    return { projectRoot: root, baseUrl, model, firstRunDone: cfg.firstRunDone };
+    return { projectRoot: root, baseUrl, model, name, firstRunDone: cfg.firstRunDone };
   });
 
   ipcMain.handle("app:pickProjectRoot", async () => {
@@ -803,8 +812,12 @@ function registerIpc() {
     if (!path.isAbsolute(root)) return { ok: false, message: "项目根必须是绝对路径" };
     try {
       ensureProjectLayout(root);
-      writeProjectLlm(root, { baseUrl: payload?.baseUrl, model: payload?.model });
-      writeSecrets(root, "custom", payload?.apiKey);
+      saveFirstRunLlm(root, {
+        name: payload?.name,
+        baseUrl: payload?.baseUrl,
+        model: payload?.model,
+        apiKey: payload?.apiKey,
+      });
       saveShellConfig({
         INKOS_PROJECT_ROOT: root,
         FW_FIRST_RUN_DONE: "1",

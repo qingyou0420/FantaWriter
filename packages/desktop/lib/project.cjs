@@ -75,6 +75,51 @@ function ensureProjectLayout(root) {
   return resolved;
 }
 
+const DEFAULT_CUSTOM_SERVICE_NAME = "自定义";
+
+function customServiceName(name) {
+  const trimmed = String(name || "").trim();
+  return trimmed || DEFAULT_CUSTOM_SERVICE_NAME;
+}
+
+/** Studio lists custom endpoints as `custom:${name}` and looks up secrets by that id. */
+function customServiceId(name) {
+  return `custom:${customServiceName(name)}`;
+}
+
+function normalizeServicesArray(raw) {
+  if (Array.isArray(raw)) {
+    return raw.filter((entry) => entry && typeof entry === "object");
+  }
+  if (raw && typeof raw === "object") {
+    return Object.entries(raw).map(([id, value]) => {
+      const body = value && typeof value === "object" ? value : {};
+      if (id.startsWith("custom:")) {
+        return { ...body, service: "custom", name: id.slice("custom:".length) };
+      }
+      return { ...body, service: id };
+    });
+  }
+  return [];
+}
+
+function upsertCustomService(services, entry) {
+  const id = customServiceId(entry.name);
+  const next = [];
+  let replaced = false;
+  for (const svc of services) {
+    const svcId = svc.service === "custom" ? `custom:${svc.name ?? ""}` : String(svc.service || "");
+    if (svcId === id) {
+      next.push({ ...svc, ...entry });
+      replaced = true;
+    } else {
+      next.push(svc);
+    }
+  }
+  if (!replaced) next.push(entry);
+  return next;
+}
+
 function writeSecrets(root, service, apiKey) {
   const dir = path.join(root, ".inkos");
   fs.mkdirSync(dir, { recursive: true });
@@ -88,7 +133,7 @@ function writeSecrets(root, service, apiKey) {
       data = { services: {} };
     }
   }
-  const id = String(service || "custom").trim() || "custom";
+  const id = String(service || "").trim() || customServiceId();
   const key = String(apiKey || "").trim();
   if (key) data.services[id] = { apiKey: key };
   else delete data.services[id];
@@ -102,28 +147,77 @@ function writeProjectLlm(root, opts) {
   if (fs.existsSync(configPath)) {
     raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
   }
+  const name = customServiceName(opts && opts.name);
+  const serviceId = customServiceId(name);
+  const baseUrl = String((opts && opts.baseUrl) || "").trim();
+  const model = String((opts && opts.model) || "").trim();
+  const previous = raw.llm && typeof raw.llm === "object" ? raw.llm : {};
+  const entry = {
+    service: "custom",
+    name,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(model ? { models: [model] } : {}),
+  };
   raw.name = raw.name || path.basename(root) || "幻想作家";
   raw.version = raw.version || "0.1.0";
   raw.language = raw.language || "zh";
   raw.llm = {
-    ...(raw.llm && typeof raw.llm === "object" ? raw.llm : {}),
+    ...previous,
     provider: "openai",
-    service: "custom",
+    service: serviceId,
     configSource: "studio",
-    baseUrl: String(opts.baseUrl || "").trim(),
-    model: String(opts.model || "").trim(),
+    baseUrl,
+    model,
+    defaultModel: model,
     apiFormat: "chat",
     stream: true,
+    services: upsertCustomService(normalizeServicesArray(previous.services), entry),
   };
   fs.writeFileSync(configPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
-  return configPath;
+  return { configPath, serviceId, name };
+}
+
+/**
+ * First-run writes a Studio-listable custom service + project secret.
+ * Does not write ~/.inkos/.env, project .env, or INKOS_LLM_* keys.
+ */
+function saveFirstRunLlm(root, opts) {
+  const written = writeProjectLlm(root, opts);
+  const secretsPath = writeSecrets(root, written.serviceId, opts && opts.apiKey);
+  return { ...written, secretsPath };
+}
+
+/**
+ * Mirrors Studio GET /api/v1/services custom-entry listing:
+ * only named `llm.services[]` items appear, as `custom:${name}`,
+ * and they are connected when secrets.services[that id] has an apiKey.
+ */
+function listStudioCustomServices(llm, secrets) {
+  const services = Array.isArray(llm && llm.services) ? llm.services : [];
+  const secretMap = secrets && secrets.services && typeof secrets.services === "object" ? secrets.services : {};
+  const listed = [];
+  for (const svc of services) {
+    if (!svc || svc.service !== "custom") continue;
+    const secretKey = `custom:${svc.name}`;
+    listed.push({
+      service: secretKey,
+      label: svc.name ?? "Custom",
+      connected: Boolean(secretMap[secretKey] && secretMap[secretKey].apiKey),
+    });
+  }
+  return listed;
 }
 
 module.exports = {
   DEFAULT_FOLDER,
+  DEFAULT_CUSTOM_SERVICE_NAME,
   defaultProjectRoot,
   isAbsoluteRoot,
   ensureProjectLayout,
+  customServiceName,
+  customServiceId,
   writeSecrets,
   writeProjectLlm,
+  saveFirstRunLlm,
+  listStudioCustomServices,
 };

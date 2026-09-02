@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- 首次设置把向导里的 LLM 写成 Studio 能列出的命名服务（`llm.services[]` + 密钥 id `custom:<名称>`），不再写成看不见的 `llm.service="custom"`，也不会写 `~/.inkos/.env` 或自动导入环境变量。
+
 ## [2.0.0] - 2026-09-02
 
 第一份正式 **2.0 桌面安装包**：`FantaWriter-Setup-2.0.0.exe`（同时上传 `Fantasy-Writer-Setup-2.0.0.exe` 别名，给仍认旧文件名的 1.7 端）。这是 InkOS 内核 + Electron 壳的首发，不是「P2 已经打磨完毕」的声明。
