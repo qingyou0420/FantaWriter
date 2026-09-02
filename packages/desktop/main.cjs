@@ -248,7 +248,7 @@ function startEngine(listenPort, root) {
   const entry = studioEntry();
   if (!entry) {
     throw new Error(
-      "找不到 InkOS Studio 引擎入口 packages/studio/dist/api/index.js。请先运行 pnpm build。",
+      "找不到幻想作家引擎入口 packages/studio/dist/api/index.js。请先运行 pnpm build。",
     );
   }
   const engineRoot = resolveEngineRoot(entry) || path.dirname(entry);
@@ -272,7 +272,7 @@ function startEngine(listenPort, root) {
     if (engineProcess === child) engineProcess = null;
     if (engineHandle.child === child) clearEngineHandle(engineHandle);
     if (!quitting && code && code !== 0) {
-      dialog.showErrorBox("引擎已退出", `InkOS Studio 子进程退出（${code}）。\n日志：${getLogPath()}`);
+      dialog.showErrorBox("引擎已退出", `幻想作家引擎子进程退出（${code}）。\n日志：${getLogPath()}`);
     }
   });
   return `http://${HOST}:${listenPort}`;
@@ -359,7 +359,7 @@ async function resolveEngineUrl() {
       return `http://${HOST}:${port}`;
     }
     if (existing?.ok && existing.instanceToken !== instanceToken) {
-      appendLog(`端口 ${port} 被其它 InkOS/引擎占用，改钉新端口`);
+      appendLog(`端口 ${port} 被其它引擎占用，改钉新端口`);
       port = await pickListenPort(SCAN_START);
       saveShellConfig({ APP_DATA_PORT: String(port) });
     } else if (!(await canBindPort(port))) {
@@ -384,6 +384,7 @@ function createWindow(targetUrl) {
     show: false,
     autoHideMenuBar: true,
     title: "幻想作家 / FantaWriter",
+    icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -415,6 +416,7 @@ function showAbout() {
   dialog.showMessageBox(mainWindow || undefined, {
     type: "info",
     title: "关于幻想作家",
+    icon: path.join(__dirname, "icon.png"),
     message: "幻想作家 / FantaWriter 2.0",
     detail: [
       "内核与工作台 fork 自 InkOS (https://github.com/Narcooo/inkos) v1.8.x。",

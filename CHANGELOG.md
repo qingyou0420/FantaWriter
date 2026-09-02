@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 变更
+
+- 工作台侧栏、语言选择、加载与首启页改为「幻想作家」产品标（书法「幻」+ 羽毛笔），不再显示 InkOS / Studio 作为产品名。Windows 安装包与快捷方式使用 `build/icon.ico`。
+
 ### 修复
 
 - 首次设置把向导里的 LLM 写成 Studio 能列出的命名服务（`llm.services[]` + 密钥 id `custom:<名称>`），不再写成看不见的 `llm.service="custom"`，也不会写 `~/.inkos/.env` 或自动导入环境变量。
