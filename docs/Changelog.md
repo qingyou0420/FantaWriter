@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 侧栏去掉顶部品牌块（破损 `FantaWriterLogo` + 幻想作家 / FantaWriter）。`开始创作` 成为侧栏第一项。窗口标题 / 首次设置 / `icon.ico` 不动。
+
 ## 2.0.2
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.2.exe`（#62 侧栏系统与帮助菜单恢复检查更新）。2.0.1 用户需先手动装这一版，应用内按钮才存在。

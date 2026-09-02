@@ -50,7 +50,6 @@ import {
   Film,
   Languages,
 } from "lucide-react";
-import { FantaWriterLogo } from "./FantaWriterLogo";
 
 // 历史记录里的会话混装多种类型（chat / short / play / book-create），用图标区分。
 function SessionKindIcon({ kind, className }: { readonly kind?: string; readonly className?: string }) {
@@ -289,22 +288,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   return (
     <aside className="w-[260px] shrink-0 border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
-      {/* Logo Area */}
-      <div className="px-6 py-8">
-        <button
-          onClick={nav.toDashboard}
-          className="group flex items-center gap-3 hover:opacity-80 transition-all duration-300"
-        >
-          <FantaWriterLogo className="w-11 h-11 shrink-0 rounded-[22%] group-hover:scale-105 transition-transform" />
-          <div className="flex flex-col">
-            <span className="font-serif text-[27px] leading-none font-medium">幻想作家</span>
-            <span className="text-[13px] tracking-[0.08em] text-muted-foreground font-bold mt-1.5">FantaWriter</span>
-          </div>
-        </button>
-      </div>
-
-      {/* Main Navigation */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-6">
+      {/* Main Navigation — create section is the first item (no brand tile). */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         {/* Create Section — always visible, two columns. */}
         <div>
           <div className="px-3 mb-2.5">
