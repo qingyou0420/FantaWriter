@@ -24,8 +24,10 @@ describe("studio product chrome branding", () => {
 
     expect(sidebar).not.toMatch(/InkosLogo/);
     expect(sidebar).not.toMatch(/InkOS/);
-    expect(sidebar).toMatch(/FantaWriterLogo/);
-    expect(sidebar).toMatch(/幻想作家/);
+    expect(sidebar).not.toMatch(/FantaWriterLogo/);
+    expect(sidebar).not.toMatch(/幻想作家/);
+    expect(sidebar).not.toMatch(/<img\b/);
+    expect(sidebar).toMatch(/nav\.createSection/);
 
     expect(language).not.toMatch(/InkOS/);
     expect(language).toMatch(/FantaWriterLogo/);
