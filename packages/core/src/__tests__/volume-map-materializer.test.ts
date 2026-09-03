@@ -143,7 +143,7 @@ describe("VolumeMapMaterializer", () => {
     expect(findVolumeMapEntry(result.markdown, 1)).toBeTruthy();
     expect(findVolumeMapEntry(result.markdown, 260)).toBeTruthy();
     expect(tree.volumes.map((volume) => volume.title.replace(/^第\d+卷\s*/, ""))).toEqual(
-      expect.arrayContaining(["冕琅", "棋梪", "白羽", "商陆", "醉生", "江山", "清溪"]),
+      expect.arrayContaining(["冕旒", "棋枰", "白羽", "商陆", "醉生", "江山", "清溪"]),
     );
     expect(tree.volumeCount).toBe(7);
     expect(tree.volumes[0]?.startChapter).toBe(1);

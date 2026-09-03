@@ -582,7 +582,7 @@ export interface ProseVolumeHint {
 
 /**
  * Recover named volumes from leftover architect prose such as
- * `冕琅(40) 棋梪(40) 白羽(45)…`. Used when rematerializing books like 《醉词》
+ * `冕旒(40) 棋枰(40) 白羽(45)…`. Used when rematerializing books like 《醉词》
  * that never had `## 第N卷` headings.
  */
 export function parseProseVolumeHints(markdown: string): ReadonlyArray<ProseVolumeHint> {

@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
+      "@actalk/inkos-core/volume-map-tree": resolve(__dirname, "../core/src/volume-map-tree.ts"),
     },
   },
   server: {

@@ -36,6 +36,10 @@
     "./forecast/schema": {
       "types": "./dist/forecast/schema.d.ts",
       "import": "./dist/forecast/schema.js"
+    },
+    "./volume-map-tree": {
+      "types": "./dist/volume-map-tree.d.ts",
+      "import": "./dist/volume-map-tree.js"
     }
   },
   "files": [

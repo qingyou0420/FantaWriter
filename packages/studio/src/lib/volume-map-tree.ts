@@ -27,4 +27,4 @@ export {
   type VolumeMapNodeKind,
   type VolumeMapTree,
   type VolumeMapVolumeNode,
-} from "@actalk/inkos-core";
+} from "@actalk/inkos-core/volume-map-tree";
