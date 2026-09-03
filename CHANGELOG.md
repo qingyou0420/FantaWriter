@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [2.0.8] - 2026-09-03
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.8.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
+### 修复
+
+- 织卷识别卷一《冕旒》与四十章；已写成第N程的书可从原架构笔记重锁冕旒…清溪；240s 超时不再误报成 API 400；kimi-k3 织卷第1–10章 reasoning_effort low，总超时 900s。
+
 ## [2.0.7] - 2026-09-03
 
 Windows 补丁安装包：`FantaWriter-Setup-2.0.7.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
@@ -308,6 +316,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.8]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.8
 [2.0.7]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.7
 [2.0.6]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.6
 [2.0.5]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.5
