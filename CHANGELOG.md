@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [2.0.7] - 2026-09-03
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.7.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
+### 修复
+
+- 织卷先定卷，再每批 10 章供审；LLM 流超时不再空转。
+
 ## [2.0.6] - 2026-09-03
 
 Windows 补丁安装包：`FantaWriter-Setup-2.0.6.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
@@ -300,6 +308,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.7]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.7
 [2.0.6]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.6
 [2.0.5]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.5
 [2.0.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.4

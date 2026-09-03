@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.7
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.7.exe`（#72 织卷先定卷，再每批 10 章供审；LLM 流超时不再空转）。
+
 ## 2.0.6
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.6.exe`（#70 建书按目标章数/每章字数写出短标题卷章树和提要；大纲侧栏不再把「卷一埋/OKR」散文当卷名；已有书可用织卷按字数重排，不用删书）。
