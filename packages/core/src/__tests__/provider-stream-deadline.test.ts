@@ -90,24 +90,24 @@ describe("guardAssistantMessageStream", () => {
       stopReason: "stop",
       timestamp: Date.now(),
     };
-    queueMicrotask(() => {
-      stream.push({ type: "start", partial: empty });
-    });
+    const events: Array<{ type?: string; error?: { errorMessage?: string } }> = [];
+    const pending = (async () => {
+      for await (const event of guarded) events.push(event);
+    })();
+    stream.push({ type: "start", partial: empty });
 
     try {
-      const pending = (async () => {
-        const events = [];
-        for await (const event of guarded) events.push(event);
-        return events;
-      })();
-      await vi.advanceTimersByTimeAsync(DEFAULT_STREAM_IDLE_TIMEOUT_MS);
-      const events = await pending;
-      const first = events[0] as { type?: string; error?: { errorMessage?: string } };
-      expect(first.type).toBe("error");
-      expect(first.error?.errorMessage).toContain("模型「slow-model」");
-      expect(first.error?.errorMessage).toContain("60 秒");
-      expect(first.error?.errorMessage).toContain("流式兼容性");
-      expect(first.error?.errorMessage).not.toMatch(/produced no token/i);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(events.some((event) => event.type === "error")).toBe(false);
+      await vi.advanceTimersByTimeAsync(DEFAULT_STREAM_IDLE_TIMEOUT_MS - 1);
+      expect(events.some((event) => event.type === "error")).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await pending;
+      const errorEvent = events.find((event) => event.type === "error");
+      expect(errorEvent?.error?.errorMessage).toContain("模型「slow-model」");
+      expect(errorEvent?.error?.errorMessage).toContain("60 秒");
+      expect(errorEvent?.error?.errorMessage).toContain("流式兼容性");
+      expect(errorEvent?.error?.errorMessage).not.toMatch(/produced no token/i);
     } finally {
       vi.useRealTimers();
     }

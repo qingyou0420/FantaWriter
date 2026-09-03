@@ -1407,6 +1407,8 @@ describe("agent deterministic writing tools", () => {
       .toThrow(/Invalid activeBookId/);
     expect(() => resolveActiveBookScopedPath(root, "醉词", "../outline/story_frame.md"))
       .toThrow(/Path traversal blocked/);
+    expect(() => resolveActiveBookScopedPath(root, "醉词", join(root, "outside.md")))
+      .toThrow(/Path traversal blocked/);
   });
 
   it("resolves active-book truth paths under the book's story directory", async () => {

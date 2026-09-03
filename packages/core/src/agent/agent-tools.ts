@@ -93,6 +93,9 @@ export function resolveActiveBookScopedPath(
   activeBookId: string,
   requestedPath: string,
 ): string {
+  if (isAbsolute(requestedPath)) {
+    throw new Error(`Path traversal blocked: ${requestedPath}`);
+  }
   const safeActiveBookId = assertSafeBookId(activeBookId, "activeBookId");
   const booksRoot = join(projectRoot, "books");
   const bookRoot = safeChildPath(booksRoot, safeActiveBookId);

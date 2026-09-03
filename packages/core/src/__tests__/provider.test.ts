@@ -263,8 +263,10 @@ describe("chatCompletion via pi-ai", () => {
 
     expect(error.message).not.toContain("API 返回 400");
     expect(error.message).not.toContain("请求参数错误");
-    expect(error.message).toMatch(/超时|timeout/i);
-    expect(error.message).toContain("240000ms");
+    expect(error.message).toContain("模型「kimi-k3」");
+    expect(error.message).toContain("240 秒");
+    expect(error.message).toContain("流式兼容性");
+    expect(error.message).not.toMatch(/produced no |exceeded overall timeout/i);
   });
 
   it("still wraps a real HTTP 400 including invalid temperature", async () => {
