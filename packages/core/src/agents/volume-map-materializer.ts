@@ -12,8 +12,10 @@ import {
   leftoverVolumeMapProse,
   listedExactChapterNumbers,
   missingExactChapters,
+  parseProseVolumeHints,
   parseVolumeMapTree,
   planVolumeRanges,
+  planVolumeRangesFromHints,
   renderVolumeMapMarkdown,
   resolveTargetChapterCount,
   volumeMapHasReviewableTree,
@@ -65,15 +67,16 @@ export class VolumeMapMaterializer extends BaseAgent {
         if (node.title.trim() || node.summary.trim()) existingChapters.set(number, node);
       }
     }
-    const ranges = this.resolveVolumeRanges(existing, targetChapters);
     const leftover = leftoverVolumeMapProse(input.volumeMap);
+    const hinted = this.resolveHintedRanges(input.volumeMap, existing, targetChapters);
+    const ranges = hinted ?? this.resolveVolumeRanges(existing, targetChapters);
     const generated: number[] = [];
 
     const volumes: AssembledVolume[] = [];
     for (const range of ranges) {
       const matchedVolume = existing.volumes.find((volume) => volume.volumeNumber === range.volumeNumber)
         ?? existing.volumes[range.volumeNumber - 1];
-      const title = this.shortVolumeTitle(matchedVolume?.title, range.volumeNumber, language);
+      const title = this.shortVolumeTitle(range.title ?? matchedVolume?.title, range.volumeNumber, language);
       const body = this.volumeBody(matchedVolume?.body, leftover, range.volumeNumber, language);
       const needed = this.chapterNumbersInRange(range).filter((number) => !existingChapters.has(number));
       const preserved = this.chapterNumbersInRange(range)
@@ -126,6 +129,20 @@ export class VolumeMapMaterializer extends BaseAgent {
       targetChapters,
       generatedChapterNumbers: generated,
     };
+  }
+
+  private resolveHintedRanges(
+    volumeMap: string,
+    existing: ReturnType<typeof parseVolumeMapTree>,
+    targetChapters: number,
+  ): ReadonlyArray<PlannedVolumeRange> | null {
+    const hasRealVolumes = existing.volumes.some((volume) =>
+      volume.volumeNumber != null
+      && volume.startChapter != null
+      && volume.endChapter != null,
+    );
+    if (hasRealVolumes) return null;
+    return planVolumeRangesFromHints(parseProseVolumeHints(volumeMap), targetChapters);
   }
 
   private resolveVolumeRanges(

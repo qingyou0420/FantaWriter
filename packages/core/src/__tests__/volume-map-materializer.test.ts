@@ -49,23 +49,28 @@ function buildAgent(): VolumeMapMaterializer {
 function chapterList(start: number, end: number): string {
   return Array.from({ length: end - start + 1 }, (_, index) => {
     const number = start + index;
-    return `## 第 ${number} 章 节点${number}\n推进本卷 OKR 的第 ${number} 步。`;
+    return `## 第 ${number} 章 节点${number}\n推进本卷到节点${number}。`;
   }).join("\n");
+}
+
+function mockChapterChat(agent: VolumeMapMaterializer) {
+  return vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+    .mockImplementation(async (...args: unknown[]) => {
+      const messages = args[0] as Array<{ content?: string }>;
+      const system = messages[0]?.content ?? "";
+      const match = system.match(/必须写全这些章号：([0-9、]+)/);
+      const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
+      return {
+        content: chapterList(Math.min(...numbers), Math.max(...numbers)),
+        usage: ZERO_USAGE,
+      };
+    });
 }
 
 describe("VolumeMapMaterializer", () => {
   it("turns architect volume skeleton + targetChapters into a parseable tree", async () => {
     const agent = buildAgent();
-    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
-      .mockImplementation(async (messages: Array<{ content: string }>) => {
-        const system = messages[0]?.content ?? "";
-        const match = system.match(/必须写全这些章号：([0-9、]+)/);
-        const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
-        return {
-          content: chapterList(numbers[0]!, numbers[numbers.length - 1]!),
-          usage: ZERO_USAGE,
-        };
-      });
+    mockChapterChat(agent);
 
     const result = await agent.materialize({
       book: book({ targetChapters: 12 }),
@@ -94,16 +99,7 @@ describe("VolumeMapMaterializer", () => {
 
   it("rebuilds a chapter tree from 醉词 prose without using that prose as a title", async () => {
     const agent = buildAgent();
-    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
-      .mockImplementation(async (messages: Array<{ content: string }>) => {
-        const system = messages[0]?.content ?? "";
-        const match = system.match(/必须写全这些章号：([0-9、]+)/);
-        const numbers = (match?.[1] ?? "1、2").split("、").map((item) => Number.parseInt(item, 10));
-        return {
-          content: chapterList(Math.min(...numbers), Math.max(...numbers)),
-          usage: ZERO_USAGE,
-        };
-      });
+    mockChapterChat(agent);
 
     const result = await agent.materialize({
       book: book({ targetChapters: 24, title: "醉词" }),
@@ -125,16 +121,7 @@ describe("VolumeMapMaterializer", () => {
 
   it("rebuilds 260 planned chapters from the 醉词 fixture without wall titles", async () => {
     const agent = buildAgent();
-    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
-      .mockImplementation(async (messages: Array<{ content: string }>) => {
-        const system = messages[0]?.content ?? "";
-        const match = system.match(/必须写全这些章号：([0-9、]+)/);
-        const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
-        return {
-          content: chapterList(Math.min(...numbers), Math.max(...numbers)),
-          usage: ZERO_USAGE,
-        };
-      });
+    mockChapterChat(agent);
 
     const result = await agent.materialize({
       book: book({ targetChapters: 260, chapterWordCount: 5000, title: "醉词" }),
@@ -155,20 +142,18 @@ describe("VolumeMapMaterializer", () => {
     }
     expect(findVolumeMapEntry(result.markdown, 1)).toBeTruthy();
     expect(findVolumeMapEntry(result.markdown, 260)).toBeTruthy();
+    expect(tree.volumes.map((volume) => volume.title.replace(/^第\d+卷\s*/, ""))).toEqual(
+      expect.arrayContaining(["冕琅", "棋梪", "白羽", "商陆", "醉生", "江山", "清溪"]),
+    );
+    expect(tree.volumeCount).toBe(7);
+    expect(tree.volumes[0]?.startChapter).toBe(1);
+    expect(tree.volumes[0]?.endChapter).toBe(40);
+    expect(tree.volumes[6]?.endChapter).toBe(260);
   });
 
   it("materializes 90 chapters across multiple volumes", async () => {
     const agent = buildAgent();
-    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
-      .mockImplementation(async (messages: Array<{ content: string }>) => {
-        const system = messages[0]?.content ?? "";
-        const match = system.match(/必须写全这些章号：([0-9、]+)/);
-        const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
-        return {
-          content: chapterList(Math.min(...numbers), Math.max(...numbers)),
-          usage: ZERO_USAGE,
-        };
-      });
+    mockChapterChat(agent);
 
     const result = await agent.materialize({
       book: book({ targetChapters: 90, chapterWordCount: 3000 }),
@@ -213,16 +198,7 @@ describe("VolumeMapMaterializer", () => {
 
   it("regenerates an empty 第 1 章 stub when weaving remaining chapters", async () => {
     const agent = buildAgent();
-    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
-      .mockImplementation(async (messages: Array<{ content: string }>) => {
-        const system = messages[0]?.content ?? "";
-        const match = system.match(/必须写全这些章号：([0-9、]+)/);
-        const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
-        return {
-          content: chapterList(Math.min(...numbers), Math.max(...numbers)),
-          usage: ZERO_USAGE,
-        };
-      });
+    mockChapterChat(agent);
 
     const result = await agent.materialize({
       book: book({ targetChapters: 4 }),

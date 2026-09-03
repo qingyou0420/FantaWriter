@@ -599,6 +599,8 @@ export {
   parseChineseInt,
   resolveTargetChapterCount,
   planVolumeRanges,
+  parseProseVolumeHints,
+  planVolumeRangesFromHints,
   listedExactChapterNumbers,
   missingExactChapters,
   volumeMapHasReviewableTree,
@@ -610,6 +612,7 @@ export {
   type VolumeMapChapterNode,
   type VolumeMapNodeKind,
   type PlannedVolumeRange,
+  type ProseVolumeHint,
   type AssembledVolume,
   type AssembledVolumeChapter,
 } from "./utils/volume-map-tree.js";

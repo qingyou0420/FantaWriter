@@ -46,6 +46,7 @@ export interface PlannedVolumeRange {
   readonly volumeNumber: number;
   readonly startChapter: number;
   readonly endChapter: number;
+  readonly title?: string;
 }
 
 export interface AssembledVolumeChapter {
@@ -572,6 +573,68 @@ export function resolveTargetChapterCount(input: {
   const perChapter = input.chapterWordCount && input.chapterWordCount > 0 ? input.chapterWordCount : 3000;
   if (words > 0) return Math.max(1, Math.ceil(words / perChapter));
   return 1;
+}
+
+export interface ProseVolumeHint {
+  readonly title: string;
+  readonly chapterCount: number;
+}
+
+/**
+ * Recover named volumes from leftover architect prose such as
+ * `冕琅(40) 棋梪(40) 白羽(45)…`. Used when rematerializing books like 《醉词》
+ * that never had `## 第N卷` headings.
+ */
+export function parseProseVolumeHints(markdown: string): ReadonlyArray<ProseVolumeHint> {
+  const hints: ProseVolumeHint[] = [];
+  const pattern = /([\u4e00-\u9fffA-Za-z]{1,8})\s*[（(](\d{1,3})[）)]/g;
+  for (const line of markdown.replace(/\r\n/g, "\n").split("\n")) {
+    if (line.trimStart().startsWith("#")) continue;
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null = pattern.exec(line);
+    while (match) {
+      const title = match[1] ?? "";
+      const chapterCount = Number.parseInt(match[2] ?? "", 10);
+      if (
+        title
+        && Number.isInteger(chapterCount)
+        && chapterCount > 0
+        && !/^(?:卷|第|章|埋|OKR|KR|共|各卷)/.test(title)
+        && !/埋|OKR|Objective|KR\d|末/.test(title)
+      ) {
+        hints.push({ title, chapterCount });
+      }
+      match = pattern.exec(line);
+    }
+  }
+  return hints;
+}
+
+export function planVolumeRangesFromHints(
+  hints: ReadonlyArray<ProseVolumeHint>,
+  targetChapters: number,
+): ReadonlyArray<PlannedVolumeRange> | null {
+  if (hints.length < 2) return null;
+  const total = Math.max(1, Math.floor(targetChapters));
+  const ranges: PlannedVolumeRange[] = [];
+  let cursor = 1;
+  for (const hint of hints) {
+    if (cursor > total) break;
+    const endChapter = Math.min(total, cursor + hint.chapterCount - 1);
+    ranges.push({
+      volumeNumber: ranges.length + 1,
+      startChapter: cursor,
+      endChapter,
+      title: hint.title,
+    });
+    cursor = endChapter + 1;
+  }
+  if (ranges.length < 2) return null;
+  if (cursor <= total) {
+    const last = ranges[ranges.length - 1]!;
+    ranges[ranges.length - 1] = { ...last, endChapter: total };
+  }
+  return ranges;
 }
 
 export function planVolumeRanges(

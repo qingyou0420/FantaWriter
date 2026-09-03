@@ -4,8 +4,10 @@ import {
   formatVolumeLabel,
   listedExactChapterNumbers,
   missingExactChapters,
+  parseProseVolumeHints,
   parseVolumeMapTree,
   planVolumeRanges,
+  planVolumeRangesFromHints,
   renderVolumeMapMarkdown,
   resolveTargetChapterCount,
   volumeMapHasReviewableTree,
@@ -68,6 +70,36 @@ describe("parseVolumeMapTree — heading contract", () => {
     expect(tree.orphanChapters[0]?.title).toBe("");
     expect(formatVolumeLabel(1, ZUI_CI_PROSE_FIXTURE.split("\n").find((line) => line.startsWith("卷一埋"))!, true).length)
       .toBeLessThanOrEqual(MAX_VOLUME_TREE_LABEL_CHARS);
+  });
+
+  it("does not promote the old 卷N VOLUME_HEADER prose lines or section H2s", () => {
+    const oldVolumeHeader = /^\s*卷\s*[一二三四五六七八九十百\d]+/;
+    const fakeTitles = [
+      ZUI_CI_PROSE_FIXTURE.split("\n").find((line) => line.startsWith("卷一埋"))!,
+      ZUI_CI_PROSE_FIXTURE.split("\n").find((line) => line.startsWith("卷一Objective"))!,
+      ZUI_CI_PROSE_FIXTURE.split("\n").find((line) => line.startsWith("卷一末"))!,
+    ];
+    expect(fakeTitles.every((line) => oldVolumeHeader.test(line))).toBe(true);
+    const tree = parseVolumeMapTree(ZUI_CI_PROSE_FIXTURE);
+    expect(tree.volumes).toHaveLength(0);
+    for (const heading of ["各卷主题与情绪曲线", "卷间钩子与回收承诺", "各卷OKR", "卷尾必须发生的改变", "节奏原则"]) {
+      expect(tree.volumes.some((volume) => volume.title.includes(heading))).toBe(false);
+    }
+    const hints = parseProseVolumeHints(ZUI_CI_PROSE_FIXTURE);
+    expect(hints.map((hint) => `${hint.title}(${hint.chapterCount})`)).toEqual([
+      "冕琅(40)",
+      "棋梪(40)",
+      "白羽(45)",
+      "商陆(40)",
+      "醉生(35)",
+      "江山(35)",
+      "清溪(25)",
+    ]);
+    expect(hints.reduce((sum, hint) => sum + hint.chapterCount, 0)).toBe(260);
+    const ranges = planVolumeRangesFromHints(hints, 260);
+    expect(ranges).toHaveLength(7);
+    expect(ranges?.[0]).toMatchObject({ title: "冕琅", startChapter: 1, endChapter: 40 });
+    expect(ranges?.[6]).toMatchObject({ title: "清溪", startChapter: 236, endChapter: 260 });
   });
 
   it("keeps a heading-only 第N卷 title short even if a writer stuffed junk after the marker", () => {
