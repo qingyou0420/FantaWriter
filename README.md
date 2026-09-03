@@ -4,7 +4,7 @@ Windows 向的**本机桌面**长篇连载工作台。2.0 是一次**重建**：
 
 内核与 Studio UI fork 自 [InkOS](https://github.com/Narcooo/inkos) v1.8.x（AGPL-3.0）。Electron 壳负责单实例、钉端口、窗口、首启向导和退出杀引擎。稿件落在你选的项目根目录（默认 `%USERPROFILE%\Documents\幻想作家\`），标准 InkOS 布局：`inkos.json`、`books/`、`.inkos/secrets.json`。密钥只写在本机项目里，**不进 git、不进安装包**。
 
-当前版本：**2.0.7**。安装包：`FantaWriter-Setup-2.0.7.exe`（[Releases](https://github.com/qingyou0420/FantaWriter/releases)）。
+当前版本：**2.0.8**。安装包：`FantaWriter-Setup-2.0.8.exe`（[Releases](https://github.com/qingyou0420/FantaWriter/releases)）。
 
 **[更新日志](./CHANGELOG.md)** · **[2.0 蓝图](./docs/2.0重构蓝图-InkOS内核桌面重建方案.md)** · **[上游说明](./docs/UPSTREAM.md)**
 
@@ -46,7 +46,7 @@ pnpm engine:smoke
 pnpm dist:win
 ```
 
-产物在 `dist-installer/FantaWriter-Setup-2.0.7.exe`（另有 `Fantasy-Writer-Setup-2.0.7.exe` 别名）。打包前会预构建 Studio、`INKOS_DISABLE_VITE_BUILD=1`，把 `packages/studio/dist` + core 装进 extraResources，并拒绝把 `.env` / `secrets.json` 打进安装包。
+产物在 `dist-installer/FantaWriter-Setup-2.0.8.exe`（另有 `Fantasy-Writer-Setup-2.0.8.exe` 别名）。打包前会预构建 Studio、`INKOS_DISABLE_VITE_BUILD=1`，把 `packages/studio/dist` + core 装进 extraResources，并拒绝把 `.env` / `secrets.json` 打进安装包。
 
 调试 CLI（显式根，不要靠 cwd）：
 
