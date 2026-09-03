@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [2.0.9] - 2026-09-03
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.9.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
+### 修复
+
+- 活动书读/写/改路径带上书 id；流水线 idle 180s；旧书会话下一轮跟随 Studio 默认模型。
+
 ## [2.0.8] - 2026-09-03
 
 Windows 补丁安装包：`FantaWriter-Setup-2.0.8.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
@@ -316,6 +324,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.9]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.9
 [2.0.8]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.8
 [2.0.7]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.7
 [2.0.6]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.6

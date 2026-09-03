@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.9
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.9.exe`（#77 活动书读/写/改路径带上书 id；流水线 idle 180s；旧书会话下一轮跟随 Studio 默认模型）。
+
 ## 2.0.8
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.8.exe`（#74 织卷识别卷一《冕旒》与四十章；已写成第N程的书可从原架构笔记重锁冕旒…清溪；240s 超时不再误报成 API 400；kimi-k3 织卷第1–10章 reasoning_effort low，总超时 900s）。
