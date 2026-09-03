@@ -5548,6 +5548,199 @@ describe("createStudioServer daemon lifecycle", () => {
     });
   });
 
+  it("rebinds an existing book session to the new Studio default on the next turn", async () => {
+    const sessionId = "1788447537029-bs51a7";
+    const bookSession = {
+      sessionId,
+      bookId: "醉词",
+      sessionKind: "book",
+      title: "醉词",
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const writeZenmuxDefault = async (defaultModel: string) => {
+      await writeFile(join(root, "inkos.json"), JSON.stringify({
+        ...projectConfig,
+        llm: {
+          configSource: "studio",
+          service: "zenmux",
+          provider: "openai",
+          baseUrl: "https://zenmux.ai/api/v1",
+          model: defaultModel,
+          defaultModel,
+          apiKey: "sk-test",
+          services: [
+            { service: "zenmux", baseUrl: "https://zenmux.ai/api/v1", stream: true },
+          ],
+          stream: true,
+        },
+      }, null, 2), "utf-8");
+    };
+    await writeZenmuxDefault("anthropic/claude-opus-4.8");
+    loadBookSessionMock.mockResolvedValue(bookSession);
+    loadBookConfigMock.mockResolvedValue({
+      id: "醉词",
+      title: "醉词",
+      language: "zh",
+    });
+    resolveServiceModelMock.mockImplementation(async (service: string, model: string) => ({
+      model: { id: model, provider: "openai", api: "openai-completions" },
+      apiKey: "sk-zenmux",
+    }));
+    runAgentSessionMock.mockResolvedValue({
+      responseText: "好。",
+      messages: [
+        { role: "user", content: "继续" },
+        { role: "assistant", content: "好。" },
+      ],
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const first = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "醉词",
+        sessionKind: "book",
+        service: "zenmux",
+        model: "anthropic/claude-opus-4.8",
+        sessionId,
+      }),
+    });
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toMatchObject({
+      model: {
+        id: "anthropic/claude-opus-4.8",
+        service: "zenmux",
+        source: "studio-default",
+      },
+    });
+    expect(resolveServiceModelMock.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      "zenmux",
+      "anthropic/claude-opus-4.8",
+    ]);
+    expect(pipelineConfigs.at(-1)).toMatchObject({ model: "anthropic/claude-opus-4.8" });
+
+    const saveDefault = await app.request("http://localhost/api/v1/project/default-model", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ service: "zenmux", defaultModel: "meta/muse-spark-1.3" }),
+    });
+    expect(saveDefault.status).toBe(200);
+
+    const next = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "再写一句",
+        activeBookId: "醉词",
+        sessionKind: "book",
+        service: "zenmux",
+        model: "anthropic/claude-opus-4.8",
+        sessionId,
+      }),
+    });
+    expect(next.status).toBe(200);
+    await expect(next.json()).resolves.toMatchObject({
+      model: {
+        id: "meta/muse-spark-1.3",
+        service: "zenmux",
+        source: "studio-default",
+        rebound: true,
+        notice: expect.stringContaining("meta/muse-spark-1.3"),
+      },
+    });
+    expect(resolveServiceModelMock.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      "zenmux",
+      "meta/muse-spark-1.3",
+    ]);
+    expect(pipelineConfigs.at(-1)).toMatchObject({ model: "meta/muse-spark-1.3" });
+    const agentConfig = runAgentSessionMock.mock.calls.at(-1)?.[0] as { model?: { id?: string } };
+    expect(agentConfig.model?.id).toBe("meta/muse-spark-1.3");
+  });
+
+  it("keeps an explicit per-session model override after the Studio default changes", async () => {
+    const sessionId = "1788447537029-bs51a7";
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        configSource: "studio",
+        service: "zenmux",
+        provider: "openai",
+        baseUrl: "https://zenmux.ai/api/v1",
+        model: "meta/muse-spark-1.3",
+        defaultModel: "meta/muse-spark-1.3",
+        apiKey: "sk-test",
+        services: [
+          { service: "zenmux", baseUrl: "https://zenmux.ai/api/v1", stream: true },
+        ],
+        stream: true,
+      },
+    }, null, 2), "utf-8");
+    loadBookSessionMock.mockResolvedValue({
+      sessionId,
+      bookId: "醉词",
+      sessionKind: "book",
+      title: "醉词",
+      modelOverride: "anthropic/claude-opus-4.8",
+      modelOverrideService: "zenmux",
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    loadBookConfigMock.mockResolvedValue({
+      id: "醉词",
+      title: "醉词",
+      language: "zh",
+    });
+    resolveServiceModelMock.mockImplementation(async (service: string, model: string) => ({
+      model: { id: model, provider: "openai", api: "openai-completions" },
+      apiKey: "sk-zenmux",
+    }));
+    runAgentSessionMock.mockResolvedValue({
+      responseText: "仍用 Opus。",
+      messages: [],
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "醉词",
+        sessionKind: "book",
+        service: "zenmux",
+        model: "meta/muse-spark-1.3",
+        sessionId,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      model: {
+        id: "anthropic/claude-opus-4.8",
+        service: "zenmux",
+        source: "session-override",
+      },
+    });
+    expect(resolveServiceModelMock.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      "zenmux",
+      "anthropic/claude-opus-4.8",
+    ]);
+    expect(pipelineConfigs.at(-1)).toMatchObject({ model: "anthropic/claude-opus-4.8" });
+  });
+
   it("lets the Studio agent creation path use explicit Ollama models without an API key", async () => {
     const ollamaModel = {
       id: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",

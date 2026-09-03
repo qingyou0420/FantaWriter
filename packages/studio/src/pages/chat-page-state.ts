@@ -114,7 +114,6 @@ export function pickModelSelection(
         && group.models.some((model) => model.id === selectedModel),
       )
     : false;
-  if (selectedStillAvailable) return null;
 
   const preferredService = preference?.service?.trim();
   const preferredModel = preference?.model?.trim();
@@ -124,6 +123,9 @@ export function pickModelSelection(
       ? preferredGroup?.models.find((model) => model.id === preferredModel)
       : undefined;
     if (preferredGroup && exactModel) {
+      if (exactModel.id === selectedModel && preferredGroup.service === selectedService) {
+        return null;
+      }
       return { model: exactModel.id, service: preferredGroup.service };
     }
     const firstPreferredModel = preferredGroup?.models[0];
@@ -135,9 +137,16 @@ export function pickModelSelection(
   if (preferredModel) {
     for (const group of groupedModels) {
       const exactModel = group.models.find((model) => model.id === preferredModel);
-      if (exactModel) return { model: exactModel.id, service: group.service };
+      if (exactModel) {
+        if (exactModel.id === selectedModel && group.service === selectedService) {
+          return null;
+        }
+        return { model: exactModel.id, service: group.service };
+      }
     }
   }
+
+  if (selectedStillAvailable) return null;
 
   const firstGroup = groupedModels.find((group) => group.models.length > 0);
   const firstModel = firstGroup?.models[0];

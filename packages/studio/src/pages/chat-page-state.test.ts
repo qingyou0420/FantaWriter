@@ -283,11 +283,34 @@ describe("pickModelSelection", () => {
     });
   });
 
-  it("keeps a valid user selection over the configured default", () => {
+  it("follows the configured Studio default when it differs from the current selection", () => {
     expect(pickModelSelection(grouped, "gemini-2.5-flash", "google", {
       service: "moonshot",
       model: "kimi-k2.5",
-    })).toBeNull();
+    })).toEqual({
+      model: "kimi-k2.5",
+      service: "moonshot",
+    });
+  });
+
+  it("rebinds an existing Opus picker to Muse Spark after the Studio default changes", () => {
+    const zenmux = [
+      {
+        service: "zenmux",
+        label: "ZenMux",
+        models: [
+          { id: "anthropic/claude-opus-4.8", name: "Claude Opus 4.8" },
+          { id: "meta/muse-spark-1.3", name: "Muse Spark 1.3" },
+        ],
+      },
+    ] as const;
+    expect(pickModelSelection(zenmux, "anthropic/claude-opus-4.8", "zenmux", {
+      service: "zenmux",
+      model: "meta/muse-spark-1.3",
+    })).toEqual({
+      model: "meta/muse-spark-1.3",
+      service: "zenmux",
+    });
   });
 
   it("returns null when no models are available", () => {

@@ -20,6 +20,7 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const isUser = role === "user";
   const isError = content.startsWith("\u2717");
+  const isNotice = content.startsWith("\u2139");
 
   return (
     <Message from={role}>
@@ -30,6 +31,10 @@ export const ChatMessage = memo(function ChatMessage({
           <div className="flex items-center gap-2 text-[17px] leading-[1.72] text-destructive">
             <XCircle size={14} className="shrink-0" />
             <span>{content.replace(/^\u2717\s*/, "")}</span>
+          </div>
+        ) : isNotice ? (
+          <div className="text-[15px] leading-[1.6] text-muted-foreground">
+            {content.replace(/^\u2139\s*/, "")}
           </div>
         ) : (
           <MessageResponse>{content}</MessageResponse>
