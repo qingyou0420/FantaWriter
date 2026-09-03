@@ -39,6 +39,7 @@ export abstract class BaseAgent {
       readonly firstEventTimeoutMs?: number;
       readonly streamIdleTimeoutMs?: number;
       readonly overallTimeoutMs?: number;
+      readonly extra?: Record<string, unknown>;
     },
   ): Promise<LLMResponse> {
     return runWorkerAgent(this.ctx.client, this.ctx.model, await this.appendTaskSkillGuidance(messages), {

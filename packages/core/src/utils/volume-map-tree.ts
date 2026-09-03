@@ -580,34 +580,142 @@ export interface ProseVolumeHint {
   readonly chapterCount: number;
 }
 
-/**
- * Recover named volumes from leftover architect prose such as
- * `冕旒(40) 棋枰(40) 白羽(45)…`. Used when rematerializing books like 《醉词》
- * that never had `## 第N卷` headings.
- */
-export function parseProseVolumeHints(markdown: string): ReadonlyArray<ProseVolumeHint> {
+const HINT_TITLE_PREFIX_JUNK = /^(?:卷|第|章|埋|OKR|KR|共|各卷)/;
+const HINT_TITLE_INLINE_JUNK = /埋|OKR|Objective|KR\d|末/;
+const NAMED_VOLUME_TITLE =
+  /(?:第\s*[一二三四五六七八九十百\d]+\s*卷|卷\s*[一二三四五六七八九十百\d]+)\s*《\s*([^》]{1,8})\s*》/g;
+const PAREN_TITLE_COUNT = /([\u4e00-\u9fffA-Za-z]{1,8})\s*[（(](\d{1,3})[）)]/g;
+const NAMED_TITLE_ADJACENT_COUNT =
+  /(?:第\s*[一二三四五六七八九十百\d]+\s*卷|卷\s*[一二三四五六七八九十百\d]+)\s*《\s*([^》]{1,8})\s*》\s*([一二三四五六七八九十百两]+|\d{1,3})\s*章?/g;
+const COUNT_RUN =
+  /((?:[一二三四五六七八九十百两]+|\d{1,3})\s*章?(?:\s*[、，,]\s*(?:[一二三四五六七八九十百两]+|\d{1,3})\s*章?){2,})/g;
+
+function isUsableHintTitle(title: string): boolean {
+  return Boolean(title)
+    && !HINT_TITLE_PREFIX_JUNK.test(title)
+    && !HINT_TITLE_INLINE_JUNK.test(title);
+}
+
+function isVolumeSizedCount(count: number): boolean {
+  return Number.isInteger(count) && count >= 8 && count <= 200;
+}
+
+function parseHintCountToken(raw: string): number | null {
+  const trimmed = raw.replace(/章/g, "").trim();
+  if (!trimmed) return null;
+  const count = /^\d+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : parseChineseInt(trimmed);
+  return count != null && isVolumeSizedCount(count) ? count : null;
+}
+
+function collectNonHeadingLines(markdown: string): string[] {
+  return markdown.replace(/\r\n/g, "\n").split("\n").filter((line) => !line.trimStart().startsWith("#"));
+}
+
+function parseParenTitleCounts(text: string): ProseVolumeHint[] {
   const hints: ProseVolumeHint[] = [];
-  const pattern = /([\u4e00-\u9fffA-Za-z]{1,8})\s*[（(](\d{1,3})[）)]/g;
-  for (const line of markdown.replace(/\r\n/g, "\n").split("\n")) {
-    if (line.trimStart().startsWith("#")) continue;
-    pattern.lastIndex = 0;
-    let match: RegExpExecArray | null = pattern.exec(line);
-    while (match) {
-      const title = match[1] ?? "";
-      const chapterCount = Number.parseInt(match[2] ?? "", 10);
-      if (
-        title
-        && Number.isInteger(chapterCount)
-        && chapterCount > 0
-        && !/^(?:卷|第|章|埋|OKR|KR|共|各卷)/.test(title)
-        && !/埋|OKR|Objective|KR\d|末/.test(title)
-      ) {
-        hints.push({ title, chapterCount });
-      }
-      match = pattern.exec(line);
+  PAREN_TITLE_COUNT.lastIndex = 0;
+  let match: RegExpExecArray | null = PAREN_TITLE_COUNT.exec(text);
+  while (match) {
+    const title = match[1] ?? "";
+    const chapterCount = Number.parseInt(match[2] ?? "", 10);
+    if (isUsableHintTitle(title) && isVolumeSizedCount(chapterCount)) {
+      hints.push({ title, chapterCount });
     }
+    match = PAREN_TITLE_COUNT.exec(text);
   }
   return hints;
+}
+
+function parseNamedVolumeTitles(text: string): string[] {
+  const titles: string[] = [];
+  NAMED_VOLUME_TITLE.lastIndex = 0;
+  let match: RegExpExecArray | null = NAMED_VOLUME_TITLE.exec(text);
+  while (match) {
+    const title = (match[1] ?? "").trim();
+    if (isUsableHintTitle(title)) titles.push(title);
+    match = NAMED_VOLUME_TITLE.exec(text);
+  }
+  return titles;
+}
+
+function parseNamedTitleAdjacentCounts(text: string): ProseVolumeHint[] {
+  const hints: ProseVolumeHint[] = [];
+  NAMED_TITLE_ADJACENT_COUNT.lastIndex = 0;
+  let match: RegExpExecArray | null = NAMED_TITLE_ADJACENT_COUNT.exec(text);
+  while (match) {
+    const title = (match[1] ?? "").trim();
+    const chapterCount = parseHintCountToken(match[2] ?? "");
+    if (isUsableHintTitle(title) && chapterCount != null) {
+      hints.push({ title, chapterCount });
+    }
+    match = NAMED_TITLE_ADJACENT_COUNT.exec(text);
+  }
+  return hints;
+}
+
+function parseVolumeCountList(text: string): number[] {
+  let best: number[] = [];
+  COUNT_RUN.lastIndex = 0;
+  let match: RegExpExecArray | null = COUNT_RUN.exec(text);
+  while (match) {
+    const counts = (match[1] ?? "")
+      .split(/[、，,]/)
+      .map((part) => parseHintCountToken(part))
+      .filter((count): count is number => count != null);
+    if (counts.length > best.length) best = counts;
+    match = COUNT_RUN.exec(text);
+  }
+  return best;
+}
+
+function zipHintTitlesAndCounts(
+  titles: ReadonlyArray<string>,
+  counts: ReadonlyArray<number>,
+): ProseVolumeHint[] {
+  const length = Math.min(titles.length, counts.length);
+  const hints: ProseVolumeHint[] = [];
+  for (let index = 0; index < length; index += 1) {
+    hints.push({ title: titles[index]!, chapterCount: counts[index]! });
+  }
+  return hints;
+}
+
+/**
+ * Recover named volumes from leftover architect prose. 《醉词》 canon is
+ * `卷一《冕旒》` plus Chinese/Arabic counts (`四十、四十、四十五…`), not only
+ * `冕旒(40)`. Also accepts the parenthetical form and leftover notes stuffed
+ * under 原架构笔记 after a placeholder lock.
+ */
+export function parseProseVolumeHints(markdown: string): ReadonlyArray<ProseVolumeHint> {
+  const text = collectNonHeadingLines(markdown).join("\n");
+  const namedTitles = parseNamedVolumeTitles(text);
+  const countList = parseVolumeCountList(text);
+  const namedWithCounts = zipHintTitlesAndCounts(namedTitles, countList);
+  if (namedWithCounts.length >= 2) return namedWithCounts;
+
+  const adjacent = parseNamedTitleAdjacentCounts(text);
+  if (adjacent.length >= 2) return adjacent;
+
+  const paren = parseParenTitleCounts(text);
+  if (paren.length >= 2) return paren;
+
+  return namedWithCounts.length > 0 ? namedWithCounts : adjacent.length > 0 ? adjacent : paren;
+}
+
+/** Locked heading that is not a real volume name (第N程 / Arc N / 埋/OKR / empty). */
+export function isPlaceholderVolumeTitle(title: string | undefined): boolean {
+  const cleaned = (title ?? "").replace(/^#+\s*/, "").trim();
+  if (!cleaned) return true;
+  const stripped = cleaned
+    .replace(/^第\s*[一二三四五六七八九十百\d]+\s*卷\s*/, "")
+    .replace(/^Volume\s+\d+\s*/i, "")
+    .trim();
+  if (!stripped) return true;
+  if (/^第\s*[一二三四五六七八九十百\d]+\s*程$/.test(stripped)) return true;
+  if (/^Arc\s+\d+$/i.test(stripped)) return true;
+  if (/埋线?|各卷OKR|KR\s*\d+/.test(cleaned)) return true;
+  if (cleaned.length > 16) return true;
+  return false;
 }
 
 export function planVolumeRangesFromHints(
@@ -701,6 +809,17 @@ export function volumeMapHasLockedVolumes(tree: VolumeMapTree): boolean {
   );
 }
 
+/** True only when a volume split has real names — 第N程 / Arc N do not count. */
+export function volumeMapHasLockedNamedVolumes(tree: VolumeMapTree): boolean {
+  return tree.volumes.some((volume) =>
+    volume.volumeNumber != null
+    && volume.startChapter != null
+    && volume.endChapter != null
+    && volume.endChapter >= volume.startChapter
+    && !isPlaceholderVolumeTitle(volume.title),
+  );
+}
+
 export function filledChapterNumbers(tree: VolumeMapTree): ReadonlyArray<number> {
   const numbers: number[] = [];
   for (const [number, node] of chapterNodesByNumber(tree)) {
@@ -745,11 +864,8 @@ export function resolveOutlineWeaveStep(
   targetChapters: number,
   volumeMap?: string,
 ): OutlineWeaveStep {
-  if (!volumeMapHasLockedVolumes(tree)) {
-    const hinted = volumeMap
-      ? planVolumeRangesFromHints(parseProseVolumeHints(volumeMap), targetChapters)
-      : null;
-    if (hinted && hinted.length >= 2) return "volumes";
+  if (!volumeMapHasLockedNamedVolumes(tree)) {
+    void volumeMap;
     return "volumes";
   }
   return nextUnfilledChapterBatch(tree, targetChapters).length > 0 ? "batch" : "done";

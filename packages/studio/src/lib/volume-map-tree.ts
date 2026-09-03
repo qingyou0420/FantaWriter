@@ -23,6 +23,7 @@ export {
   plannedChapterCount,
   resolveOutlineWeaveStep,
   volumeMapHasLockedVolumes,
+  volumeMapHasLockedNamedVolumes,
   recommendedOutlineNodeId,
   truncateOutlineLabel,
   volumeContainsChapter,

@@ -7,6 +7,8 @@ import {
   nextUnfilledChapterBatch,
   resolveOutlineWeaveStep,
   parseProseVolumeHints,
+  isPlaceholderVolumeTitle,
+  volumeMapHasLockedNamedVolumes,
   parseVolumeMapTree,
   planVolumeRanges,
   planVolumeRangesFromHints,
@@ -16,10 +18,10 @@ import {
 } from "../utils/volume-map-tree.js";
 import { findVolumeMapEntry } from "../utils/volume-map-entry.js";
 
-/** Local 《醉词》 volume_map shape: H2s are section labels, not volumes. */
-export const ZUI_CI_PROSE_FIXTURE = [
+/** Real 《醉词》 leftover: 卷一《冕旒》 plus Chinese counts, not 冕旒(40). */
+export const ZUI_CI_VOLUME_NOTES = [
   "## 各卷主题与情绪曲线",
-  "共七卷：冕旒(40) 棋枰(40) 白羽(45) 商陆(40) 醉生(35) 江山(35) 清溪(25)。第一卷压，中卷放，末卷压回。",
+  "共七卷：卷一《冕旒》、卷二《棋枰》、卷三《白羽》、卷四《商陆》、卷五《醉生》、卷六《江山》、卷七《清溪》。各卷四十、四十、四十五、四十、三十五、三十五、二十五章。第一卷压，中卷放，末卷压回。",
   "卷一埋：开篇在酒楼听曲，把旧案残页和醉词令混进宾客闲话里，让读者以为只是风月场的气氛铺垫，其实每一句唱词都在点后宅账本的缺口，后宅账本的缺口又指向令牌、典当行和县衙夜审，这一行必须长到旧解析器会把它整段当成卷标题。",
   "卷一Objective：本卷结束时主角必须在酒楼站稳眼线并拿到醉词令残页，同时让典当行承认空账，还要在县衙夜审上逼出第二证人，并且把冕旒一卷的前台冲突、关系变化和不可逆揭示全部写进这一行，旧解析器会把整段当成 1339 字标题。",
   "卷一末：酒楼眼线暴露，旧案残页被当众点破，体面撕开之后没有回头路，这一行同样长到会变成墙标题。",
@@ -34,8 +36,34 @@ export const ZUI_CI_PROSE_FIXTURE = [
   "第一卷末：身份暴露。",
   "## 节奏原则",
   "前 10 章高压引人。",
-  "## 第 1 章",
+].join("\n");
+
+/** Local 《醉词》 volume_map shape: H2s are section labels, not volumes. */
+export const ZUI_CI_PROSE_FIXTURE = `${ZUI_CI_VOLUME_NOTES}\n## 第 1 章\n`;
+
+/** What 2.0.7 actually wrote: even-split 第N程 plus leftover notes under 原架构笔记. */
+export const ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE = [
+  "## 第1卷 第1程（1-38章）",
+  "原架构笔记：",
+  ZUI_CI_VOLUME_NOTES,
   "",
+  "## 第2卷 第2程（39-75章）",
+  "Objective：本卷结束时主角必须达成可验证的阶段状态。\nKR1：前台冲突推进\nKR2：关系或势力变化\nKR3：一次不可逆揭示",
+  "",
+  "## 第3卷 第3程（76-112章）",
+  "Objective：本卷结束时主角必须达成可验证的阶段状态。",
+  "",
+  "## 第4卷 第4程（113-149章）",
+  "Objective：本卷结束时主角必须达成可验证的阶段状态。",
+  "",
+  "## 第5卷 第5程（150-186章）",
+  "Objective：本卷结束时主角必须达成可验证的阶段状态。",
+  "",
+  "## 第6卷 第6程（187-223章）",
+  "Objective：本卷结束时主角必须达成可验证的阶段状态。",
+  "",
+  "## 第7卷 第7程（224-260章）",
+  "Objective：本卷结束时主角必须达成可验证的阶段状态。",
 ].join("\n");
 
 describe("parseVolumeMapTree — heading contract", () => {
@@ -102,6 +130,43 @@ describe("parseVolumeMapTree — heading contract", () => {
     expect(ranges).toHaveLength(7);
     expect(ranges?.[0]).toMatchObject({ title: "冕旒", startChapter: 1, endChapter: 40 });
     expect(ranges?.[6]).toMatchObject({ title: "清溪", startChapter: 236, endChapter: 260 });
+  });
+
+  it("still recovers 冕旒(40) parenthetical hints", () => {
+    const hints = parseProseVolumeHints("共七卷：冕旒(40) 棋枰(40) 白羽(45) 商陆(40) 醉生(35) 江山(35) 清溪(25)。");
+    expect(hints.map((hint) => hint.title)).toEqual(["冕旒", "棋枰", "白羽", "商陆", "醉生", "江山", "清溪"]);
+    expect(hints.reduce((sum, hint) => sum + hint.chapterCount, 0)).toBe(260);
+  });
+
+  it("pairs 卷一《冕旒》四十章 adjacent counts", () => {
+    const hints = parseProseVolumeHints("卷一《冕旒》四十章，卷二《棋枰》四十章，卷三《白羽》四十五章。");
+    expect(hints).toEqual([
+      { title: "冕旒", chapterCount: 40 },
+      { title: "棋枰", chapterCount: 40 },
+      { title: "白羽", chapterCount: 45 },
+    ]);
+  });
+
+  it("re-reads leftover 原架构笔记 after a 第N程 even-split lock", () => {
+    const tree = parseVolumeMapTree(ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE);
+    expect(tree.volumeCount).toBe(7);
+    expect(tree.volumes.map((volume) => volume.title)).toEqual(
+      expect.arrayContaining(["第1卷 第1程", "第7卷 第7程"]),
+    );
+    expect(tree.volumes.every((volume) => isPlaceholderVolumeTitle(volume.title))).toBe(true);
+    expect(volumeMapHasLockedNamedVolumes(tree)).toBe(false);
+    expect(resolveOutlineWeaveStep(tree, 260, ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE)).toBe("volumes");
+    const hints = parseProseVolumeHints(ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE);
+    expect(hints.map((hint) => `${hint.title}(${hint.chapterCount})`)).toEqual([
+      "冕旒(40)",
+      "棋枰(40)",
+      "白羽(45)",
+      "商陆(40)",
+      "醉生(35)",
+      "江山(35)",
+      "清溪(25)",
+    ]);
+    expect(planVolumeRanges(260)[0]).toMatchObject({ startChapter: 1, endChapter: 38 });
   });
 
   it("keeps a heading-only 第N卷 title short even if a writer stuffed junk after the marker", () => {
@@ -184,6 +249,11 @@ describe("renderVolumeMapMarkdown", () => {
 
   it("resumes 醉词-style books as volume-lock then 10-chapter batches", () => {
     expect(resolveOutlineWeaveStep(parseVolumeMapTree(ZUI_CI_PROSE_FIXTURE), 260, ZUI_CI_PROSE_FIXTURE)).toBe("volumes");
+    expect(resolveOutlineWeaveStep(
+      parseVolumeMapTree(ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE),
+      260,
+      ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE,
+    )).toBe("volumes");
     const locked = renderVolumeMapMarkdown([{
       volumeNumber: 1,
       title: "冕旒",

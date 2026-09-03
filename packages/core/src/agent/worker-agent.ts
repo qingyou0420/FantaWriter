@@ -32,6 +32,7 @@ export interface WorkerAgentOptions {
   readonly firstEventTimeoutMs?: number;
   readonly streamIdleTimeoutMs?: number;
   readonly overallTimeoutMs?: number;
+  readonly extra?: Record<string, unknown>;
 }
 
 export interface WorkerResultTool<TParameters extends TSchema> {
@@ -202,6 +203,7 @@ function providerWorkerStream(
           ...(options.firstEventTimeoutMs !== undefined ? { firstEventTimeoutMs: options.firstEventTimeoutMs } : {}),
           ...(options.streamIdleTimeoutMs !== undefined ? { streamIdleTimeoutMs: options.streamIdleTimeoutMs } : {}),
           ...(options.overallTimeoutMs !== undefined ? { overallTimeoutMs: options.overallTimeoutMs } : {}),
+          ...(options.extra ? { extra: options.extra } : {}),
           onTextDelta: emitDelta,
           ...(signal ? { signal } : {}),
         });

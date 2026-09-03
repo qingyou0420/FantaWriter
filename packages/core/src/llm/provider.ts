@@ -644,13 +644,30 @@ export function assertWithinContextWindow(params: {
 
 // === Error Wrapping ===
 
+function mentionsHttpStatus(text: string, status: number): boolean {
+  const code = String(status);
+  if (new RegExp(`API\\s*返回\\s*${code}`).test(text)) return true;
+  // Digit-bounded status. `240000ms` must not match HTTP 400.
+  return new RegExp(`(?<!\\d)${code}(?!\\d)`).test(text);
+}
+
+function isLlmTimeoutError(error: unknown, msg: string): boolean {
+  if (error instanceof LLMStreamInactivityError) return true;
+  return /exceeded overall timeout|produced no event within|produced no token for|调用超时|模型还在想/i.test(msg);
+}
+
 function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; readonly model?: string; readonly service?: string }): Error {
   const msg = String(error);
   const ctxLine = context
     ? `\n  (baseUrl: ${context.baseUrl}, model: ${context.model})`
     : "";
 
-  if (msg.includes("400")) {
+  if (isLlmTimeoutError(error, msg)) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return new Error(`LLM 调用超时（模型还在想或流已空闲）。${detail}${ctxLine}`);
+  }
+
+  if (mentionsHttpStatus(msg, 400)) {
     // 抽上游 error body 的 message / reason / code（和下方 5xx 一致），让真实错因浮到用户面前
     let detail = "";
     if (error && typeof error === "object") {
@@ -660,6 +677,9 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
         const b = bodyLike as { reason?: string; message?: string; code?: number | string; type?: string };
         if (b.message) detail = b.type ? `${b.type}: ${b.message}` : b.message;
         else if (b.reason) detail = b.reason;
+      }
+      if (!detail && typeof err.message === "string" && err.message.trim()) {
+        detail = err.message.trim();
       }
     }
     return new Error(
@@ -1501,6 +1521,7 @@ export async function chatCompletion(
     readonly firstEventTimeoutMs?: number;
     readonly streamIdleTimeoutMs?: number;
     readonly overallTimeoutMs?: number;
+    readonly extra?: Record<string, unknown>;
     // Diagnostics / connectivity checks want a fast pass-or-fail — set false to
     // skip the transient 502/503/429 retry+backoff (e.g. the doctor probe).
     readonly retry?: boolean;
@@ -1516,7 +1537,7 @@ export async function chatCompletion(
       client._piModel?.baseUrl,
     ),
     maxTokens: options?.maxTokens ?? client.defaults.maxTokens,
-    extra: client.defaults.extra,
+    extra: { ...client.defaults.extra, ...options?.extra },
   };
   const onStreamProgress = options?.onStreamProgress;
   const onTextDelta = options?.onTextDelta;

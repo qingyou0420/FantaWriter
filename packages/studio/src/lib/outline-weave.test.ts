@@ -21,6 +21,20 @@ const ZUI_CI_PROSE = [
 ].join("\n");
 
 describe("outline weave helpers", () => {
+  it("re-locks 第N程 headings when leftover notes still have 冕旒 names", () => {
+    const markdown = [
+      "## 第1卷 第1程（1-38章）",
+      "原架构笔记：",
+      "共七卷：卷一《冕旒》、卷二《棋枰》、卷三《白羽》、卷四《商陆》、卷五《醉生》、卷六《江山》、卷七《清溪》。各卷四十、四十、四十五、四十、三十五、三十五、二十五章。",
+      "## 第2卷 第2程（39-75章）",
+      "Objective：开局。",
+    ].join("\n");
+    const action = resolveOutlineWeaveAction(parseVolumeMapTree(markdown), 260, markdown);
+    expect(action.step).toBe("volumes");
+    expect(action.mode).toBe("volumes");
+    expect(outlineWeaveButtonLabel(action, true)).toBe("织卷 · 锁定卷纲");
+  });
+
   it("locks volumes first when the tree has no 卷 ranges", () => {
     const tree = parseVolumeMapTree(ZUI_CI_PROSE);
     const action = resolveOutlineWeaveAction(tree, 260, ZUI_CI_PROSE);

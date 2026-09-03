@@ -199,6 +199,32 @@ describe("chatCompletion via pi-ai", () => {
     expect(error.message).not.toMatch(/kkaiapi/i);
   });
 
+  it("does not treat overall timeout of 240000ms as HTTP 400", async () => {
+    mockStreamSimple.mockReturnValue(makeErrorStream("LLM call exceeded overall timeout of 240000ms"));
+
+    const client = makeClient();
+    const error = await captureError(
+      chatCompletion(client, "kimi-k3", [{ role: "user", content: "ping" }], { retry: false }),
+    );
+
+    expect(error.message).not.toContain("API 返回 400");
+    expect(error.message).not.toContain("请求参数错误");
+    expect(error.message).toMatch(/超时|timeout/i);
+    expect(error.message).toContain("240000ms");
+  });
+
+  it("still wraps a real HTTP 400 including invalid temperature", async () => {
+    mockStreamSimple.mockReturnValue(makeErrorStream("400 invalid temperature: only 1 is allowed"));
+
+    const client = makeClient();
+    const error = await captureError(
+      chatCompletion(client, "kimi-k3", [{ role: "user", content: "ping" }], { retry: false }),
+    );
+
+    expect(error.message).toContain("API 返回 400");
+    expect(error.message).toContain("invalid temperature: only 1 is allowed");
+  });
+
   it("wraps 401 errors with an unauthorized message", async () => {
     mockStreamSimple.mockReturnValue(makeErrorStream("401 Unauthorized"));
 
