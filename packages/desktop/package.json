@@ -1,6 +1,6 @@
 {
   "name": "@fantawriter/desktop",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "FantaWriter / 幻想作家 desktop shell around the InkOS Studio engine",
