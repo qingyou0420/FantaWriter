@@ -130,6 +130,9 @@ export function pickModelSelection(
     }
     const firstPreferredModel = preferredGroup?.models[0];
     if (preferredGroup && firstPreferredModel) {
+      if (selectedStillAvailable && selectedService === preferredGroup.service) {
+        return null;
+      }
       return { model: firstPreferredModel.id, service: preferredGroup.service };
     }
   }

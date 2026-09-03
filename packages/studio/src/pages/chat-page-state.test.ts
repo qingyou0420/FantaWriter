@@ -283,6 +283,23 @@ describe("pickModelSelection", () => {
     });
   });
 
+  it("keeps a valid same-service selection when the configured model is not in the list yet", () => {
+    const zenmux = [
+      {
+        service: "zenmux",
+        label: "ZenMux",
+        models: [
+          { id: "anthropic/claude-opus-4.8", name: "Claude Opus 4.8" },
+          { id: "meta/muse-spark-1.3", name: "Muse Spark 1.3" },
+        ],
+      },
+    ] as const;
+    expect(pickModelSelection(zenmux, "meta/muse-spark-1.3", "zenmux", {
+      service: "zenmux",
+      model: "kimi-k3",
+    })).toBeNull();
+  });
+
   it("follows the configured Studio default when it differs from the current selection", () => {
     expect(pickModelSelection(grouped, "gemini-2.5-flash", "google", {
       service: "moonshot",
