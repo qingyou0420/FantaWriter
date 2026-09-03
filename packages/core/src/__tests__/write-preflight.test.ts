@@ -32,6 +32,19 @@ describe("G1 write preflight", () => {
     expect(findVolumeMapEntry("## 第 1 章 开场", 2)).toBeUndefined();
   });
 
+  it("refuses write when volume_map is 醉词-style prose with no chapter entry", async () => {
+    const prose = [
+      "卷一埋：开篇在酒楼听曲，把旧案残页混进宾客闲话。",
+      "各卷OKR：卷一先站稳酒楼眼线。",
+      "KR1 = 拿到醉词令残页",
+    ].join("\n");
+    const dir = await bookDir(prose);
+    const evaluation = await evaluateWritePreflight({ bookDir: dir, chapterNumber: 1 });
+    expect(evaluation.ok).toBe(false);
+    expect(evaluation.reasons.map((reason) => reason.code)).toContain("missing_volume_map_entry");
+    expect(findVolumeMapEntry(prose, 1)).toBeUndefined();
+  });
+
   it("refuses write when volume_map has no target chapter", async () => {
     const dir = await bookDir("## 第 1 章 开场\n入局。\n");
     const evaluation = await evaluateWritePreflight({ bookDir: dir, chapterNumber: 2 });

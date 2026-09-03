@@ -7,6 +7,8 @@ import { buildImportFoundationSource, PipelineRunner } from "../pipeline/runner.
 import * as llmProvider from "../llm/provider.js";
 import { StateManager } from "../state/manager.js";
 import { ArchitectAgent } from "../agents/architect.js";
+import { VolumeMapMaterializer } from "../agents/volume-map-materializer.js";
+import { planVolumeRanges, renderVolumeMapMarkdown } from "../utils/volume-map-tree.js";
 import { PlannerAgent } from "../agents/planner.js";
 import * as ComposerModule from "../agents/composer.js";
 import { WriterAgent, type SettleChapterStateInput, type WriteChapterOutput } from "../agents/writer.js";
@@ -369,6 +371,27 @@ describe("PipelineRunner", () => {
       dimensions: [],
       overallFeedback: "auto-pass for test",
     });
+    vi.spyOn(VolumeMapMaterializer.prototype, "materialize").mockImplementation(async (input) => {
+      const target = input.book.targetChapters || 10;
+      const volumes = planVolumeRanges(target).map((range) => ({
+        ...range,
+        title: `弧${range.volumeNumber}`,
+        body: `Objective：第${range.volumeNumber}卷。`,
+        chapters: Array.from({ length: range.endChapter - range.startChapter + 1 }, (_, index) => ({
+          chapterNumber: range.startChapter + index,
+          title: `节点${range.startChapter + index}`,
+          summary: `推进到节点${range.startChapter + index}。`,
+        })),
+      }));
+      const markdown = renderVolumeMapMarkdown(volumes);
+      return {
+        markdown,
+        volumeCount: volumes.length,
+        chapterCount: target,
+        targetChapters: target,
+        generatedChapterNumbers: Array.from({ length: target }, (_, index) => index + 1),
+      };
+    });
     vi.spyOn(StateValidatorAgent.prototype, "validate").mockResolvedValue({
       warnings: [],
       passed: true,
@@ -510,6 +533,9 @@ describe("PipelineRunner", () => {
       expect(authorIntent).toContain("mentor conflict");
       expect(currentFocus).toContain("当前聚焦");
       expect(runtimeDir.isDirectory()).toBe(true);
+      const volumeMap = await readFile(join(storyDir, "outline", "volume_map.md"), "utf-8");
+      expect(volumeMap).toMatch(/## 第 1 章/);
+      expect(volumeMap).toContain("节点1");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1311,6 +1337,7 @@ describe("PipelineRunner", () => {
         "阶段：保存书籍配置",
         "阶段：生成基础设定",
         "阶段：写入基础设定文件",
+        "阶段：展开卷章大纲",
         "阶段：初始化控制文档",
         "阶段：创建初始快照",
       ]));

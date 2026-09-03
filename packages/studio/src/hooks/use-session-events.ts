@@ -13,6 +13,14 @@ import { clearBookCreateSessionId, getBookCreateSessionId } from "../pages/chat-
  * Cursor-based consumption matters because React may batch multiple SSE state
  * updates into one render; looking only at messages.at(-1) drops middle events.
  */
+export function bookCreatedRoute(
+  page: HashRoute["page"],
+  bookId: string,
+): HashRoute | null {
+  if (page === "book-create") return { page: "book-outline", bookId };
+  return null;
+}
+
 export function useSessionEvents(
   sse: { messages: ReadonlyArray<SSEMessage> },
   route: HashRoute,
@@ -55,9 +63,8 @@ export function useSessionEvents(
 
       if (getBookCreateSessionId() === sessionId) {
         clearBookCreateSessionId();
-        if (route.page === "book-create") {
-          setRoute({ page: "book", bookId });
-        }
+        const next = bookCreatedRoute(route.page, bookId);
+        if (next) setRoute(next);
       }
     }
   });

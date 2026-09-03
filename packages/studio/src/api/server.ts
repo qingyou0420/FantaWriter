@@ -3728,6 +3728,37 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
   });
 
+  app.post("/api/v1/books/:id/outline/weave", async (c) => {
+    const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
+    }
+    const body = await c.req.json<{ mode?: "remaining" | "full" }>().catch(() => ({ mode: undefined }));
+    const mode = body.mode === "full" ? "full" : "remaining";
+    try {
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const result = await pipeline.weaveVolumeMap(id, mode);
+      return c.json({
+        ok: true,
+        mode,
+        volumeCount: result.volumeCount,
+        chapterCount: result.chapterCount,
+        written: result.written ?? false,
+        unchanged: result.unchanged ?? false,
+        proposal: result.proposal
+          ? {
+              id: result.proposal.id,
+              fileName: result.proposal.fileName,
+              unifiedDiff: result.proposal.unifiedDiff,
+              status: result.proposal.status,
+            }
+          : undefined,
+      });
+    } catch (e) {
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   app.post("/api/v1/books/:id/plan", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json<{ context?: string }>().catch(() => ({ context: undefined }));

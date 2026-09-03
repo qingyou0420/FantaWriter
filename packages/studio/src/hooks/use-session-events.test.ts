@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SSEMessage } from "./use-sse";
 import { collectNewSSEMessages } from "./use-sse";
+import { bookCreatedRoute } from "./use-session-events";
 
 function msg(event: string, timestamp: number, data: unknown = {}): SSEMessage {
   return { event, timestamp, data, seq: timestamp };
@@ -22,5 +23,12 @@ describe("collectNewSSEMessages for session events", () => {
 
     expect(collectNewSSEMessages([old1, old2], 0).fresh).toEqual([old1, old2]);
     expect(collectNewSSEMessages([old2, next], 2).fresh).toEqual([next]);
+  });
+});
+
+describe("bookCreatedRoute", () => {
+  it("lands 建书 on 大纲 instead of the cockpit", () => {
+    expect(bookCreatedRoute("book-create", "zui-ci")).toEqual({ page: "book-outline", bookId: "zui-ci" });
+    expect(bookCreatedRoute("dashboard", "zui-ci")).toBeNull();
   });
 });
