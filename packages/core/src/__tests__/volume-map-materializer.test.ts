@@ -123,6 +123,40 @@ describe("VolumeMapMaterializer", () => {
     expect(result.markdown).toMatch(/## 第 1 章/);
   });
 
+  it("rebuilds 260 planned chapters from the 醉词 fixture without wall titles", async () => {
+    const agent = buildAgent();
+    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockImplementation(async (messages: Array<{ content: string }>) => {
+        const system = messages[0]?.content ?? "";
+        const match = system.match(/必须写全这些章号：([0-9、]+)/);
+        const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
+        return {
+          content: chapterList(Math.min(...numbers), Math.max(...numbers)),
+          usage: ZERO_USAGE,
+        };
+      });
+
+    const result = await agent.materialize({
+      book: book({ targetChapters: 260, chapterWordCount: 5000, title: "醉词" }),
+      volumeMap: ZUI_CI_PROSE_FIXTURE,
+      language: "zh",
+      mode: "full",
+    });
+
+    const tree = parseVolumeMapTree(result.markdown);
+    expect(tree.volumeCount).toBeGreaterThan(1);
+    expect(listedExactChapterNumbers(tree)).toHaveLength(260);
+    expect(volumeMapHasReviewableTree(tree, 260)).toBe(true);
+    for (const volume of tree.volumes) {
+      expect(volume.title).not.toContain("卷一埋");
+      expect(volume.title).not.toContain("卷一Objective");
+      expect(volume.title).not.toContain("各卷OKR");
+      expect(volume.title.length).toBeLessThanOrEqual(22);
+    }
+    expect(findVolumeMapEntry(result.markdown, 1)).toBeTruthy();
+    expect(findVolumeMapEntry(result.markdown, 260)).toBeTruthy();
+  });
+
   it("materializes 90 chapters across multiple volumes", async () => {
     const agent = buildAgent();
     vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
@@ -175,5 +209,31 @@ describe("VolumeMapMaterializer", () => {
     const tree = parseVolumeMapTree(result.markdown);
     expect(tree.volumes[0]?.chapters[0]?.summary).toContain("作者改过的提要");
     expect(listedExactChapterNumbers(tree)).toEqual([1, 2]);
+  });
+
+  it("regenerates an empty 第 1 章 stub when weaving remaining chapters", async () => {
+    const agent = buildAgent();
+    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockImplementation(async (messages: Array<{ content: string }>) => {
+        const system = messages[0]?.content ?? "";
+        const match = system.match(/必须写全这些章号：([0-9、]+)/);
+        const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
+        return {
+          content: chapterList(Math.min(...numbers), Math.max(...numbers)),
+          usage: ZERO_USAGE,
+        };
+      });
+
+    const result = await agent.materialize({
+      book: book({ targetChapters: 4 }),
+      volumeMap: ZUI_CI_PROSE_FIXTURE,
+      language: "zh",
+      mode: "remaining",
+    });
+
+    const tree = parseVolumeMapTree(result.markdown);
+    expect(listedExactChapterNumbers(tree)).toEqual([1, 2, 3, 4]);
+    expect(tree.volumes[0]?.chapters[0]?.title).toBe("节点1");
+    expect(tree.volumes[0]?.title).not.toContain("卷一埋");
   });
 });

@@ -8,10 +8,12 @@ import {
 } from "./outline-weave";
 
 const ZUI_CI_PROSE = [
-  "卷一埋：开篇在酒楼听曲，把旧案残页和醉词令混进宾客闲话里。",
-  "卷二埋：中卷把令牌、典当行和县衙夜审拧成一条线。",
-  "各卷OKR：卷一先站稳酒楼眼线，卷二把旧案推到不可收回。",
+  "## 各卷主题与情绪曲线",
+  "卷一埋：开篇在酒楼听曲，把旧案残页和醉词令混进宾客闲话里，让读者以为只是风月场的气氛铺垫。",
+  "卷一Objective：本卷结束时主角必须在酒楼站稳眼线并拿到残页，旧解析器会把整段当成标题。",
+  "## 各卷OKR",
   "KR1 = 拿到醉词令残页",
+  "## 第 1 章",
 ].join("\n");
 
 describe("outline weave helpers", () => {
@@ -24,10 +26,12 @@ describe("outline weave helpers", () => {
   it("does not render 醉词 prose as a wall-of-text tree heading", () => {
     const tree = parseVolumeMapTree(ZUI_CI_PROSE);
     expect(tree.volumeCount).toBe(0);
-    const label = outlineTreeVolumeLabel(1, ZUI_CI_PROSE.split("\n")[0]!, true);
+    const buried = ZUI_CI_PROSE.split("\n").find((line) => line.startsWith("卷一埋"))!;
+    const label = outlineTreeVolumeLabel(1, buried, true);
     expect(label.length).toBeLessThanOrEqual(MAX_VOLUME_TREE_LABEL_CHARS);
     expect(outlineTreeHeadingTooLong(label)).toBe(false);
     expect(label).not.toContain("KR1");
+    expect(label).not.toContain("酒楼");
   });
 
   it("keeps a real volume heading short in the tree", () => {

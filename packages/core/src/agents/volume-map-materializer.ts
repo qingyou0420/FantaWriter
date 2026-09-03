@@ -20,6 +20,7 @@ import {
   type AssembledVolume,
   type AssembledVolumeChapter,
   type PlannedVolumeRange,
+  type VolumeMapChapterNode,
 } from "../utils/volume-map-tree.js";
 
 export type VolumeMapMaterializeMode = "init" | "remaining" | "full";
@@ -58,7 +59,12 @@ export class VolumeMapMaterializer extends BaseAgent {
     });
     const existing = parseVolumeMapTree(input.volumeMap);
     const keepExisting = input.mode !== "full";
-    const existingChapters = keepExisting ? chapterNodesByNumber(existing) : new Map();
+    const existingChapters = new Map<number, VolumeMapChapterNode>();
+    if (keepExisting) {
+      for (const [number, node] of chapterNodesByNumber(existing)) {
+        if (node.title.trim() || node.summary.trim()) existingChapters.set(number, node);
+      }
+    }
     const ranges = this.resolveVolumeRanges(existing, targetChapters);
     const leftover = leftoverVolumeMapProse(input.volumeMap);
     const generated: number[] = [];

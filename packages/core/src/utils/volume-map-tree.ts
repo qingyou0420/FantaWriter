@@ -124,11 +124,17 @@ function looksLikeHeadingLine(line: string): boolean {
 function isLikelyVolumeHeadingLine(line: string): boolean {
   const stripped = stripDecor(line);
   if (!stripped) return false;
-  if (!VOLUME_MARKER.test(stripped) && !VOLUME_MARKER.test(line)) return false;
+  // Contract headings are `第N卷` / `Volume N`. Bare `卷一埋` / `卷一Objective`
+  // / `第一卷末：…` lines must never become sidebar titles.
+  if (!/^(第\s*[一二三四五六七八九十百千万零〇两\d]+\s*卷|Volume\s+\d+)/i.test(stripped)) {
+    return false;
+  }
+  if (PROSE_HEADING_JUNK.test(stripped) && !RANGE_ON_LINE.test(stripped)) return false;
   if (looksLikeHeadingLine(line)) return true;
   if (stripped.length > 40) return false;
-  if (PROSE_HEADING_JUNK.test(stripped) && stripped.length > 18) return false;
-  return /^(第\s*[一二三四五六七八九十百千万零〇两\d]+\s*卷|Volume\s+\d+)/i.test(stripped);
+  if (/[：:]/.test(stripped) && !RANGE_ON_LINE.test(stripped)) return false;
+  return /^(第\s*[一二三四五六七八九十百千万零〇两\d]+\s*卷|Volume\s+\d+)\s+\S/i.test(stripped)
+    || RANGE_ON_LINE.test(stripped);
 }
 
 function extractShortVolumeTitle(line: string, rangeIndex?: number): string {

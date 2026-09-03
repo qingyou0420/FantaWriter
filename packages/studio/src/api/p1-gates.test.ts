@@ -7,15 +7,24 @@ import { createStudioServer } from "./server.js";
 
 const projectConfig = {
   name: "test",
+  version: "0.1.0",
   language: "zh",
   llm: {
     provider: "custom",
     service: "custom",
     configSource: "studio",
-    baseUrl: "https://example.invalid",
+    baseUrl: "https://example.com/v1",
     model: "test-model",
     apiFormat: "chat",
     stream: true,
+    services: [
+      {
+        service: "custom",
+        name: "Custom",
+        baseUrl: "https://example.com/v1",
+        models: ["test-model"],
+      },
+    ],
   },
 } as never;
 
