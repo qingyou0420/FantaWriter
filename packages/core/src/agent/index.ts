@@ -2,6 +2,8 @@ export { buildAgentSystemPrompt } from "./agent-system-prompt.js";
 export {
   createSubAgentTool,
   createReadTool,
+  peekActiveBookId,
+  resolveActiveBookScopedPath,
   createWriteTruthFileTool,
   createRenameEntityTool,
   createPatchChapterTextTool,
@@ -29,6 +31,7 @@ export {
 } from "./agent-tools.js";
 export {
   abortAgentSession,
+  bindCachedAgentBookId,
   runAgentSession,
   evictAgentCache,
   type AgentSessionAttachment,

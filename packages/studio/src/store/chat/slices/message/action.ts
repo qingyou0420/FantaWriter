@@ -580,6 +580,23 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
         }),
       });
 
+      if (data.model?.id) {
+        const nextService = data.model.service ?? get().selectedService;
+        if (data.model.id !== get().selectedModel || nextService !== get().selectedService) {
+          get().setSelectedModel(data.model.id, nextService);
+        }
+      }
+      if (data.model?.notice) {
+        const notice = data.model.notice;
+        set((state) => ({
+          sessions: updateSession(state.sessions, sessionId, (runtime) => ({
+            messages: [
+              ...runtime.messages,
+              { role: "assistant" as const, content: `\u2139 ${notice}`, timestamp: Date.now() },
+            ],
+          })),
+        }));
+      }
       const finalContent = data.details?.draftRaw || data.response || "";
       const toolCall = data.details?.toolCall ?? undefined;
       const responseToolExecutions = data.details?.toolExecutions ?? [];

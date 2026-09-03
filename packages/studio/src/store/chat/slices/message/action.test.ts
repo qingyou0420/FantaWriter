@@ -1333,6 +1333,33 @@ describe("chat message actions", () => {
     expect(store.getState().sessions[sessionId]?.lastFailedSend).toBeUndefined();
   });
 
+  it("rebinds the picker and shows a notice when /agent follows a new Studio default", async () => {
+    const store = createTestStore();
+    const sessionId = store.getState().createDraftSession("醉词", "book");
+    store.getState().setSelectedModel("anthropic/claude-opus-4.8", "zenmux");
+    fetchJson
+      .mockResolvedValueOnce({ session: { sessionId, bookId: "醉词", sessionKind: "book" } })
+      .mockResolvedValueOnce({
+        response: "好。",
+        session: { sessionId, sessionKind: "book", activeBookId: "醉词" },
+        model: {
+          id: "meta/muse-spark-1.3",
+          service: "zenmux",
+          source: "studio-default",
+          rebound: true,
+          notice: "本会话已改用 meta/muse-spark-1.3（zenmux）。未锁定旧模型。",
+        },
+      });
+
+    await store.getState().sendMessage(sessionId, "继续");
+
+    expect(store.getState().selectedModel).toBe("meta/muse-spark-1.3");
+    expect(store.getState().selectedService).toBe("zenmux");
+    const contents = store.getState().sessions[sessionId]?.messages.map((message) => message.content) ?? [];
+    expect(contents.some((content) => content.includes("本会话已改用 meta/muse-spark-1.3"))).toBe(true);
+    expect(contents).toContain("好。");
+  });
+
   it("keeps no failed-send record after a successful round", async () => {
     const store = createTestStore();
     const sessionId = store.getState().createDraftSession(null, "chat");

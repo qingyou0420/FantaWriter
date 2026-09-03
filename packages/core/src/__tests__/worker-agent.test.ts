@@ -98,14 +98,14 @@ describe("Pi worker harness", () => {
       { role: "user", content: "织卷" },
     ], {
       firstEventTimeoutMs: 90_000,
-      streamIdleTimeoutMs: 60_000,
-      overallTimeoutMs: 240_000,
+      streamIdleTimeoutMs: 180_000,
+      overallTimeoutMs: 900_000,
     });
 
     expect(chatCompletionMock.mock.calls[0]?.[3]).toMatchObject({
       firstEventTimeoutMs: 90_000,
-      streamIdleTimeoutMs: 60_000,
-      overallTimeoutMs: 240_000,
+      streamIdleTimeoutMs: 180_000,
+      overallTimeoutMs: 900_000,
     });
   });
 

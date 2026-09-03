@@ -134,6 +134,8 @@ export const BookSessionSchema = z.object({
   sessionKind: SessionKindSchema.optional(),
   playMode: PlayModeSchema.optional(),
   title: z.string().nullable().default(null),
+  modelOverride: z.string().min(1).optional(),
+  modelOverrideService: z.string().min(1).optional(),
   messages: z.array(InteractionMessageSchema).default([]),
   creationDraft: BookCreationDraftSchema.optional(),
   draftRounds: z.array(DraftRoundSchema).default([]),

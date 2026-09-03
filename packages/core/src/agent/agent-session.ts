@@ -67,6 +67,7 @@ import {
 } from "../interaction/session-transcript-restore.js";
 import type { TranscriptEvent, TranscriptRole } from "../interaction/session-transcript-schema.js";
 import type { PlayMode, SessionKind } from "../interaction/session.js";
+import { loadBookSession } from "../interaction/book-session-store.js";
 import type { ActionPayload, ActionSource, RequestedIntent } from "../interaction/action-envelope.js";
 import type { ContextCompressionCallback } from "../models/context-compression.js";
 import {
@@ -178,6 +179,7 @@ interface CachedAgent {
   sessionId: string;
   projectRoot: string;
   bookId: string | null;
+  activeBookRef: { current: string | null };
   sessionKind: SessionKind;
   actionSource: NonNullable<AgentSessionConfig["actionSource"]>;
   requestedIntent: AgentSessionConfig["requestedIntent"];
@@ -771,6 +773,7 @@ const PRODUCTION_MUTATION_TOOL_NAMES = new Set([
 type CreateAgentToolsForModeParams = {
   readonly pipeline: PipelineRunner;
   readonly bookId: string | null;
+  readonly resolveActiveBookId: () => string | null;
   readonly sessionId: string;
   readonly sessionKind: SessionKind;
   readonly actionSource: NonNullable<AgentSessionConfig["actionSource"]>;
@@ -796,6 +799,12 @@ function createAgentToolsForMode(params: CreateAgentToolsForModeParams) {
 
 function createModeTools(params: CreateAgentToolsForModeParams) {
   const lang = params.language === "en" ? "en" : "zh";
+  const resolveActiveBookId = params.resolveActiveBookId;
+  const scopedReadTool = createReadTool(params.projectRoot, {
+    allowSystemPaths: params.allowSystemFileRead,
+    activeBookId: resolveActiveBookId,
+  });
+  const scopedLsTool = createLsTool(params.projectRoot, { activeBookId: resolveActiveBookId });
   const subAgentTool = createSubAgentTool(params.pipeline, params.bookId, params.projectRoot, {
     actionPayload: params.actionPayload,
     language: lang,
@@ -962,37 +971,37 @@ function createModeTools(params: CreateAgentToolsForModeParams) {
         workerSkills: params.workerSkills,
       })];
     }
-    return [proposalTool, researchTool, materialTool, materialRetrievalTool];
+    return [proposalTool, researchTool, materialTool, materialRetrievalTool, scopedReadTool, scopedLsTool];
   }
 
   if (!params.bookId) {
-    return [];
+    return [scopedReadTool, scopedLsTool];
   }
 
   const bookTools = [
     subAgentTool,
     createGenerateCoverTool(params.projectRoot, { actionPayload: params.actionPayload }),
-    createReadTool(params.projectRoot, { allowSystemPaths: params.allowSystemFileRead }),
-    createWriteTruthFileTool(params.pipeline, params.projectRoot, params.bookId),
-    createRenameEntityTool(params.pipeline, params.projectRoot, params.bookId),
-    createPatchChapterTextTool(params.pipeline, params.projectRoot, params.bookId),
-    createReplaceChapterTextTool(params.pipeline, params.projectRoot, params.bookId),
-    createResyncChapterStateTool(params.pipeline, params.bookId, {
+    scopedReadTool,
+    createWriteTruthFileTool(params.pipeline, params.projectRoot, resolveActiveBookId),
+    createRenameEntityTool(params.pipeline, params.projectRoot, resolveActiveBookId),
+    createPatchChapterTextTool(params.pipeline, params.projectRoot, resolveActiveBookId),
+    createReplaceChapterTextTool(params.pipeline, params.projectRoot, resolveActiveBookId),
+    createResyncChapterStateTool(params.pipeline, resolveActiveBookId, {
       language: lang,
       defaultSkills: params.productionSkills?.("longWriting"),
       activeSkills: params.activeSkills,
     }),
-    createDeleteLatestChapterTool(params.projectRoot, params.bookId),
+    createDeleteLatestChapterTool(params.projectRoot, resolveActiveBookId),
     researchTool,
     materialTool,
     materialRetrievalTool,
-    createManageBookReferenceTool(params.projectRoot, params.bookId),
+    createManageBookReferenceTool(params.projectRoot, resolveActiveBookId),
     importChaptersTool,
-    createNarrativeForecastCreateTool(params.pipeline, params.bookId, params.projectRoot),
-    createNarrativeForecastGetTool(params.bookId, params.projectRoot),
-    createNarrativeForecastSelectTool(params.bookId, params.projectRoot),
-    createGrepTool(params.projectRoot),
-    createLsTool(params.projectRoot),
+    createNarrativeForecastCreateTool(params.pipeline, resolveActiveBookId, params.projectRoot),
+    createNarrativeForecastGetTool(resolveActiveBookId, params.projectRoot),
+    createNarrativeForecastSelectTool(resolveActiveBookId, params.projectRoot),
+    createGrepTool(params.projectRoot, { activeBookId: resolveActiveBookId }),
+    scopedLsTool,
   ];
 
   if (params.sessionKind === "edit") {
@@ -1040,7 +1049,13 @@ async function runAgentSessionUnlocked(
   // some callers may bypass the type system (e.g. `activeBookId ?? null` gets
   // skipped) and we don't want that to (a) throw in path.join or (b) trigger
   // a spurious cache eviction because `null !== undefined`.
-  const bookId: string | null = config.bookId ? assertSafeBookId(config.bookId) : null;
+  let bookId: string | null = config.bookId ? assertSafeBookId(config.bookId) : null;
+  if (!bookId) {
+    const persisted = await loadBookSession(projectRoot, sessionId);
+    if (persisted?.bookId) {
+      bookId = persisted.bookId;
+    }
+  }
   const sessionKind: SessionKind = config.sessionKind ?? (bookId ? "book" : "chat");
   const playMode = config.playMode;
   const actionSource = config.actionSource ?? "free-text";
@@ -1160,9 +1175,11 @@ async function runAgentSessionUnlocked(
           onActivate: (activation) => turnSkills.set(activation.skill.id, activation),
         })
       : undefined;
+    const activeBookRef = { current: bookId };
     const agentTools = createAgentToolsForMode({
       pipeline,
       bookId,
+      resolveActiveBookId: () => activeBookRef.current,
       sessionId,
       sessionKind,
       actionSource,
@@ -1221,6 +1238,7 @@ async function runAgentSessionUnlocked(
       sessionId,
       projectRoot,
       bookId,
+      activeBookRef,
       sessionKind,
       actionSource,
       requestedIntent,
@@ -1400,6 +1418,20 @@ async function runAgentSessionUnlocked(
 // ---------------------------------------------------------------------------
 // Cache management
 // ---------------------------------------------------------------------------
+
+/** Point a cached Agent's file tools at a book after the session binds (null → 醉词). */
+export function bindCachedAgentBookId(projectRoot: string, sessionId: string, bookId: string): boolean {
+  const safeBookId = assertSafeBookId(bookId);
+  let updated = false;
+  for (const [key, entry] of agentCache) {
+    if (entry.projectRoot !== projectRoot || entry.sessionId !== sessionId) continue;
+    entry.bookId = safeBookId;
+    entry.activeBookRef.current = safeBookId;
+    agentCache.set(key, entry);
+    updated = true;
+  }
+  return updated;
+}
 
 /** Manually evict a cached Agent session. */
 export function evictAgentCache(sessionId: string): boolean {

@@ -31,6 +31,7 @@ import {
   migrateBookSession,
   SessionAlreadyMigratedError,
   abortAgentSession,
+  bindCachedAgentBookId,
   runAgentSession,
   resolveServicePreset,
   resolveServiceProviderFamily,
@@ -161,6 +162,10 @@ import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "n
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
+import {
+  formatAgentModelReboundNotice,
+  resolveAgentModelBinding,
+} from "./resolve-agent-model.js";
 import { buildStudioBookConfig } from "./book-create.js";
 import {
   deleteStudioTaskSnapshot,
@@ -5058,6 +5063,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       playMode: reqPlayMode,
       model: reqModel,
       service: reqService,
+      sessionModelOverride: reqSessionModelOverride,
+      sessionServiceOverride: reqSessionServiceOverride,
     } = await c.req.json<{
       instruction: string;
       activeBookId?: string;
@@ -5073,6 +5080,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       playMode?: string;
       model?: string;
       service?: string;
+      sessionModelOverride?: string;
+      sessionServiceOverride?: string;
     }>();
     const sessionId = reqSessionId;
     if (!instruction?.trim()) {
@@ -5168,19 +5177,38 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
         }
       };
 
-      // Resolve model — multi-service resolution
+      // Resolve model — existing book sessions follow the current Studio default
+      // unless the session has an explicit model override. A stale request body
+      // still sending the old picker value must not pin Opus forever.
+      const rawConfig = config.llm as unknown as Record<string, unknown>;
+      const binding = resolveAgentModelBinding({
+        sessionModelOverride: reqSessionModelOverride
+          ?? (bookSession as { modelOverride?: string }).modelOverride,
+        sessionServiceOverride: reqSessionServiceOverride
+          ?? (bookSession as { modelOverrideService?: string }).modelOverrideService,
+        requestModel: reqModel,
+        requestService: reqService,
+        defaultModel: typeof rawConfig.defaultModel === "string" ? rawConfig.defaultModel : config.llm.model,
+        defaultService: typeof rawConfig.service === "string" ? rawConfig.service : reqService,
+      });
+      const bindModel = binding.model;
+      const bindService = binding.service;
+      const modelReboundNotice = formatAgentModelReboundNotice(
+        binding,
+        surfaceLanguage === "en" ? "en" : "zh",
+      );
+
       let resolvedModel: ResolvedModel["model"] | undefined;
       let resolvedApiKey: string | undefined;
 
-      if (reqService && reqModel) {
-        // 1. Frontend explicitly selected a service+model — fail loudly if no key
+      if (bindService && bindModel) {
         try {
-          const configuredEntry = await resolveConfiguredServiceEntry(root, reqService);
+          const configuredEntry = await resolveConfiguredServiceEntry(root, bindService);
           const resolved = await resolveServiceModel(
-            reqService,
-            reqModel,
+            bindService,
+            bindModel,
             root,
-            await resolveConfiguredServiceBaseUrl(root, reqService),
+            await resolveConfiguredServiceBaseUrl(root, bindService),
             configuredEntry?.apiFormat,
           );
           resolvedModel = resolved.model;
@@ -5189,11 +5217,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           const msg = e?.message ?? String(e);
           if (/API key/i.test(msg)) {
             return c.json({
-              error: pick(language, `请先为 ${reqService} 配置 API Key`, `Configure an API Key for ${reqService} first`),
+              error: pick(language, `请先为 ${bindService} 配置 API Key`, `Configure an API Key for ${bindService} first`),
               response: pick(
                 language,
-                `请先在模型配置中为 ${reqService} 填写 API Key，然后再试。`,
-                `Fill in an API Key for ${reqService} in the model settings, then try again.`,
+                `请先在模型配置中为 ${bindService} 填写 API Key，然后再试。`,
+                `Fill in an API Key for ${bindService} in the model settings, then try again.`,
               ),
             }, 400);
           }
@@ -5201,20 +5229,18 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
         }
       }
 
-      if (!resolvedModel) {
-        // 2. Try defaultModel from new config format
-        const rawConfig = config.llm as unknown as Record<string, unknown>;
-        const defaultModel = rawConfig.defaultModel as string | undefined;
+      if (!resolvedModel && bindModel && isTextChatModelId(bindModel)) {
         const servicesArr = normalizeServiceConfig(rawConfig.services);
-        const firstService = servicesArr[0];
-        if (firstService?.service && defaultModel && isTextChatModelId(defaultModel)) {
+        const selectedEntry = servicesArr.find((entry) => serviceConfigKey(entry) === bindService)
+          ?? servicesArr[0];
+        if (selectedEntry?.service) {
           try {
             const resolved = await resolveServiceModel(
-              serviceConfigKey(firstService),
-              defaultModel,
+              serviceConfigKey(selectedEntry),
+              bindModel,
               root,
-              firstService.baseUrl,
-              firstService.apiFormat,
+              selectedEntry.baseUrl,
+              selectedEntry.apiFormat,
             );
             resolvedModel = resolved.model;
             resolvedApiKey = resolved.apiKey;
@@ -5258,16 +5284,16 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
       const model = resolvedModel!;
       const agentApiKey = resolvedApiKey;
-      const configuredEntry = reqService ? await resolveConfiguredServiceEntry(root, reqService) : undefined;
+      const configuredEntry = bindService ? await resolveConfiguredServiceEntry(root, bindService) : undefined;
 
       // Create pipeline with resolved model (so sub_agent tools use the frontend-selected model)
       // Don't spread config.llm — its baseUrl/provider belong to the old service.
       // Let createLLMClient resolve baseUrl from the service preset.
-      const pipelineClient = (reqService && reqModel && resolvedModel)
+      const pipelineClient = (bindService && bindModel && resolvedModel)
         ? createLLMClient({
             ...config.llm,
-            service: configuredEntry?.service ?? reqService,
-            model: reqModel,
+            service: configuredEntry?.service ?? bindService,
+            model: bindModel,
             apiKey: resolvedApiKey ?? "",
             ...(configuredEntry?.apiFormat ? { apiFormat: configuredEntry.apiFormat } : {}),
             ...(configuredEntry?.stream !== undefined ? { stream: configuredEntry.stream } : {}),
@@ -5287,7 +5313,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
       const pipeline = new PipelineRunner(await buildPipelineConfig({
         client: pipelineClient,
-        model: reqModel ?? config.llm.model,
+        model: bindModel ?? config.llm.model,
         currentConfig: config,
         sessionIdForSSE: bookSession.sessionId,
         bookIdForSettings: activeBookId ?? undefined,
@@ -5391,6 +5417,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
                 const migratedSession = await migrateBookSession(root, bookSession.sessionId, createdBookId);
                 if (migratedSession) {
                   bookSession = migratedSession;
+                  bindCachedAgentBookId(root, bookSession.sessionId, createdBookId);
                 }
               } catch (e) {
                 if (!(e instanceof SessionAlreadyMigratedError)) {
@@ -5627,6 +5654,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           const migratedSession = await migrateBookSession(root, bookSession.sessionId, createdBookId);
           if (migratedSession) {
             bookSession = migratedSession;
+            bindCachedAgentBookId(root, bookSession.sessionId, createdBookId);
           }
         } catch (e) {
           if (!(e instanceof SessionAlreadyMigratedError)) {
@@ -5726,6 +5754,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           sessionId: bookSession.sessionId,
           sessionKind: responseSessionKind,
           ...(bookSession.bookId ? { activeBookId: bookSession.bookId } : {}),
+        },
+        model: {
+          id: bindModel,
+          service: bindService,
+          source: binding.source,
+          ...(modelReboundNotice ? { rebound: true, notice: modelReboundNotice } : {}),
         },
       });
     } catch (e) {

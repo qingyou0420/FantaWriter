@@ -38,4 +38,11 @@ describe("localizeKnownRuntimeMessage", () => {
       "Chapter 4 has 3 critical audit issue(s) and cannot be approved without an explicit override.",
     )).toContain("第 4 章");
   });
+
+  it("localizes leftover English stream-idle errors", () => {
+    const message = localizeKnownRuntimeMessage("LLM stream produced no token for 60000ms");
+    expect(message).toContain("没有新的有效内容");
+    expect(message).toContain("流式兼容性");
+    expect(message).not.toMatch(/produced no token/i);
+  });
 });

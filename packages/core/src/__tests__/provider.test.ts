@@ -3,6 +3,8 @@ import type { AssistantMessage, Model, Api } from "@mariozechner/pi-ai";
 import {
   __resetFixedTemperatureWarnings,
   chatCompletion,
+  DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS,
+  DEFAULT_STREAM_IDLE_TIMEOUT_MS,
   type LLMClient,
 } from "../llm/provider.js";
 import { runWithAgentTrajectory } from "../llm/agent-trajectory.js";
@@ -100,6 +102,58 @@ function makeNeverStream(): AsyncIterable<Record<string, unknown>> {
     [Symbol.asyncIterator](): AsyncIterator<Record<string, unknown>> {
       return {
         async next() {
+          return new Promise<IteratorResult<Record<string, unknown>>>(() => {});
+        },
+      };
+    },
+  };
+}
+
+/** Lifecycle open, then a first useful token after `delayMs`, then done. */
+function makeOpenedThenDelayedTokenStream(
+  text: string,
+  delayMs: number,
+): AsyncIterable<Record<string, unknown>> {
+  const msg = makeAssistantMessage(text);
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<Record<string, unknown>> {
+      let step = 0;
+      return {
+        async next() {
+          if (step === 0) {
+            step = 1;
+            return { value: { type: "start", partial: msg }, done: false };
+          }
+          if (step === 1) {
+            step = 2;
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return {
+              value: { type: "text_delta", contentIndex: 0, delta: text, partial: msg },
+              done: false,
+            };
+          }
+          if (step === 2) {
+            step = 3;
+            return { value: { type: "done", reason: "stop", message: msg }, done: false };
+          }
+          return { value: undefined as unknown as Record<string, unknown>, done: true };
+        },
+      };
+    },
+  };
+}
+
+function makeOpenedThenHangStream(): AsyncIterable<Record<string, unknown>> {
+  const msg = makeAssistantMessage("");
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<Record<string, unknown>> {
+      let sent = false;
+      return {
+        async next() {
+          if (!sent) {
+            sent = true;
+            return { value: { type: "start", partial: msg }, done: false };
+          }
           return new Promise<IteratorResult<Record<string, unknown>>>(() => {});
         },
       };
@@ -209,8 +263,10 @@ describe("chatCompletion via pi-ai", () => {
 
     expect(error.message).not.toContain("API 返回 400");
     expect(error.message).not.toContain("请求参数错误");
-    expect(error.message).toMatch(/超时|timeout/i);
-    expect(error.message).toContain("240000ms");
+    expect(error.message).toContain("模型「kimi-k3」");
+    expect(error.message).toContain("240 秒");
+    expect(error.message).toContain("流式兼容性");
+    expect(error.message).not.toMatch(/produced no |exceeded overall timeout/i);
   });
 
   it("still wraps a real HTTP 400 including invalid temperature", async () => {
@@ -300,7 +356,11 @@ describe("chatCompletion via pi-ai", () => {
       }),
     );
 
-    expect(error.message).toContain("LLM stream produced no event within 10ms");
+    expect(error.message).toContain("模型「test-model」");
+    expect(error.message).toContain("服务：openai");
+    expect(error.message).toContain("没有开始输出");
+    expect(error.message).toContain("流式兼容性");
+    expect(error.message).not.toMatch(/produced no event within/i);
   });
 
   it("fails a stalled stream when no token arrives after the stream opens", async () => {
@@ -329,7 +389,11 @@ describe("chatCompletion via pi-ai", () => {
       }),
     );
 
-    expect(error.message).toContain("LLM stream produced no token for 20ms");
+    expect(error.message).toContain("模型「test-model」");
+    expect(error.message).toContain("服务：openai");
+    expect(error.message).toContain("没有新的有效内容");
+    expect(error.message).toContain("流式兼容性");
+    expect(error.message).not.toMatch(/produced no token for/i);
   });
 
   it("fails a call that exceeds the overall timeout", async () => {
@@ -344,7 +408,47 @@ describe("chatCompletion via pi-ai", () => {
       }),
     );
 
-    expect(error.message).toContain("LLM call exceeded overall timeout of 15ms");
+    expect(error.message).toContain("模型「test-model」");
+    expect(error.message).toContain("整次调用超过");
+    expect(error.message).toContain("流式兼容性");
+    expect(error.message).not.toMatch(/exceeded overall timeout/i);
+  });
+
+  it("keeps pipeline idle at 180s so a first useful token at 90s does not abort", async () => {
+    expect(DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS).toBe(180_000);
+    expect(DEFAULT_STREAM_IDLE_TIMEOUT_MS).toBe(60_000);
+    vi.useFakeTimers();
+    mockStreamSimple.mockReturnValue(makeOpenedThenDelayedTokenStream("slow-ok", 90_000));
+
+    try {
+      const pending = chatCompletion(makeClient(), "test-model", [{ role: "user", content: "hi" }], {
+        retry: false,
+      });
+      await vi.advanceTimersByTimeAsync(90_000);
+      await expect(pending).resolves.toMatchObject({ content: "slow-ok" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts a pipeline stream that stays idle beyond 180s after opening", async () => {
+    vi.useFakeTimers();
+    mockStreamSimple.mockReturnValue(makeOpenedThenHangStream());
+
+    try {
+      const pending = chatCompletion(makeClient(), "kimi-k3", [{ role: "user", content: "织卷" }], {
+        retry: false,
+      });
+      const errorPromise = captureError(pending);
+      await vi.advanceTimersByTimeAsync(DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS);
+      const error = await errorPromise;
+      expect(error.message).toContain("模型「kimi-k3」");
+      expect(error.message).toContain("180 秒");
+      expect(error.message).toContain("流式兼容性");
+      expect(error.message).not.toMatch(/produced no token/i);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("drops non-ByteString headers before calling pi-ai", async () => {

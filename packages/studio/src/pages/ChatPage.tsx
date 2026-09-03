@@ -2,7 +2,7 @@ import { useRef, useEffect, useMemo, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
-import { fetchJson, postApi, useApi } from "../hooks/use-api";
+import { fetchJson, postApi, putApi, useApi } from "../hooks/use-api";
 import type { ChatAttachmentPayload } from "../store/chat/types";
 import { chatSelectors, useChatStore } from "../store/chat";
 import type { ChatSessionKind } from "../store/chat";
@@ -402,25 +402,46 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
   useEffect(() => {
     let cancelled = false;
 
-    void fetchJson<ServiceConfigPayload>("/services/config")
-      .then((payload) => {
-        if (cancelled) return;
-        setConfiguredModelSelection({
-          service: payload.service ?? null,
-          model: payload.defaultModel ?? null,
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setConfiguredModelSelection(null);
-      })
-      .finally(() => {
-        if (!cancelled) setServiceConfigLoaded(true);
+    const applyPayload = (payload: ServiceConfigPayload) => {
+      if (cancelled) return;
+      setConfiguredModelSelection({
+        service: payload.service ?? null,
+        model: payload.defaultModel ?? null,
       });
+    };
+
+    const loadServiceConfig = (markLoaded: boolean) => {
+      void fetchJson<ServiceConfigPayload>("/services/config")
+        .then(applyPayload)
+        .catch(() => {
+          if (!cancelled && markLoaded) setConfiguredModelSelection(null);
+        })
+        .finally(() => {
+          if (!cancelled && markLoaded) setServiceConfigLoaded(true);
+        });
+    };
+
+    loadServiceConfig(true);
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "hidden") return;
+      loadServiceConfig(false);
+    };
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
     };
   }, []);
+
+  const persistStudioDefaultModel = (model: string, service: string) => {
+    setSelectedModel(model, service);
+    setConfiguredModelSelection({ model, service });
+    void putApi("/project/default-model", { defaultModel: model, service }).catch(() => undefined);
+  };
 
   const modelPickerStatus = useMemo(() => {
     if (servicesLoading || services.length === 0) return "loading" as const;
@@ -1183,7 +1204,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                       groupedModels={groupedModels}
                       selectedModel={selectedModel}
                       selectedService={selectedService}
-                      onSelect={setSelectedModel}
+                      onSelect={persistStudioDefaultModel}
                       onManage={() => nav.toServices()}
                     />
                   </DropdownMenu>

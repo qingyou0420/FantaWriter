@@ -93,6 +93,13 @@ export interface AgentResponse {
     readonly messages?: ReadonlyArray<SessionMessage>;
   };
   readonly request?: unknown;
+  readonly model?: {
+    readonly id?: string;
+    readonly service?: string;
+    readonly source?: string;
+    readonly rebound?: boolean;
+    readonly notice?: string;
+  };
 }
 
 export interface SessionResponse {
