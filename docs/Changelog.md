@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.6
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.6.exe`（#70 建书按目标章数/每章字数写出短标题卷章树和提要；大纲侧栏不再把「卷一埋/OKR」散文当卷名；已有书可用织卷按字数重排，不用删书）。
+
 ## 2.0.5
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.5.exe`（#68 点创建长篇会开新会话，删除对话后不会再钻回失败的旧建书）。

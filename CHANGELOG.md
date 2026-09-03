@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [2.0.6] - 2026-09-03
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.6.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
+### 修复
+
+- 建书按目标章数/每章字数写出短标题卷章树和提要；大纲侧栏不再把「卷一埋/OKR」散文当卷名；已有书可用织卷按字数重排，不用删书。
+
 ## [2.0.5] - 2026-09-02
 
 Windows 补丁安装包：`FantaWriter-Setup-2.0.5.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
@@ -292,6 +300,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.6]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.6
 [2.0.5]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.5
 [2.0.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.4
 [2.0.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.3
