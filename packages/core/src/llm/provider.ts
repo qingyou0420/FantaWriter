@@ -44,11 +44,17 @@ const INKOS_USER_AGENT = "InkOS/1.3.5";
 const UNKNOWN_MODEL_FALLBACK_MAX_TOKENS = 8192 * 3;
 const TRANSIENT_LLM_RETRIES = 2;
 const DEFAULT_FIRST_STREAM_EVENT_TIMEOUT_MS = 120_000;
-const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 60_000;
+/** Interactive chat: keep a tight idle so a stuck reply does not hang the UI. */
+export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAM_OVERALL_TIMEOUT_MS = 600_000;
-const DEFAULT_PIPELINE_FIRST_STREAM_EVENT_TIMEOUT_MS = 300_000;
-const DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS = 60_000;
-const DEFAULT_PIPELINE_STREAM_OVERALL_TIMEOUT_MS = 900_000;
+export const DEFAULT_PIPELINE_FIRST_STREAM_EVENT_TIMEOUT_MS = 300_000;
+/**
+ * Long pipeline / 织卷 agents. 60s is too aggressive: some providers keep the
+ * HTTP stream open (keepalive / lifecycle SSE) while thinking silently.
+ * Lifecycle events must not reset this clock — only token/reasoning/tool deltas.
+ */
+export const DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS = 180_000;
+export const DEFAULT_PIPELINE_STREAM_OVERALL_TIMEOUT_MS = 900_000;
 
 export interface StreamDeadlineOptions {
   readonly firstEventTimeoutMs?: number;
@@ -68,6 +74,57 @@ export class LLMStreamInactivityError extends Error {
         : `LLM call exceeded overall timeout of ${timeoutMs}ms`);
     this.name = "LLMStreamInactivityError";
   }
+}
+
+export function formatLlmStreamTimeoutMessage(
+  error: unknown,
+  context?: {
+    readonly model?: string;
+    readonly service?: string;
+    readonly language?: "zh" | "en";
+  },
+): string {
+  const language = context?.language === "en" ? "en" : "zh";
+  const model = context?.model?.trim() || "unknown";
+  const service = context?.service?.trim();
+  const who = language === "en"
+    ? (service ? `Model "${model}" (service: ${service})` : `Model "${model}"`)
+    : (service ? `模型「${model}」（服务：${service}）` : `模型「${model}」`);
+  const seconds = error instanceof LLMStreamInactivityError
+    ? Math.max(1, Math.round(error.timeoutMs / 1000))
+    : readTimeoutSecondsFromMessage(error instanceof Error ? error.message : String(error));
+  const stage = error instanceof LLMStreamInactivityError
+    ? error.stage
+    : inferTimeoutStageFromMessage(error instanceof Error ? error.message : String(error));
+  if (language === "en") {
+    if (stage === "first-event") {
+      return `${who} produced no stream event within ${seconds}s. Check this service's timeout or stream compatibility, or switch models.`;
+    }
+    if (stage === "overall") {
+      return `${who} exceeded the overall ${seconds}s call limit. Check this service's timeout or stream compatibility, or switch models.`;
+    }
+    return `${who} produced no useful stream content for ${seconds}s. Check this service's timeout or stream compatibility, or switch models.`;
+  }
+  if (stage === "first-event") {
+    return `${who} 在 ${seconds} 秒内没有开始输出。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。`;
+  }
+  if (stage === "overall") {
+    return `${who} 整次调用超过 ${seconds} 秒仍未完成。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。`;
+  }
+  return `${who} 已超过 ${seconds} 秒没有新的有效内容（思考/正文/工具调用）。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。`;
+}
+
+function readTimeoutSecondsFromMessage(message: string): number {
+  const match = message.match(/(\d+)\s*ms/i);
+  if (!match) return 60;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.max(1, Math.round(parsed / 1000)) : 60;
+}
+
+function inferTimeoutStageFromMessage(message: string): "first-event" | "idle" | "overall" {
+  if (/no event within|没有开始输出/i.test(message)) return "first-event";
+  if (/exceeded overall timeout|整次调用超过/i.test(message)) return "overall";
+  return "idle";
 }
 
 interface StreamActivityDeadline {
@@ -205,7 +262,12 @@ export function guardAssistantMessageStream<TApi extends PiApi>(
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
         },
         stopReason: callerSignal?.aborted ? "aborted" : "error",
-        errorMessage: resolved instanceof Error ? resolved.message : String(resolved),
+        errorMessage: resolved instanceof LLMStreamInactivityError
+          ? formatLlmStreamTimeoutMessage(resolved, {
+              model: model.name || model.id,
+              service: String(model.provider),
+            })
+          : resolved instanceof Error ? resolved.message : String(resolved),
         timestamp: Date.now(),
       };
       guarded.push({
@@ -663,8 +725,10 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
     : "";
 
   if (isLlmTimeoutError(error, msg)) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return new Error(`LLM 调用超时（模型还在想或流已空闲）。${detail}${ctxLine}`);
+    return new Error(formatLlmStreamTimeoutMessage(error, {
+      model: context?.model,
+      service: context?.service,
+    }));
   }
 
   if (mentionsHttpStatus(msg, 400)) {

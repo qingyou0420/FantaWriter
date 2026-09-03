@@ -52,6 +52,18 @@ const KNOWN_RUNTIME_REPLACEMENTS: ReadonlyArray<{
     pattern: /Chapter (\d+) has (\d+) critical audit issue\(s\) and cannot be approved without an explicit override\./g,
     replacement: "第 $1 章有 $2 条 critical 审稿问题，未记录覆盖理由不能通过。",
   },
+  {
+    pattern: /LLM stream produced no token for (\d+)ms/g,
+    replacement: "模型已超过 $1 毫秒没有新的有效内容。请检查当前模型/服务的超时或流式兼容性。",
+  },
+  {
+    pattern: /LLM stream produced no event within (\d+)ms/g,
+    replacement: "模型在 $1 毫秒内没有开始输出。请检查当前模型/服务的超时或流式兼容性。",
+  },
+  {
+    pattern: /LLM call exceeded overall timeout of (\d+)ms/g,
+    replacement: "模型整次调用超过 $1 毫秒仍未完成。请检查当前模型/服务的超时或流式兼容性。",
+  },
 ];
 
 export function localizeKnownRuntimeMessage(message: string): string {

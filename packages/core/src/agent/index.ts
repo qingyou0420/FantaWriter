@@ -2,6 +2,7 @@ export { buildAgentSystemPrompt } from "./agent-system-prompt.js";
 export {
   createSubAgentTool,
   createReadTool,
+  resolveActiveBookScopedPath,
   createWriteTruthFileTool,
   createRenameEntityTool,
   createPatchChapterTextTool,

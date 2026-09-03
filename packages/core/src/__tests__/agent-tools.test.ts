@@ -6,6 +6,8 @@ import { StateManager } from "../state/manager.js";
 import { ArchitectIncompleteFoundationError } from "../agents/architect.js";
 import {
   createReadTool,
+  createEditTool,
+  resolveActiveBookScopedPath,
   createGenerateCoverTool,
   createSubAgentTool,
   createShortFictionRunTool,
@@ -1390,6 +1392,101 @@ describe("agent deterministic writing tools", () => {
     expect(result.content[0]?.type).toBe("text");
     if (result.content[0]?.type === "text") {
       expect(result.content[0].text).toContain(".md");
+    }
+  });
+
+  it("maps active-book truth paths onto books/<id>/story and never books/outline", () => {
+    const resolved = resolveActiveBookScopedPath(root, "醉词", "outline/story_frame.md");
+    expect(resolved).toBe(join(root, "books", "醉词", "story", "outline", "story_frame.md"));
+    expect(resolved).not.toBe(join(root, "books", "outline", "story_frame.md"));
+    expect(resolveActiveBookScopedPath(root, "醉词", "醉词/outline/story_frame.md"))
+      .toBe(join(root, "books", "醉词", "story", "outline", "story_frame.md"));
+    expect(resolveActiveBookScopedPath(root, "醉词", "醉词/story/outline/story_frame.md"))
+      .toBe(join(root, "books", "醉词", "story", "outline", "story_frame.md"));
+    expect(() => resolveActiveBookScopedPath(root, "../x", "outline/story_frame.md"))
+      .toThrow(/Invalid activeBookId/);
+    expect(() => resolveActiveBookScopedPath(root, "醉词", "../outline/story_frame.md"))
+      .toThrow(/Path traversal blocked/);
+  });
+
+  it("resolves active-book truth paths under the book's story directory", async () => {
+    await mkdir(join(root, "books", "醉词", "story", "outline"), { recursive: true });
+    await writeFile(
+      join(root, "books", "醉词", "story", "outline", "story_frame.md"),
+      "# 醉词骨架\n",
+      "utf-8",
+    );
+    await mkdir(join(root, "books", "outline"), { recursive: true });
+    await writeFile(join(root, "books", "outline", "story_frame.md"), "# WRONG ROOT\n", "utf-8");
+    const tool = createReadTool(root, { activeBookId: "醉词" });
+
+    expect(tool.description).toContain("books/醉词/story/");
+    expect(tool.description).not.toMatch(/relative to books\/\./);
+
+    const result = await tool.execute("tool-read-zui-ci", {
+      path: "outline/story_frame.md",
+    });
+    expect(result.content[0]).toEqual({ type: "text", text: "# 醉词骨架\n" });
+
+    const qualified = await tool.execute("tool-read-zui-ci-qualified", {
+      path: "醉词/story/outline/story_frame.md",
+    });
+    expect(qualified.content[0]).toEqual({ type: "text", text: "# 醉词骨架\n" });
+  });
+
+  it("does not let an active-book edit write to books/outline", async () => {
+    await mkdir(join(root, "books", "醉词", "story", "outline"), { recursive: true });
+    await writeFile(
+      join(root, "books", "醉词", "story", "outline", "story_frame.md"),
+      "old frame\n",
+      "utf-8",
+    );
+    await mkdir(join(root, "books", "outline"), { recursive: true });
+    await writeFile(join(root, "books", "outline", "story_frame.md"), "stray outline\n", "utf-8");
+    const tool = createEditTool(root, { activeBookId: "醉词" });
+
+    const result = await tool.execute("tool-edit-zui-ci", {
+      path: "outline/story_frame.md",
+      old_string: "old frame",
+      new_string: "new frame",
+    });
+    expect(result.content[0]?.type).toBe("text");
+    if (result.content[0]?.type === "text") {
+      expect(result.content[0].text).toContain("updated successfully");
+    }
+    await expect(readFile(join(root, "books", "醉词", "story", "outline", "story_frame.md"), "utf-8"))
+      .resolves.toBe("new frame\n");
+    await expect(readFile(join(root, "books", "outline", "story_frame.md"), "utf-8"))
+      .resolves.toBe("stray outline\n");
+  });
+
+  it("does not let an active-book write create books/outline", async () => {
+    const tool = createWriteFileTool(root, { activeBookId: "醉词" });
+    const result = await tool.execute("tool-write-zui-ci", {
+      path: "outline/story_frame.md",
+      content: "# 新骨架\n",
+    });
+    expect(result.content[0]?.type).toBe("text");
+    await expect(readFile(join(root, "books", "醉词", "story", "outline", "story_frame.md"), "utf-8"))
+      .resolves.toBe("# 新骨架\n");
+    await expect(readFile(join(root, "books", "outline", "story_frame.md"), "utf-8").catch(() => "missing"))
+      .resolves.toBe("missing");
+  });
+
+  it("rejects an unsafe activeBookId before resolving any file path", () => {
+    expect(() => createReadTool(root, { activeBookId: "../escape" })).toThrow(/Invalid activeBookId/);
+    expect(() => createEditTool(root, { activeBookId: ".." })).toThrow(/Invalid activeBookId/);
+    expect(() => createWriteFileTool(root, { activeBookId: "foo/bar" })).toThrow(/Invalid activeBookId/);
+  });
+
+  it("blocks path traversal from an active-book read", async () => {
+    const tool = createReadTool(root, { activeBookId: "harbor" });
+    const result = await tool.execute("tool-read-escape", {
+      path: "../harbor/story/story_bible.md",
+    });
+    expect(result.content[0]?.type).toBe("text");
+    if (result.content[0]?.type === "text") {
+      expect(result.content[0].text).toContain("Path traversal blocked");
     }
   });
 

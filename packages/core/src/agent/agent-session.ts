@@ -972,7 +972,10 @@ function createModeTools(params: CreateAgentToolsForModeParams) {
   const bookTools = [
     subAgentTool,
     createGenerateCoverTool(params.projectRoot, { actionPayload: params.actionPayload }),
-    createReadTool(params.projectRoot, { allowSystemPaths: params.allowSystemFileRead }),
+    createReadTool(params.projectRoot, {
+      allowSystemPaths: params.allowSystemFileRead,
+      activeBookId: params.bookId,
+    }),
     createWriteTruthFileTool(params.pipeline, params.projectRoot, params.bookId),
     createRenameEntityTool(params.pipeline, params.projectRoot, params.bookId),
     createPatchChapterTextTool(params.pipeline, params.projectRoot, params.bookId),

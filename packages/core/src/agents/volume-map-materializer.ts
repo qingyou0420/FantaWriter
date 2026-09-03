@@ -9,7 +9,11 @@ import { BaseAgent } from "./base.js";
 import type { BookConfig } from "../models/book.js";
 import type { TruthProposal } from "../interaction/truth-proposals.js";
 import { isKimiK3Model } from "../llm/moonshot-sampling.js";
-import { LLMStreamInactivityError } from "../llm/provider.js";
+import {
+  DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS,
+  LLMStreamInactivityError,
+  formatLlmStreamTimeoutMessage,
+} from "../llm/provider.js";
 import {
   chapterNodesByNumber,
   leftoverVolumeMapProse,
@@ -36,9 +40,9 @@ export type VolumeMapWeaveStep = "volumes" | "batch" | "done";
 /** One reviewable batch. Never dump 40–260 chapters in a single weave POST. */
 export const MAX_CHAPTERS_PER_CALL = 10;
 
-/** First-event / idle stay tight; overall must outlast kimi-k3 thinking on a 10-chapter batch. */
+/** First-event stays tighter than pipeline; idle matches the long-pipeline policy. */
 export const MATERIALIZER_FIRST_EVENT_TIMEOUT_MS = 90_000;
-export const MATERIALIZER_STREAM_IDLE_TIMEOUT_MS = 60_000;
+export const MATERIALIZER_STREAM_IDLE_TIMEOUT_MS = DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS;
 /** 240s aborted a live 醉词 kimi-k3 batch that was still thinking. Match pipeline overall. */
 export const MATERIALIZER_OVERALL_TIMEOUT_MS = 900_000;
 
@@ -662,13 +666,21 @@ export class VolumeMapMaterializer extends BaseAgent {
     },
   ): VolumeMapWeaveError {
     const cause = error instanceof Error ? error.message : String(error);
+    const timedOut = isWeaveTimeoutCause(error, cause);
+    const displayCause = timedOut
+      ? formatLlmStreamTimeoutMessage(error, {
+          language: extras.language,
+          model: this.ctx.model,
+          service: this.ctx.client?.service,
+        })
+      : cause;
     this.log?.error(`[weave] abort: ${cause}`, {
       volumeNumber: extras.volumeNumber,
       chapterStart: extras.chapterStart,
       chapterEnd: extras.chapterEnd,
     });
     return new VolumeMapWeaveError(
-      formatWeaveFailureMessage(extras.language, extras, cause, isWeaveTimeoutCause(error, cause)),
+      formatWeaveFailureMessage(extras.language, extras, displayCause, timedOut),
       extras,
     );
   }

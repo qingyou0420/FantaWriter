@@ -264,6 +264,7 @@ describe("VolumeMapMaterializer", () => {
       streamIdleTimeoutMs: MATERIALIZER_STREAM_IDLE_TIMEOUT_MS,
       overallTimeoutMs: MATERIALIZER_OVERALL_TIMEOUT_MS,
     });
+    expect(MATERIALIZER_STREAM_IDLE_TIMEOUT_MS).toBe(180_000);
     expect(MATERIALIZER_OVERALL_TIMEOUT_MS).toBeGreaterThan(240_000);
   });
 
@@ -311,9 +312,11 @@ describe("VolumeMapMaterializer", () => {
       expect(weave.message).toContain("冕旒");
       expect(weave.message).toContain("第1–10章");
       expect(weave.message).toContain("织卷超时，模型还在想");
+      expect(weave.message).toContain("模型「test-model」");
+      expect(weave.message).toContain("流式兼容性");
       expect(weave.message).not.toContain("第1/?卷");
       expect(weave.message).not.toContain("请求参数错误");
-      expect(weave.message).toContain("no token");
+      expect(weave.message).not.toMatch(/produced no token/i);
       return true;
     });
     expect(progress.some((line) => line.includes("第1–10章") && line.includes("正在请求模型"))).toBe(true);
