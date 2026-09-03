@@ -4,6 +4,8 @@ import {
   formatVolumeLabel,
   listedExactChapterNumbers,
   missingExactChapters,
+  nextUnfilledChapterBatch,
+  resolveOutlineWeaveStep,
   parseProseVolumeHints,
   parseVolumeMapTree,
   planVolumeRanges,
@@ -178,5 +180,20 @@ describe("renderVolumeMapMarkdown", () => {
     expect(volumeMapHasReviewableTree(tree, 12)).toBe(true);
     expect(missingExactChapters(tree, 12)).toEqual([]);
     expect(findVolumeMapEntry(markdown, 1)).toBeTruthy();
+  });
+
+  it("resumes 醉词-style books as volume-lock then 10-chapter batches", () => {
+    expect(resolveOutlineWeaveStep(parseVolumeMapTree(ZUI_CI_PROSE_FIXTURE), 260, ZUI_CI_PROSE_FIXTURE)).toBe("volumes");
+    const locked = renderVolumeMapMarkdown([{
+      volumeNumber: 1,
+      title: "冕旒",
+      startChapter: 1,
+      endChapter: 40,
+      body: "Objective：开局。",
+      chapters: [{ chapterNumber: 1, title: "入局", summary: "走进酒楼。" }],
+    }]);
+    const tree = parseVolumeMapTree(locked);
+    expect(resolveOutlineWeaveStep(tree, 40, locked)).toBe("batch");
+    expect(nextUnfilledChapterBatch(tree, 40, 10)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
   });
 });

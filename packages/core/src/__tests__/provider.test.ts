@@ -277,6 +277,50 @@ describe("chatCompletion via pi-ai", () => {
     expect(error.message).toContain("LLM stream produced no event within 10ms");
   });
 
+  it("fails a stalled stream when no token arrives after the stream opens", async () => {
+    const msg = makeAssistantMessage("");
+    mockStreamSimple.mockReturnValue({
+      [Symbol.asyncIterator](): AsyncIterator<Record<string, unknown>> {
+        let sent = false;
+        return {
+          async next() {
+            if (!sent) {
+              sent = true;
+              return { value: { type: "start", partial: msg }, done: false };
+            }
+            return new Promise<IteratorResult<Record<string, unknown>>>(() => {});
+          },
+        };
+      },
+    });
+
+    const error = await captureError(
+      chatCompletion(makeClient(), "test-model", [{ role: "user", content: "hi" }], {
+        firstEventTimeoutMs: 5_000,
+        streamIdleTimeoutMs: 20,
+        overallTimeoutMs: 5_000,
+        retry: false,
+      }),
+    );
+
+    expect(error.message).toContain("LLM stream produced no token for 20ms");
+  });
+
+  it("fails a call that exceeds the overall timeout", async () => {
+    mockStreamSimple.mockReturnValue(makeNeverStream());
+
+    const error = await captureError(
+      chatCompletion(makeClient(), "test-model", [{ role: "user", content: "hi" }], {
+        firstEventTimeoutMs: 5_000,
+        streamIdleTimeoutMs: 5_000,
+        overallTimeoutMs: 15,
+        retry: false,
+      }),
+    );
+
+    expect(error.message).toContain("LLM call exceeded overall timeout of 15ms");
+  });
+
   it("drops non-ByteString headers before calling pi-ai", async () => {
     mockStreamSimple.mockReturnValue(makeTextStream("ok"));
 
@@ -444,7 +488,10 @@ describe("chatCompletion via pi-ai", () => {
     expect(mockStreamSimple).not.toHaveBeenCalled();
 
     const init = fetchMock.mock.calls[0]?.[1] as { headers?: Record<string, string>; signal?: AbortSignal };
-    expect(init.signal).toBe(controller.signal);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.signal?.aborted).toBe(false);
+    controller.abort();
+    expect(init.signal?.aborted).toBe(true);
     expect(init.headers).toMatchObject({
       Authorization: "Bearer test-key",
       "Content-Type": "application/json",

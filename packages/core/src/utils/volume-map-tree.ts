@@ -692,6 +692,69 @@ export function volumeMapHasReviewableTree(tree: VolumeMapTree, targetChapters: 
     && missingExactChapters(tree, targetChapters).length === 0;
 }
 
+export function volumeMapHasLockedVolumes(tree: VolumeMapTree): boolean {
+  return tree.volumes.some((volume) =>
+    volume.volumeNumber != null
+    && volume.startChapter != null
+    && volume.endChapter != null
+    && volume.endChapter >= volume.startChapter,
+  );
+}
+
+export function filledChapterNumbers(tree: VolumeMapTree): ReadonlyArray<number> {
+  const numbers: number[] = [];
+  for (const [number, node] of chapterNodesByNumber(tree)) {
+    if (node.title.trim() || node.summary.trim()) numbers.push(number);
+  }
+  return numbers.sort((left, right) => left - right);
+}
+
+export function nextUnfilledChapterBatch(
+  tree: VolumeMapTree,
+  targetChapters: number,
+  batchSize = 10,
+): ReadonlyArray<number> {
+  const filled = new Set(filledChapterNumbers(tree));
+  let first: number | undefined;
+  for (let chapter = 1; chapter <= targetChapters; chapter += 1) {
+    if (!filled.has(chapter)) {
+      first = chapter;
+      break;
+    }
+  }
+  if (first == null) return [];
+  const home = tree.volumes.find((volume) =>
+    volume.startChapter != null
+    && volume.endChapter != null
+    && first! >= volume.startChapter
+    && first! <= volume.endChapter,
+  );
+  const limit = Math.min(targetChapters, home?.endChapter ?? targetChapters);
+  const batch: number[] = [];
+  const size = Number.isInteger(batchSize) && batchSize > 0 ? batchSize : 10;
+  for (let chapter = first; chapter <= limit && batch.length < size; chapter += 1) {
+    if (!filled.has(chapter)) batch.push(chapter);
+  }
+  return batch;
+}
+
+export type OutlineWeaveStep = "volumes" | "batch" | "done";
+
+export function resolveOutlineWeaveStep(
+  tree: VolumeMapTree,
+  targetChapters: number,
+  volumeMap?: string,
+): OutlineWeaveStep {
+  if (!volumeMapHasLockedVolumes(tree)) {
+    const hinted = volumeMap
+      ? planVolumeRangesFromHints(parseProseVolumeHints(volumeMap), targetChapters)
+      : null;
+    if (hinted && hinted.length >= 2) return "volumes";
+    return "volumes";
+  }
+  return nextUnfilledChapterBatch(tree, targetChapters).length > 0 ? "batch" : "done";
+}
+
 export function leftoverVolumeMapProse(markdown: string): string {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const kept: string[] = [];

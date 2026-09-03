@@ -390,6 +390,10 @@ describe("PipelineRunner", () => {
         chapterCount: target,
         targetChapters: target,
         generatedChapterNumbers: Array.from({ length: target }, (_, index) => index + 1),
+        step: "volumes" as const,
+        moreRemaining: true,
+        nextBatchStart: 1,
+        nextBatchEnd: Math.min(10, target),
       };
     });
     vi.spyOn(StateValidatorAgent.prototype, "validate").mockResolvedValue({

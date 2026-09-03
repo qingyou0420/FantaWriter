@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { MAX_VOLUME_TREE_LABEL_CHARS, parseVolumeMapTree } from "./volume-map-tree";
 import {
+  applyOutlineWeaveSseEvent,
+  formatOutlineWeaveProgress,
   outlineTreeHeadingTooLong,
   outlineTreeVolumeLabel,
+  outlineWeaveButtonLabel,
   outlineWeavePrompt,
-  resolveOutlineWeaveMode,
+  readOutlineWeaveErrorBody,
+  resolveOutlineWeaveAction,
 } from "./outline-weave";
 
 const ZUI_CI_PROSE = [
@@ -17,10 +21,24 @@ const ZUI_CI_PROSE = [
 ].join("\n");
 
 describe("outline weave helpers", () => {
-  it("rebuilds a full tree when no chapter entries exist", () => {
-    expect(resolveOutlineWeaveMode(0)).toBe("full");
-    expect(resolveOutlineWeaveMode(12)).toBe("remaining");
-    expect(outlineWeavePrompt(true, "full")).toContain("确认闸");
+  it("locks volumes first when the tree has no 卷 ranges", () => {
+    const tree = parseVolumeMapTree(ZUI_CI_PROSE);
+    const action = resolveOutlineWeaveAction(tree, 260, ZUI_CI_PROSE);
+    expect(action.step).toBe("volumes");
+    expect(action.mode).toBe("volumes");
+    expect(outlineWeaveButtonLabel(action, true)).toBe("织卷 · 锁定卷纲");
+    expect(outlineWeavePrompt(true, "volumes")).toContain("确认闸");
+  });
+
+  it("offers the next 10 chapters after volumes are locked", () => {
+    const markdown = "## 第1卷 冕旒（1-40章）\nObjective：开局。\n## 第 1 章 入局\n走进酒楼。\n";
+    const tree = parseVolumeMapTree(markdown);
+    const action = resolveOutlineWeaveAction(tree, 40, markdown);
+    expect(action.step).toBe("batch");
+    expect(action.mode).toBe("batch");
+    expect(action.chapterStart).toBe(2);
+    expect(action.chapterEnd).toBe(11);
+    expect(outlineWeaveButtonLabel(action, true)).toContain("第2–11章");
   });
 
   it("does not render 醉词 prose as a wall-of-text tree heading", () => {
@@ -41,5 +59,48 @@ describe("outline weave helpers", () => {
     const label = outlineTreeVolumeLabel(volume!.volumeNumber, volume!.title, true);
     expect(label.length).toBeLessThanOrEqual(MAX_VOLUME_TREE_LABEL_CHARS);
     expect(label).toContain("试炼");
+  });
+
+  it("shows weaving progress for the in-flight 10-chapter batch", () => {
+    const text = formatOutlineWeaveProgress({
+      phase: "chunk",
+      talkingToModel: true,
+      volumeNumber: 1,
+      volumeCount: 7,
+      volumeTitle: "冕旒",
+      chapterStart: 1,
+      chapterEnd: 10,
+      elapsedMs: 5000,
+      message: "第1卷 冕旒 第1–10章 · 正在请求模型",
+    }, true);
+    expect(text).toContain("第1卷 冕旒 第1–10章");
+    expect(text).toContain("正在请求模型");
+    expect(text).toContain("5s");
+  });
+
+  it("applies weave SSE events for the current book", () => {
+    const startedAt = Date.now() - 2000;
+    const next = applyOutlineWeaveSseEvent("醉词", "weave:progress", {
+      bookId: "醉词",
+      talkingToModel: true,
+      volumeNumber: 1,
+      volumeTitle: "冕旒",
+      chapterStart: 1,
+      chapterEnd: 10,
+      message: "第1卷 冕旒 第1–10章 · 正在请求模型",
+    }, startedAt);
+    expect(next?.chapterStart).toBe(1);
+    expect(next?.chapterEnd).toBe(10);
+    expect(next?.talkingToModel).toBe(true);
+    expect(applyOutlineWeaveSseEvent("醉词", "weave:progress", { bookId: "other" }, startedAt)).toBeNull();
+  });
+
+  it("reads a weave 500 so the UI can alert and keep a partial proposal", () => {
+    const parsed = readOutlineWeaveErrorBody({
+      error: "织卷失败：第1卷 第1–10章 — LLM stream produced no token for 60000ms",
+      proposal: { id: "p1", fileName: "outline/volume_map.md", unifiedDiff: "---\n+++" },
+    });
+    expect(parsed.message).toContain("第1–10章");
+    expect(parsed.proposal?.id).toBe("p1");
   });
 });

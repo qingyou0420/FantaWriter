@@ -33,7 +33,13 @@ export abstract class BaseAgent {
 
   protected async chat(
     messages: ReadonlyArray<LLMMessage>,
-    options?: { readonly temperature?: number; readonly maxTokens?: number },
+    options?: {
+      readonly temperature?: number;
+      readonly maxTokens?: number;
+      readonly firstEventTimeoutMs?: number;
+      readonly streamIdleTimeoutMs?: number;
+      readonly overallTimeoutMs?: number;
+    },
   ): Promise<LLMResponse> {
     return runWorkerAgent(this.ctx.client, this.ctx.model, await this.appendTaskSkillGuidance(messages), {
       ...options,

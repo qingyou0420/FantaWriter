@@ -540,7 +540,7 @@ export {
 export * from "./agent/index.js";
 
 // LLM
-export { createLLMClient, chatCompletion, createStreamMonitor, PartialResponseError, type LLMClient, type LLMResponse, type LLMMessage, type StreamProgress, type OnStreamProgress } from "./llm/provider.js";
+export { createLLMClient, chatCompletion, createStreamMonitor, PartialResponseError, LLMStreamInactivityError, type LLMClient, type LLMResponse, type LLMMessage, type StreamProgress, type OnStreamProgress, type StreamDeadlineOptions } from "./llm/provider.js";
 export {
   SERVICE_PRESETS,
   SERVICE_TO_PI_PROVIDER,
@@ -573,11 +573,21 @@ export { BaseAgent, type AgentContext } from "./agents/base.js";
 export { ArchitectAgent, type ArchitectOutput } from "./agents/architect.js";
 export {
   VolumeMapMaterializer,
+  VolumeMapWeaveError,
   rolesExcerptFromArchitect,
   volumeMapNeedsMaterialize,
+  formatWeaveProgressMessage,
+  formatWeaveFailureMessage,
+  MAX_CHAPTERS_PER_CALL,
+  MATERIALIZER_FIRST_EVENT_TIMEOUT_MS,
+  MATERIALIZER_STREAM_IDLE_TIMEOUT_MS,
+  MATERIALIZER_OVERALL_TIMEOUT_MS,
   type VolumeMapMaterializeInput,
   type VolumeMapMaterializeResult,
   type VolumeMapMaterializeMode,
+  type VolumeMapWeaveStep,
+  type VolumeMapWeaveProgress,
+  type VolumeMapWeaveFailure,
 } from "./agents/volume-map-materializer.js";
 export {
   parseVolumeMapTree,
@@ -604,6 +614,10 @@ export {
   listedExactChapterNumbers,
   missingExactChapters,
   volumeMapHasReviewableTree,
+  volumeMapHasLockedVolumes,
+  filledChapterNumbers,
+  nextUnfilledChapterBatch,
+  resolveOutlineWeaveStep,
   leftoverVolumeMapProse,
   renderVolumeMapMarkdown,
   chapterNodesByNumber,
@@ -613,6 +627,7 @@ export {
   type VolumeMapNodeKind,
   type PlannedVolumeRange,
   type ProseVolumeHint,
+  type OutlineWeaveStep,
   type AssembledVolume,
   type AssembledVolumeChapter,
 } from "./utils/volume-map-tree.js";
