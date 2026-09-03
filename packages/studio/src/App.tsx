@@ -272,7 +272,7 @@ export function App() {
           )}
           {route.page === "book-outline" && (
             <div className="mx-auto w-full max-w-[1400px] px-4 py-12 sm:px-6 lg:px-10 lg:py-16 fade-in">
-              <OutlineWorkspace bookId={route.bookId} nav={nav} theme={theme} t={t} />
+              <OutlineWorkspace bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "book-chat" && (

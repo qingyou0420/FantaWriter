@@ -54,6 +54,10 @@ export const STUDIO_SSE_EVENTS = [
   "radar:error",
   "log",
   "llm:progress",
+  "weave:start",
+  "weave:progress",
+  "weave:complete",
+  "weave:error",
   "ping",
 ] as const;
 

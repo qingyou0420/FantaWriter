@@ -88,6 +88,27 @@ describe("Pi worker harness", () => {
     });
   });
 
+  it("forwards stream idle and overall timeouts so a dead HTTPS stream aborts", async () => {
+    chatCompletionMock.mockResolvedValue({
+      content: "完成",
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    });
+
+    await runWorkerAgent(client(), "kimi-k3", [
+      { role: "user", content: "织卷" },
+    ], {
+      firstEventTimeoutMs: 90_000,
+      streamIdleTimeoutMs: 60_000,
+      overallTimeoutMs: 240_000,
+    });
+
+    expect(chatCompletionMock.mock.calls[0]?.[3]).toMatchObject({
+      firstEventTimeoutMs: 90_000,
+      streamIdleTimeoutMs: 60_000,
+      overallTimeoutMs: 240_000,
+    });
+  });
+
   it("preserves provider failures instead of turning them into successful prose", async () => {
     chatCompletionMock.mockRejectedValue(new Error("upstream unavailable"));
 

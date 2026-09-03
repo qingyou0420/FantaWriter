@@ -8,7 +8,12 @@ import type { ChapterMeta } from "../models/chapter.js";
 import type { NotifyChannel, LLMConfig, AgentLLMOverride } from "../models/project.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { ArchitectAgent, type ArchitectOutput } from "../agents/architect.js";
-import { VolumeMapMaterializer, rolesExcerptFromArchitect } from "../agents/volume-map-materializer.js";
+import {
+  VolumeMapMaterializer,
+  VolumeMapWeaveError,
+  rolesExcerptFromArchitect,
+  type VolumeMapWeaveProgress,
+} from "../agents/volume-map-materializer.js";
 import {
   FoundationReviewerAgent,
   FoundationReviewParseError,
@@ -879,16 +884,23 @@ export class PipelineRunner {
   }
 
   /**
-   * Fill every planned chapter into outline/volume_map.md. Init writes
-   * immediately; 织卷 on an existing book stages a G3 confirm proposal.
+   * One staged 织卷 step: lock volume ranges, or fill the next 10 chapters.
+   * Never materializes the whole book in one POST. Existing-book writes
+   * still go through the confirm gate.
    */
   async weaveVolumeMap(
     bookId: string,
-    mode: "remaining" | "full" = "remaining",
+    mode: "volumes" | "batch" | "remaining" | "full" = "batch",
+    options?: { readonly onProgress?: (progress: VolumeMapWeaveProgress) => void },
   ): Promise<{
     readonly markdown: string;
     readonly volumeCount: number;
     readonly chapterCount: number;
+    readonly step?: "volumes" | "batch" | "done";
+    readonly moreRemaining?: boolean;
+    readonly nextBatchStart?: number;
+    readonly nextBatchEnd?: number;
+    readonly generatedChapterNumbers?: readonly number[];
     readonly proposal?: TruthProposal;
     readonly written?: boolean;
     readonly unchanged?: boolean;
@@ -900,28 +912,49 @@ export class PipelineRunner {
     const rolesExcerpt = await readCharacterContext(bookDir).catch(() => "");
     const language = (book.language ?? "zh") === "en" ? "en" as const : "zh" as const;
     const materializer = new VolumeMapMaterializer(this.agentCtxFor("volume-map-materializer", bookId));
-    const result = await materializer.materialize({
-      book,
-      storyFrame,
-      volumeMap,
-      rolesExcerpt,
-      language,
-      mode,
-    });
-    const commit = await commitOrStageTruthFile({
-      bookDir,
-      bookId,
-      fileName: "outline/volume_map.md",
-      content: result.markdown,
-    });
-    return {
-      markdown: result.markdown,
-      volumeCount: result.volumeCount,
-      chapterCount: result.chapterCount,
-      proposal: commit.kind === "proposed" ? commit.proposal : undefined,
-      written: commit.kind === "written",
-      unchanged: commit.kind === "unchanged",
-    };
+    try {
+      const result = await materializer.materialize({
+        book,
+        storyFrame,
+        volumeMap,
+        rolesExcerpt,
+        language,
+        mode,
+        onProgress: options?.onProgress,
+      });
+      const commit = await commitOrStageTruthFile({
+        bookDir,
+        bookId,
+        fileName: "outline/volume_map.md",
+        content: result.markdown,
+      });
+      return {
+        markdown: result.markdown,
+        volumeCount: result.volumeCount,
+        chapterCount: result.chapterCount,
+        step: result.step,
+        moreRemaining: result.moreRemaining,
+        nextBatchStart: result.nextBatchStart,
+        nextBatchEnd: result.nextBatchEnd,
+        generatedChapterNumbers: result.generatedChapterNumbers,
+        proposal: commit.kind === "proposed" ? commit.proposal : undefined,
+        written: commit.kind === "written",
+        unchanged: commit.kind === "unchanged",
+      };
+    } catch (error) {
+      if (error instanceof VolumeMapWeaveError && error.partialMarkdown) {
+        const commit = await commitOrStageTruthFile({
+          bookDir,
+          bookId,
+          fileName: "outline/volume_map.md",
+          content: error.partialMarkdown,
+        });
+        if (commit.kind === "proposed") {
+          error.proposal = commit.proposal;
+        }
+      }
+      throw error;
+    }
   }
 
   private async materializeVolumeMapAt(

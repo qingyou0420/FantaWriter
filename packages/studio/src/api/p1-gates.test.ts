@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PipelineRunner } from "@actalk/inkos-core";
+import { PipelineRunner, VolumeMapWeaveError } from "@actalk/inkos-core";
 import { createStudioServer } from "./server.js";
 
 const projectConfig = {
@@ -132,11 +132,42 @@ describe("P1 studio gates", () => {
     const response = await app.request("/api/v1/books/demo-book/outline/weave", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "full" }),
+      body: JSON.stringify({ mode: "batch" }),
     });
     const body = await response.json() as { proposal?: { id: string; fileName: string }; chapterCount?: number; error?: string };
     expect(response.status, body.error ?? JSON.stringify(body)).toBe(200);
     expect(body.chapterCount).toBe(2);
     expect(body.proposal?.fileName).toBe("outline/volume_map.md");
+  });
+
+  it("returns a 500 when the weave worker abort fires instead of hanging", async () => {
+    vi.spyOn(PipelineRunner.prototype, "weaveVolumeMap").mockRejectedValue(
+      new VolumeMapWeaveError("织卷失败：第1卷 冕旒 第1–10章 — LLM stream produced no token for 60000ms 已完成 0/260 章。可再点织卷补 remaining。", {
+        volumeNumber: 1,
+        volumeCount: 7,
+        volumeTitle: "冕旒",
+        chapterStart: 1,
+        chapterEnd: 10,
+        completedVolumes: 0,
+        completedChapters: 0,
+        targetChapters: 260,
+        generatedChapterNumbers: [],
+      }),
+    );
+    const app = createStudioServer(projectConfig, root);
+    const response = await app.request("/api/v1/books/demo-book/outline/weave", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "batch" }),
+    });
+    const body = await response.json() as {
+      error?: string;
+      failedVolume?: number;
+      failedChapters?: number[];
+    };
+    expect(response.status).toBe(500);
+    expect(body.error).toContain("第1–10章");
+    expect(body.failedVolume).toBe(1);
+    expect(body.failedChapters).toEqual([1, 10]);
   });
 });

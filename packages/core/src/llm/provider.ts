@@ -44,29 +44,37 @@ const INKOS_USER_AGENT = "InkOS/1.3.5";
 const UNKNOWN_MODEL_FALLBACK_MAX_TOKENS = 8192 * 3;
 const TRANSIENT_LLM_RETRIES = 2;
 const DEFAULT_FIRST_STREAM_EVENT_TIMEOUT_MS = 120_000;
-const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 90_000;
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 60_000;
+const DEFAULT_STREAM_OVERALL_TIMEOUT_MS = 600_000;
 const DEFAULT_PIPELINE_FIRST_STREAM_EVENT_TIMEOUT_MS = 300_000;
-const DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS = 180_000;
+const DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS = 60_000;
+const DEFAULT_PIPELINE_STREAM_OVERALL_TIMEOUT_MS = 900_000;
 
 export interface StreamDeadlineOptions {
   readonly firstEventTimeoutMs?: number;
   readonly idleTimeoutMs?: number;
+  readonly overallTimeoutMs?: number;
 }
 
 export class LLMStreamInactivityError extends Error {
   constructor(
-    readonly stage: "first-event" | "idle",
+    readonly stage: "first-event" | "idle" | "overall",
     readonly timeoutMs: number,
   ) {
     super(stage === "first-event"
       ? `LLM stream produced no event within ${timeoutMs}ms`
-      : `LLM stream produced no new event for ${timeoutMs}ms`);
+      : stage === "idle"
+        ? `LLM stream produced no token for ${timeoutMs}ms`
+        : `LLM call exceeded overall timeout of ${timeoutMs}ms`);
     this.name = "LLMStreamInactivityError";
   }
 }
 
 interface StreamActivityDeadline {
   readonly signal: AbortSignal;
+  /** HTTP/stream opened or a non-token lifecycle event. Starts the idle clock once. */
+  readonly opened: () => void;
+  /** Model token / reasoning / tool text. Resets the idle clock. */
   readonly activity: () => void;
   readonly stop: () => void;
   readonly timeoutError: () => LLMStreamInactivityError | undefined;
@@ -77,6 +85,7 @@ function createStreamActivityDeadline(
   defaults: Required<StreamDeadlineOptions> = {
     firstEventTimeoutMs: DEFAULT_FIRST_STREAM_EVENT_TIMEOUT_MS,
     idleTimeoutMs: DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+    overallTimeoutMs: DEFAULT_STREAM_OVERALL_TIMEOUT_MS,
   },
   overrides?: StreamDeadlineOptions,
 ): StreamActivityDeadline {
@@ -88,34 +97,66 @@ function createStreamActivityDeadline(
     process.env.INKOS_LLM_STREAM_IDLE_TIMEOUT_MS,
     readPositiveTimeout(overrides?.idleTimeoutMs, defaults.idleTimeoutMs),
   );
+  const overallTimeoutMs = readPositiveTimeout(
+    process.env.INKOS_LLM_OVERALL_TIMEOUT_MS,
+    readPositiveTimeout(overrides?.overallTimeoutMs, defaults.overallTimeoutMs),
+  );
   const controller = new AbortController();
   const signal = callerSignal
     ? AbortSignal.any([callerSignal, controller.signal])
     : controller.signal;
   let timeoutError: LLMStreamInactivityError | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let overallTimer: ReturnType<typeof setTimeout> | undefined;
+  let opened = false;
 
-  const arm = (stage: "first-event" | "idle", timeoutMs: number) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
+  const armIdle = (stage: "first-event" | "idle", timeoutMs: number) => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
       timeoutError = new LLMStreamInactivityError(stage, timeoutMs);
       controller.abort(timeoutError);
     }, timeoutMs);
-    timer.unref?.();
+    idleTimer.unref?.();
   };
-  arm("first-event", firstEventTimeoutMs);
+  armIdle("first-event", firstEventTimeoutMs);
+
+  overallTimer = setTimeout(() => {
+    timeoutError = new LLMStreamInactivityError("overall", overallTimeoutMs);
+    controller.abort(timeoutError);
+  }, overallTimeoutMs);
+  overallTimer.unref?.();
+
+  const markOpened = () => {
+    if (signal.aborted || opened) return;
+    opened = true;
+    armIdle("idle", idleTimeoutMs);
+  };
 
   return {
     signal,
+    opened: markOpened,
     activity: () => {
-      if (!signal.aborted) arm("idle", idleTimeoutMs);
+      if (signal.aborted) return;
+      opened = true;
+      armIdle("idle", idleTimeoutMs);
     },
     stop: () => {
-      if (timer) clearTimeout(timer);
-      timer = undefined;
+      if (idleTimer) clearTimeout(idleTimer);
+      if (overallTimer) clearTimeout(overallTimer);
+      idleTimer = undefined;
+      overallTimer = undefined;
     },
     timeoutError: () => timeoutError,
   };
+}
+
+function isModelTokenStreamEvent(event: { readonly type?: string }): boolean {
+  const type = event.type ?? "";
+  return type === "text_delta"
+    || type === "thinking_delta"
+    || type === "reasoning_delta"
+    || type === "toolcall_delta"
+    || type === "tool_call";
 }
 
 function readPositiveTimeout(value: string | number | undefined, fallback: number): number {
@@ -141,7 +182,8 @@ export function guardAssistantMessageStream<TApi extends PiApi>(
         const next = await nextWithAbort(iterator, deadline.signal);
         if (next.done) break;
         const event = next.value;
-        deadline.activity();
+        if (isModelTokenStreamEvent(event)) deadline.activity();
+        else deadline.opened();
         terminalSeen ||= event.type === "done" || event.type === "error";
         guarded.push(event);
       }
@@ -1048,6 +1090,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
   signal?: AbortSignal,
   traceHeaders: Record<string, string> = {},
   onStreamActivity?: () => void,
+  onStreamOpened?: () => void,
 ): Promise<LLMResponse> {
   const baseUrl = client._piModel?.baseUrl ?? "";
   const errorCtx = { baseUrl, model, service: client.service };
@@ -1082,6 +1125,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
   if (!response.ok) {
     throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
   }
+  onStreamOpened?.();
 
   if (!client.stream) {
     const json = await response.json() as any;
@@ -1112,7 +1156,6 @@ async function chatCompletionViaCustomAnthropicCompatible(
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      onStreamActivity?.();
       buffer += decoder.decode(value, { stream: true });
       const parsed = parseSseEvents(buffer);
       buffer = parsed.rest;
@@ -1126,6 +1169,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
           content += json.delta.text;
           monitor.onChunk(json.delta.text);
           onTextDelta?.(json.delta.text);
+          onStreamActivity?.();
         }
         if (json.type === "message_delta" && json.usage) {
           usage.completionTokens = json.usage.output_tokens ?? usage.completionTokens;
@@ -1163,6 +1207,7 @@ async function chatCompletionViaCustomOpenAICompatible(
   signal?: AbortSignal,
   traceHeaders: Record<string, string> = {},
   onStreamActivity?: () => void,
+  onStreamOpened?: () => void,
   allowSystemRoleFallback = true,
 ): Promise<LLMResponse> {
   if (client.provider === "anthropic") {
@@ -1176,6 +1221,7 @@ async function chatCompletionViaCustomOpenAICompatible(
       signal,
       traceHeaders,
       onStreamActivity,
+      onStreamOpened,
     );
   }
   const baseUrl = client._piModel?.baseUrl ?? "";
@@ -1205,6 +1251,7 @@ async function chatCompletionViaCustomOpenAICompatible(
     if (!response.ok) {
       throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
     }
+    onStreamOpened?.();
 
     if (!client.stream) {
       const json = await response.json() as any;
@@ -1234,20 +1281,20 @@ async function chatCompletionViaCustomOpenAICompatible(
 
     try {
       while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        onStreamActivity?.();
-        buffer += decoder.decode(value, { stream: true });
-        const parsed = parseSseEvents(buffer);
-        buffer = parsed.rest;
-        for (const event of parsed.events) {
-          if (!event.data) continue;
-          const json = JSON.parse(event.data);
-          if (json.type === "response.output_text.delta" && typeof json.delta === "string") {
-            content += json.delta;
-            monitor.onChunk(json.delta);
-            onTextDelta?.(json.delta);
-          }
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parsed = parseSseEvents(buffer);
+      buffer = parsed.rest;
+      for (const event of parsed.events) {
+        if (!event.data) continue;
+        const json = JSON.parse(event.data);
+        if (json.type === "response.output_text.delta" && typeof json.delta === "string") {
+          content += json.delta;
+          monitor.onChunk(json.delta);
+          onTextDelta?.(json.delta);
+          onStreamActivity?.();
+        }
           if (json.type === "response.completed" || json.type === "response.incomplete") {
             sawResponseTerminal = true;
             if (json.type === "response.incomplete") sawResponseIncomplete = true;
@@ -1316,11 +1363,13 @@ async function chatCompletionViaCustomOpenAICompatible(
         signal,
         traceHeaders,
         onStreamActivity,
+        onStreamOpened,
         false,
       );
     }
     throw wrapLLMError(new Error(detail), errorCtx);
   }
+  onStreamOpened?.();
 
   if (!client.stream) {
     const json = await response.json() as any;
@@ -1371,7 +1420,6 @@ async function chatCompletionViaCustomOpenAICompatible(
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      onStreamActivity?.();
       buffer += decoder.decode(value, { stream: true });
       const parsed = parseSseEvents(buffer);
       buffer = parsed.rest;
@@ -1394,11 +1442,13 @@ async function chatCompletionViaCustomOpenAICompatible(
             content += emittable;
             onTextDelta?.(emittable);
           }
+          onStreamActivity?.();
         } else {
           const reasoningDelta = extractChatDeltaReasoningContent(json);
           if (reasoningDelta) {
             reasoningContent += reasoningDelta;
             monitor.onChunk(reasoningDelta);
+            onStreamActivity?.();
           }
         }
         if (json?.usage) {
@@ -1450,6 +1500,7 @@ export async function chatCompletion(
     readonly signal?: AbortSignal;
     readonly firstEventTimeoutMs?: number;
     readonly streamIdleTimeoutMs?: number;
+    readonly overallTimeoutMs?: number;
     // Diagnostics / connectivity checks want a fast pass-or-fail — set false to
     // skip the transient 502/503/429 retry+backoff (e.g. the doctor probe).
     readonly retry?: boolean;
@@ -1485,20 +1536,21 @@ export async function chatCompletion(
         });
         // Pipeline agents often perform long-form generation before yielding the
         // first token. Keep that path bounded, but do not apply the tighter
-        // interactive-chat deadline to it.
-        const deadline = client.stream
-          ? createStreamActivityDeadline(
-              signal,
-              {
-                firstEventTimeoutMs: DEFAULT_PIPELINE_FIRST_STREAM_EVENT_TIMEOUT_MS,
-                idleTimeoutMs: DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS,
-              },
-              {
-                firstEventTimeoutMs: options?.firstEventTimeoutMs,
-                idleTimeoutMs: options?.streamIdleTimeoutMs,
-              },
-            )
-          : undefined;
+        // interactive-chat deadline to it. Always install a deadline so a
+        // stalled HTTPS stream (keep-alives, no tokens) cannot hang forever.
+        const deadline = createStreamActivityDeadline(
+          signal,
+          {
+            firstEventTimeoutMs: DEFAULT_PIPELINE_FIRST_STREAM_EVENT_TIMEOUT_MS,
+            idleTimeoutMs: DEFAULT_PIPELINE_STREAM_IDLE_TIMEOUT_MS,
+            overallTimeoutMs: DEFAULT_PIPELINE_STREAM_OVERALL_TIMEOUT_MS,
+          },
+          {
+            firstEventTimeoutMs: options?.firstEventTimeoutMs,
+            idleTimeoutMs: options?.streamIdleTimeoutMs,
+            overallTimeoutMs: options?.overallTimeoutMs,
+          },
+        );
         assertWithinContextWindow({
           piModel: resolvePiModel(client, model),
           model,
@@ -1514,9 +1566,10 @@ export async function chatCompletion(
               resolved,
               onStreamProgress,
               onTextDelta,
-              deadline?.signal ?? signal,
+              deadline.signal,
               traceHeaders,
-              deadline?.activity,
+              deadline.activity,
+              deadline.opened,
             );
           }
           return await chatCompletionViaPiAi(
@@ -1526,14 +1579,15 @@ export async function chatCompletion(
             resolved,
             onStreamProgress,
             onTextDelta,
-            deadline?.signal ?? signal,
+            deadline.signal,
             traceHeaders,
-            deadline?.activity,
+            deadline.activity,
+            deadline.opened,
           );
         } catch (error) {
-          throw deadline?.timeoutError() ?? error;
+          throw deadline.timeoutError() ?? error;
         } finally {
-          deadline?.stop();
+          deadline.stop();
         }
       },
       // Retrying after UI text deltas have been emitted can duplicate visible
@@ -1597,6 +1651,7 @@ async function chatCompletionViaPiAi(
   signal?: AbortSignal,
   traceHeaders: Record<string, string> = {},
   onStreamActivity?: () => void,
+  onStreamOpened?: () => void,
 ): Promise<LLMResponse> {
   const piModel = resolvePiModel(client, model);
   const context = toPiContext(messages);
@@ -1655,7 +1710,8 @@ async function chatCompletionViaPiAi(
         : await iterator.next();
       if (next.done) break;
       const event = next.value;
-      onStreamActivity?.();
+      if (isModelTokenStreamEvent(event)) onStreamActivity?.();
+      else onStreamOpened?.();
       if (event.type === "text_delta") {
         chunks.push(event.delta);
         monitor.onChunk(event.delta);

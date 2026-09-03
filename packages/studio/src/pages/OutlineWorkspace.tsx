@@ -5,8 +5,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { fetchJson, useApi } from "../hooks/use-api";
+import { buildApiUrl, fetchJson, useApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
+import type { SSEMessage } from "../hooks/use-sse";
 import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
 import { startWriteNext } from "../components/SerialCockpitStrip";
 import type { WritePreflightEvaluation } from "../components/SerialCockpitStrip";
@@ -20,7 +21,15 @@ import {
   truncateOutlineLabel,
   type VolumeMapChapterNode,
 } from "../lib/volume-map-tree";
-import { outlineTreeVolumeLabel, resolveOutlineWeaveMode } from "../lib/outline-weave";
+import {
+  applyOutlineWeaveSseEvent,
+  formatOutlineWeaveProgress,
+  outlineTreeVolumeLabel,
+  outlineWeaveButtonLabel,
+  readOutlineWeaveErrorBody,
+  resolveOutlineWeaveAction,
+  type OutlineWeaveProgress,
+} from "../lib/outline-weave";
 import { resolveWriteThisChapterAction } from "../lib/serial-cockpit";
 import { TruthProposalCard, type PendingTruthProposal } from "../components/TruthProposalCard";
 import type { Theme } from "../hooks/use-theme";
@@ -34,7 +43,12 @@ interface ChapterMeta {
 }
 
 interface BookData {
-  readonly book: { readonly id: string; readonly title: string; readonly language?: string };
+  readonly book: {
+    readonly id: string;
+    readonly title: string;
+    readonly language?: string;
+    readonly targetChapters?: number;
+  };
   readonly chapters: ReadonlyArray<ChapterMeta>;
   readonly nextChapter: number;
 }
@@ -71,11 +85,13 @@ export function OutlineWorkspace({
   nav,
   theme: _theme,
   t,
+  sse,
 }: {
   bookId: string;
   nav: Nav;
   theme: Theme;
   t: TFunction;
+  sse?: { readonly messages: ReadonlyArray<SSEMessage> };
 }) {
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
   const [volumeMap, setVolumeMap] = useState("");
@@ -88,6 +104,9 @@ export function OutlineWorkspace({
   const [preflight, setPreflight] = useState<WritePreflightEvaluation | null>(null);
   const [writePending, setWritePending] = useState(false);
   const [weaving, setWeaving] = useState(false);
+  const [weaveStartedAt, setWeaveStartedAt] = useState<number | null>(null);
+  const [weaveNow, setWeaveNow] = useState(0);
+  const [weaveProgress, setWeaveProgress] = useState<OutlineWeaveProgress | null>(null);
   const [weaveProposal, setWeaveProposal] = useState<PendingTruthProposal | null>(null);
 
   const isZh = data?.book.language !== "en";
@@ -136,6 +155,10 @@ export function OutlineWorkspace({
     });
   const visibleOrphans = tree.orphanChapters.filter((node) => nodeVisible(node, filter, query.trim().toLowerCase(), written));
   const writtenCount = data?.chapters.length ?? 0;
+  const targetChapters = data?.book.targetChapters && data.book.targetChapters > 0
+    ? data.book.targetChapters
+    : Math.max(tree.chapterCount, 1);
+  const weaveAction = resolveOutlineWeaveAction(tree, targetChapters, volumeMap);
 
   const reloadVolumeMap = () => {
     void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
@@ -143,19 +166,64 @@ export function OutlineWorkspace({
       .catch(() => setVolumeMap(""));
   };
 
+  useEffect(() => {
+    if (!weaving || weaveStartedAt == null) return;
+    setWeaveNow(Date.now());
+    const timer = window.setInterval(() => setWeaveNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [weaving, weaveStartedAt]);
+
+  useEffect(() => {
+    if (!weaving || !sse?.messages.length || weaveStartedAt == null) return;
+    const latest = [...sse.messages].reverse().find((message) =>
+      applyOutlineWeaveSseEvent(bookId, message.event, message.data, weaveStartedAt),
+    );
+    if (!latest) return;
+    const next = applyOutlineWeaveSseEvent(bookId, latest.event, latest.data, weaveStartedAt);
+    if (next) setWeaveProgress(next);
+  }, [bookId, sse?.messages, weaveStartedAt, weaving]);
+
   const openWeave = async () => {
-    const mode = resolveOutlineWeaveMode(tree.chapterCount);
+    const action = resolveOutlineWeaveAction(tree, targetChapters, volumeMap);
+    if (action.disabled) return;
+    const startedAt = Date.now();
     setWeaving(true);
+    setWeaveStartedAt(startedAt);
+    setWeaveNow(startedAt);
+    setWeaveProgress({
+      bookId,
+      phase: action.step === "volumes" ? "start" : "chunk",
+      talkingToModel: action.step === "batch",
+      chapterStart: action.chapterStart,
+      chapterEnd: action.chapterEnd,
+      elapsedMs: 0,
+      message: action.step === "volumes"
+        ? (isZh ? "正在锁定卷纲…" : "Locking volume split…")
+        : (isZh
+          ? `第${action.chapterStart}–${action.chapterEnd}章 · 正在请求模型`
+          : `Ch. ${action.chapterStart}–${action.chapterEnd} · talking to the model`),
+    });
     try {
-      const result = await fetchJson<{
-        proposal?: PendingTruthProposal;
-        written?: boolean;
-        unchanged?: boolean;
-      }>(`/books/${bookId}/outline/weave`, {
+      const url = buildApiUrl(`/books/${bookId}/outline/weave`);
+      if (!url) throw new Error("织卷 failed");
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode: action.mode }),
       });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const parsed = readOutlineWeaveErrorBody(body);
+        if (parsed.proposal?.id && parsed.proposal.fileName) {
+          setWeaveProposal({
+            id: parsed.proposal.id,
+            fileName: parsed.proposal.fileName,
+            unifiedDiff: parsed.proposal.unifiedDiff ?? "",
+          });
+        }
+        throw new Error(parsed.message);
+      }
+      const result = body as { proposal?: PendingTruthProposal };
       if (result.proposal) {
         setWeaveProposal(result.proposal);
         return;
@@ -166,6 +234,8 @@ export function OutlineWorkspace({
       alert(err instanceof Error ? err.message : "织卷 failed");
     } finally {
       setWeaving(false);
+      setWeaveStartedAt(null);
+      setWeaveProgress(null);
     }
   };
 
@@ -275,11 +345,11 @@ export function OutlineWorkspace({
             type="button"
             data-testid="outline-weave"
             onClick={() => void openWeave()}
-            disabled={weaving}
+            disabled={weaving || weaveAction.disabled}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
           >
             <Feather size={14} />
-            {weaving ? (isZh ? "织卷中…" : "Weaving…") : (isZh ? "织卷" : "织卷")}
+            {weaving ? (isZh ? "织卷中…" : "Weaving…") : outlineWeaveButtonLabel(weaveAction, isZh)}
           </button>
           <button
             type="button"
@@ -292,6 +362,28 @@ export function OutlineWorkspace({
           </button>
         </div>
       </div>
+
+      {weaving && (
+        <div
+          className="rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 text-sm text-foreground"
+          data-testid="outline-weave-progress"
+        >
+          {formatOutlineWeaveProgress({
+            phase: weaveProgress?.phase ?? "start",
+            talkingToModel: weaveProgress?.talkingToModel ?? true,
+            volumeNumber: weaveProgress?.volumeNumber,
+            volumeCount: weaveProgress?.volumeCount,
+            volumeTitle: weaveProgress?.volumeTitle,
+            chapterStart: weaveProgress?.chapterStart,
+            chapterEnd: weaveProgress?.chapterEnd,
+            completedChapters: weaveProgress?.completedChapters,
+            targetChapters: weaveProgress?.targetChapters,
+            elapsedMs: weaveStartedAt != null ? Math.max(0, weaveNow - weaveStartedAt) : (weaveProgress?.elapsedMs ?? 0),
+            message: weaveProgress?.message
+              ?? (isZh ? "织卷中，正在请求模型…" : "Weaving, talking to the model…"),
+          }, isZh)}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -327,11 +419,11 @@ export function OutlineWorkspace({
       {empty ? (
         <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-empty">
           <p className="text-sm text-muted-foreground">
-            {isZh ? "还没有章级大纲。用织卷按目标章数一次排完全书卷→章（走确认闸），或手工占一章。" : "No chapter outline yet. Use 织卷 to materialize the full volume→chapter tree (confirm gate), or add a stub chapter."}
+            {isZh ? "还没有章级大纲。先织卷锁定卷纲，再每次只织 10 章（走确认闸），或手工占一章。" : "No chapter outline yet. Lock volumes first, then weave 10 chapters at a time (confirm gate), or add a stub chapter."}
           </p>
           <div className="flex justify-center gap-2">
-            <button type="button" onClick={() => void openWeave()} disabled={weaving} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
-              {isZh ? "织卷 · 排大纲" : "织卷 · Outline"}
+            <button type="button" onClick={() => void openWeave()} disabled={weaving || weaveAction.disabled} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
+              {outlineWeaveButtonLabel(weaveAction, isZh)}
             </button>
             <button type="button" onClick={() => void addFirstChapter()} className="rounded-lg bg-secondary px-4 py-2 text-sm font-bold">
               {isZh ? "新增第一章" : "Add chapter 1"}
@@ -427,11 +519,11 @@ export function OutlineWorkspace({
                   <button
                     type="button"
                     onClick={() => void openWeave()}
-                    disabled={weaving}
+                    disabled={weaving || weaveAction.disabled}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-2 text-xs font-bold disabled:opacity-50"
                   >
                     <Feather size={14} />
-                    {isZh ? "织卷" : "织卷"}
+                    {outlineWeaveButtonLabel(weaveAction, isZh)}
                   </button>
                 </div>
                 {writeAction && !writeAction.enabled && writeAction.kind !== "view" && (

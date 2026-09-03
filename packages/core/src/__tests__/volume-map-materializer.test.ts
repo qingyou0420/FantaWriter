@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { VolumeMapMaterializer } from "../agents/volume-map-materializer.js";
+import {
+  MAX_CHAPTERS_PER_CALL,
+  MATERIALIZER_OVERALL_TIMEOUT_MS,
+  MATERIALIZER_STREAM_IDLE_TIMEOUT_MS,
+  VolumeMapMaterializer,
+  VolumeMapWeaveError,
+} from "../agents/volume-map-materializer.js";
 import type { BookConfig } from "../models/book.js";
-import { listedExactChapterNumbers, parseVolumeMapTree, volumeMapHasReviewableTree } from "../utils/volume-map-tree.js";
-import { findVolumeMapEntry } from "../utils/volume-map-entry.js";
+import { LLMStreamInactivityError } from "../llm/provider.js";
+import {
+  listedExactChapterNumbers,
+  parseVolumeMapTree,
+  volumeMapHasLockedVolumes,
+} from "../utils/volume-map-tree.js";
 import { ZUI_CI_PROSE_FIXTURE } from "./volume-map-tree.test.js";
 
 const ZERO_USAGE = {
@@ -60,6 +70,8 @@ function mockChapterChat(agent: VolumeMapMaterializer) {
       const system = messages[0]?.content ?? "";
       const match = system.match(/必须写全这些章号：([0-9、]+)/);
       const numbers = (match?.[1] ?? "1").split("、").map((item) => Number.parseInt(item, 10));
+      expect(numbers).toHaveLength(Math.min(numbers.length, MAX_CHAPTERS_PER_CALL));
+      expect(numbers.length).toBeLessThanOrEqual(MAX_CHAPTERS_PER_CALL);
       return {
         content: chapterList(Math.min(...numbers), Math.max(...numbers)),
         usage: ZERO_USAGE,
@@ -67,18 +79,60 @@ function mockChapterChat(agent: VolumeMapMaterializer) {
     });
 }
 
+const LOCKED_ZUI_CI = [
+  "## 第1卷 冕旒（1-40章）",
+  "Objective：酒楼站稳眼线。",
+  "",
+  "## 第2卷 棋枰（41-80章）",
+  "Objective：旧案不可收回。",
+  "",
+  "## 第3卷 白羽（81-125章）",
+  "Objective：公开对质。",
+].join("\n");
+
 describe("VolumeMapMaterializer", () => {
-  it("turns architect volume skeleton + targetChapters into a parseable tree", async () => {
+  it("locks 醉词 prose into 7 named volumes without writing chapter summaries", async () => {
     const agent = buildAgent();
-    mockChapterChat(agent);
+    const chat = mockChapterChat(agent);
+
+    const result = await agent.materialize({
+      book: book({ targetChapters: 260, chapterWordCount: 5000, title: "醉词" }),
+      volumeMap: ZUI_CI_PROSE_FIXTURE,
+      language: "zh",
+      mode: "volumes",
+    });
+
+    expect(chat).not.toHaveBeenCalled();
+    expect(result.step).toBe("volumes");
+    expect(result.generatedChapterNumbers).toEqual([]);
+    expect(result.moreRemaining).toBe(true);
+    expect(result.nextBatchStart).toBe(1);
+    expect(result.nextBatchEnd).toBe(10);
+    const tree = parseVolumeMapTree(result.markdown);
+    expect(volumeMapHasLockedVolumes(tree)).toBe(true);
+    expect(tree.volumeCount).toBe(7);
+    expect(listedExactChapterNumbers(tree)).toHaveLength(0);
+    expect(tree.volumes.map((volume) => volume.title.replace(/^第\d+卷\s*/, ""))).toEqual(
+      expect.arrayContaining(["冕旒", "棋枰", "白羽", "商陆", "醉生", "江山", "清溪"]),
+    );
+    expect(tree.volumes[0]?.startChapter).toBe(1);
+    expect(tree.volumes[0]?.endChapter).toBe(40);
+    expect(tree.volumes[6]?.endChapter).toBe(260);
+    for (const volume of tree.volumes) {
+      expect(volume.title).not.toContain("卷一埋");
+      expect(volume.title).not.toContain("各卷OKR");
+    }
+  });
+
+  it("init never dumps all planned chapters — only locks the volume split", async () => {
+    const agent = buildAgent();
+    const chat = mockChapterChat(agent);
 
     const result = await agent.materialize({
       book: book({ targetChapters: 12 }),
-      storyFrame: "## 主题\n酒楼旧案。",
       volumeMap: [
         "## 第1卷 试炼（1-6章）",
         "Objective：站稳酒楼眼线。",
-        "KR1 = 拿到醉词令残页",
         "",
         "## 第2卷 反噬（7-12章）",
         "Objective：把旧案推到不可收回。",
@@ -87,129 +141,107 @@ describe("VolumeMapMaterializer", () => {
       mode: "init",
     });
 
-    const tree = parseVolumeMapTree(result.markdown);
-    expect(tree.volumeCount).toBe(2);
-    expect(listedExactChapterNumbers(tree)).toHaveLength(12);
-    expect(volumeMapHasReviewableTree(tree, 12)).toBe(true);
-    expect(findVolumeMapEntry(result.markdown, 1)).toContain("节点1");
-    expect(tree.volumes[0]?.chapters[0]?.title).toBe("节点1");
-    expect(tree.volumes[0]?.title.length).toBeLessThanOrEqual(22);
-    expect(tree.volumes[0]?.title).not.toContain("KR1");
+    expect(chat).not.toHaveBeenCalled();
+    expect(result.step).toBe("volumes");
+    expect(listedExactChapterNumbers(parseVolumeMapTree(result.markdown))).toHaveLength(0);
+    expect(result.moreRemaining).toBe(true);
   });
 
-  it("rebuilds a chapter tree from 醉词 prose without using that prose as a title", async () => {
+  it("remaining/full still only weave the next 10 chapters, not the rest of the book", async () => {
     const agent = buildAgent();
-    mockChapterChat(agent);
+    const chat = mockChapterChat(agent);
 
-    const result = await agent.materialize({
-      book: book({ targetChapters: 24, title: "醉词" }),
-      volumeMap: ZUI_CI_PROSE_FIXTURE,
+    const remaining = await agent.materialize({
+      book: book({ targetChapters: 260, title: "醉词" }),
+      volumeMap: LOCKED_ZUI_CI,
       language: "zh",
-      mode: "full",
+      mode: "remaining",
     });
+    expect(remaining.step).toBe("batch");
+    expect(remaining.generatedChapterNumbers).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(listedExactChapterNumbers(parseVolumeMapTree(remaining.markdown))).toEqual(remaining.generatedChapterNumbers);
+    expect(chat).toHaveBeenCalledTimes(1);
 
-    const tree = parseVolumeMapTree(result.markdown);
-    expect(tree.volumeCount).toBeGreaterThan(1);
-    expect(listedExactChapterNumbers(tree)).toHaveLength(24);
-    for (const volume of tree.volumes) {
-      expect(volume.title).not.toContain("卷一埋");
-      expect(volume.title).not.toContain("各卷OKR");
-      expect(volume.title.length).toBeLessThanOrEqual(22);
-    }
-    expect(result.markdown).toMatch(/## 第 1 章/);
-  });
-
-  it("rebuilds 260 planned chapters from the 醉词 fixture without wall titles", async () => {
-    const agent = buildAgent();
-    mockChapterChat(agent);
-
-    const result = await agent.materialize({
-      book: book({ targetChapters: 260, chapterWordCount: 5000, title: "醉词" }),
-      volumeMap: ZUI_CI_PROSE_FIXTURE,
-      language: "zh",
-      mode: "full",
-    });
-
-    const tree = parseVolumeMapTree(result.markdown);
-    expect(tree.volumeCount).toBeGreaterThan(1);
-    expect(listedExactChapterNumbers(tree)).toHaveLength(260);
-    expect(volumeMapHasReviewableTree(tree, 260)).toBe(true);
-    for (const volume of tree.volumes) {
-      expect(volume.title).not.toContain("卷一埋");
-      expect(volume.title).not.toContain("卷一Objective");
-      expect(volume.title).not.toContain("各卷OKR");
-      expect(volume.title.length).toBeLessThanOrEqual(22);
-    }
-    expect(findVolumeMapEntry(result.markdown, 1)).toBeTruthy();
-    expect(findVolumeMapEntry(result.markdown, 260)).toBeTruthy();
-    expect(tree.volumes.map((volume) => volume.title.replace(/^第\d+卷\s*/, ""))).toEqual(
-      expect.arrayContaining(["冕旒", "棋枰", "白羽", "商陆", "醉生", "江山", "清溪"]),
-    );
-    expect(tree.volumeCount).toBe(7);
-    expect(tree.volumes[0]?.startChapter).toBe(1);
-    expect(tree.volumes[0]?.endChapter).toBe(40);
-    expect(tree.volumes[6]?.endChapter).toBe(260);
-  });
-
-  it("materializes 90 chapters across multiple volumes", async () => {
-    const agent = buildAgent();
-    mockChapterChat(agent);
-
-    const result = await agent.materialize({
-      book: book({ targetChapters: 90, chapterWordCount: 3000 }),
+    const full = await agent.materialize({
+      book: book({ targetChapters: 90 }),
       volumeMap: "## 第1卷 酒楼（1-30章）\nObjective：站稳眼线。\n\n## 第2卷 反噬（31-60章）\nObjective：旧案不可收回。\n\n## 第3卷 对质（61-90章）\nObjective：公开对质。",
       language: "zh",
-      mode: "init",
+      mode: "full",
     });
-
-    const tree = parseVolumeMapTree(result.markdown);
-    expect(tree.volumeCount).toBe(3);
-    expect(listedExactChapterNumbers(tree)).toHaveLength(90);
-    expect(volumeMapHasReviewableTree(tree, 90)).toBe(true);
-    expect(findVolumeMapEntry(result.markdown, 1)).toBeTruthy();
-    expect(findVolumeMapEntry(result.markdown, 90)).toBeTruthy();
+    expect(full.generatedChapterNumbers).toHaveLength(10);
+    expect(full.generatedChapterNumbers[0]).toBe(1);
+    expect(full.moreRemaining).toBe(true);
   });
 
-  it("preserves existing chapter entries when rematerializing remaining chapters", async () => {
+  it("weaves one batch of 10 and keeps author-edited chapters", async () => {
     const agent = buildAgent();
-    const chat = vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
-      .mockResolvedValue({
-        content: "## 第 2 章 续写\n只补缺的一章。",
-        usage: ZERO_USAGE,
-      });
+    const chat = mockChapterChat(agent);
 
     const result = await agent.materialize({
-      book: book({ targetChapters: 2 }),
+      book: book({ targetChapters: 12 }),
       volumeMap: [
-        "## 第1卷 试炼（1-2章）",
+        "## 第1卷 试炼（1-12章）",
         "Objective：开局。",
         "## 第 1 章 入局",
         "作者改过的提要，不能丢。",
       ].join("\n"),
       language: "zh",
-      mode: "remaining",
+      mode: "batch",
     });
 
-    expect(chat).toHaveBeenCalled();
+    expect(chat).toHaveBeenCalledTimes(1);
     const tree = parseVolumeMapTree(result.markdown);
     expect(tree.volumes[0]?.chapters[0]?.summary).toContain("作者改过的提要");
-    expect(listedExactChapterNumbers(tree)).toEqual([1, 2]);
+    expect(result.generatedChapterNumbers).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(listedExactChapterNumbers(tree)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(result.moreRemaining).toBe(true);
+    expect(result.nextBatchStart).toBe(12);
   });
 
-  it("regenerates an empty 第 1 章 stub when weaving remaining chapters", async () => {
+  it("passes idle and overall timeouts on the batch chat call", async () => {
     const agent = buildAgent();
-    mockChapterChat(agent);
+    const chat = vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockResolvedValue({
+        content: chapterList(1, 10),
+        usage: ZERO_USAGE,
+      });
 
-    const result = await agent.materialize({
-      book: book({ targetChapters: 4 }),
-      volumeMap: ZUI_CI_PROSE_FIXTURE,
+    await agent.materialize({
+      book: book({ targetChapters: 40 }),
+      volumeMap: LOCKED_ZUI_CI,
       language: "zh",
-      mode: "remaining",
+      mode: "batch",
     });
 
-    const tree = parseVolumeMapTree(result.markdown);
-    expect(listedExactChapterNumbers(tree)).toEqual([1, 2, 3, 4]);
-    expect(tree.volumes[0]?.chapters[0]?.title).toBe("节点1");
-    expect(tree.volumes[0]?.title).not.toContain("卷一埋");
+    expect(chat.mock.calls[0]?.[1]).toMatchObject({
+      streamIdleTimeoutMs: MATERIALIZER_STREAM_IDLE_TIMEOUT_MS,
+      overallTimeoutMs: MATERIALIZER_OVERALL_TIMEOUT_MS,
+    });
+  });
+
+  it("aborts a stalled batch and names the 10-chapter range", async () => {
+    const agent = buildAgent();
+    vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockRejectedValue(new LLMStreamInactivityError("idle", 60_000));
+
+    const progress: string[] = [];
+    await expect(agent.materialize({
+      book: book({ targetChapters: 40, title: "醉词" }),
+      volumeMap: LOCKED_ZUI_CI,
+      language: "zh",
+      mode: "batch",
+      onProgress: (event) => progress.push(event.message),
+    })).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(VolumeMapWeaveError);
+      const weave = error as VolumeMapWeaveError;
+      expect(weave.chapterStart).toBe(1);
+      expect(weave.chapterEnd).toBe(10);
+      expect(weave.volumeNumber).toBe(1);
+      expect(weave.message).toContain("第1");
+      expect(weave.message).toContain("第1–10章");
+      expect(weave.message).toContain("no token");
+      return true;
+    });
+    expect(progress.some((line) => line.includes("第1–10章") && line.includes("正在请求模型"))).toBe(true);
   });
 });

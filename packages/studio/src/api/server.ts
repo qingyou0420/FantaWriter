@@ -13,6 +13,7 @@ import {
   StateManager,
   BookWriteLockError,
   PipelineRunner,
+  VolumeMapWeaveError,
   createLLMClient,
   createLogger,
   createInteractionToolsFromDeps,
@@ -3733,29 +3734,70 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     if (!isSafeBookId(id)) {
       throw new ApiError(400, "INVALID_BOOK_ID", `Invalid book ID: "${id}"`);
     }
-    const body = await c.req.json<{ mode?: "remaining" | "full" }>().catch(() => ({ mode: undefined }));
-    const mode = body.mode === "full" ? "full" : "remaining";
+    const body = await c.req.json<{ mode?: "volumes" | "batch" | "remaining" | "full" }>().catch(() => ({ mode: undefined }));
+    const mode = body.mode === "volumes" || body.mode === "full" || body.mode === "remaining"
+      ? body.mode
+      : "batch";
+    const summarizeProposal = (proposal: { id: string; fileName: string; unifiedDiff: string; status: string }) => ({
+      id: proposal.id,
+      fileName: proposal.fileName,
+      unifiedDiff: proposal.unifiedDiff,
+      status: proposal.status,
+    });
+    broadcast("weave:start", { bookId: id, mode });
     try {
       const pipeline = new PipelineRunner(await buildPipelineConfig());
-      const result = await pipeline.weaveVolumeMap(id, mode);
+      const result = await pipeline.weaveVolumeMap(id, mode, {
+        onProgress: (progress) => broadcast("weave:progress", { bookId: id, mode, ...progress }),
+      });
+      broadcast("weave:complete", {
+        bookId: id,
+        mode,
+        step: result.step,
+        volumeCount: result.volumeCount,
+        chapterCount: result.chapterCount,
+        moreRemaining: result.moreRemaining,
+        nextBatchStart: result.nextBatchStart,
+        nextBatchEnd: result.nextBatchEnd,
+      });
       return c.json({
         ok: true,
         mode,
+        step: result.step,
         volumeCount: result.volumeCount,
         chapterCount: result.chapterCount,
+        moreRemaining: result.moreRemaining ?? false,
+        nextBatchStart: result.nextBatchStart,
+        nextBatchEnd: result.nextBatchEnd,
+        generatedChapterNumbers: result.generatedChapterNumbers,
         written: result.written ?? false,
         unchanged: result.unchanged ?? false,
-        proposal: result.proposal
-          ? {
-              id: result.proposal.id,
-              fileName: result.proposal.fileName,
-              unifiedDiff: result.proposal.unifiedDiff,
-              status: result.proposal.status,
-            }
-          : undefined,
+        proposal: result.proposal ? summarizeProposal(result.proposal) : undefined,
       });
     } catch (e) {
-      return c.json({ error: String(e) }, 500);
+      const weaveError = e instanceof VolumeMapWeaveError ? e : undefined;
+      const message = weaveError?.message ?? (e instanceof Error ? e.message : String(e));
+      broadcast("weave:error", {
+        bookId: id,
+        mode,
+        error: message,
+        volumeNumber: weaveError?.volumeNumber,
+        chapterStart: weaveError?.chapterStart,
+        chapterEnd: weaveError?.chapterEnd,
+        completedChapters: weaveError?.completedChapters,
+        targetChapters: weaveError?.targetChapters,
+      });
+      return c.json({
+        error: message,
+        failedVolume: weaveError?.volumeNumber,
+        failedChapters: weaveError?.chapterStart != null && weaveError?.chapterEnd != null
+          ? [weaveError.chapterStart, weaveError.chapterEnd]
+          : undefined,
+        completedChapters: weaveError?.completedChapters,
+        completedVolumes: weaveError?.completedVolumes,
+        targetChapters: weaveError?.targetChapters,
+        proposal: weaveError?.proposal ? summarizeProposal(weaveError.proposal) : undefined,
+      }, 500);
     }
   });
 

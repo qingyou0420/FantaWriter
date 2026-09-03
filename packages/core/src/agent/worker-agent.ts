@@ -29,6 +29,9 @@ export interface WorkerAgentOptions {
   readonly onStreamProgress?: OnStreamProgress;
   readonly onTextDelta?: (text: string) => void;
   readonly signal?: AbortSignal;
+  readonly firstEventTimeoutMs?: number;
+  readonly streamIdleTimeoutMs?: number;
+  readonly overallTimeoutMs?: number;
 }
 
 export interface WorkerResultTool<TParameters extends TSchema> {
@@ -196,6 +199,9 @@ function providerWorkerStream(
           ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
           ...(options.webSearch !== undefined ? { webSearch: options.webSearch } : {}),
           ...(options.onStreamProgress ? { onStreamProgress: options.onStreamProgress } : {}),
+          ...(options.firstEventTimeoutMs !== undefined ? { firstEventTimeoutMs: options.firstEventTimeoutMs } : {}),
+          ...(options.streamIdleTimeoutMs !== undefined ? { streamIdleTimeoutMs: options.streamIdleTimeoutMs } : {}),
+          ...(options.overallTimeoutMs !== undefined ? { overallTimeoutMs: options.overallTimeoutMs } : {}),
           onTextDelta: emitDelta,
           ...(signal ? { signal } : {}),
         });
