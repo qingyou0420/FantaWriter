@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.8
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.8.exe`（#74 织卷识别卷一《冕旒》+四十章；240s 超时不再误报 400；kimi-k3 织卷 reasoning_effort low，总超时 900s；第N程可从笔记重锁）。
+
 ## 2.0.7
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.7.exe`（#72 织卷先定卷，再每批 10 章供审；LLM 流超时不再空转）。
