@@ -8,6 +8,8 @@
 import { BaseAgent } from "./base.js";
 import type { BookConfig } from "../models/book.js";
 import type { TruthProposal } from "../interaction/truth-proposals.js";
+import { isKimiK3Model } from "../llm/moonshot-sampling.js";
+import { LLMStreamInactivityError } from "../llm/provider.js";
 import {
   chapterNodesByNumber,
   leftoverVolumeMapProse,
@@ -21,6 +23,7 @@ import {
   renderVolumeMapMarkdown,
   resolveOutlineWeaveStep,
   resolveTargetChapterCount,
+  isPlaceholderVolumeTitle,
   type AssembledVolume,
   type AssembledVolumeChapter,
   type PlannedVolumeRange,
@@ -33,10 +36,11 @@ export type VolumeMapWeaveStep = "volumes" | "batch" | "done";
 /** One reviewable batch. Never dump 40–260 chapters in a single weave POST. */
 export const MAX_CHAPTERS_PER_CALL = 10;
 
-/** Tighter than the pipeline writer: weave must not sit on a dead Moonshot stream. */
+/** First-event / idle stay tight; overall must outlast kimi-k3 thinking on a 10-chapter batch. */
 export const MATERIALIZER_FIRST_EVENT_TIMEOUT_MS = 90_000;
 export const MATERIALIZER_STREAM_IDLE_TIMEOUT_MS = 60_000;
-export const MATERIALIZER_OVERALL_TIMEOUT_MS = 240_000;
+/** 240s aborted a live 醉词 kimi-k3 batch that was still thinking. Match pipeline overall. */
+export const MATERIALIZER_OVERALL_TIMEOUT_MS = 900_000;
 
 export interface VolumeMapWeaveProgress {
   readonly phase: "start" | "volumes" | "batch" | "complete";
@@ -259,6 +263,8 @@ export class VolumeMapMaterializer extends BaseAgent {
             language,
           ),
           needed: batch,
+          volumeCount: ranges.length,
+          targetChapters,
           onChunk: (chunk) => {
             emit("batch", {
               talkingToModel: true,
@@ -423,13 +429,16 @@ export class VolumeMapMaterializer extends BaseAgent {
     existing: ReturnType<typeof parseVolumeMapTree>,
     targetChapters: number,
   ): ReadonlyArray<PlannedVolumeRange> | null {
-    const hasRealVolumes = existing.volumes.some((volume) =>
+    const hinted = planVolumeRangesFromHints(parseProseVolumeHints(volumeMap), targetChapters);
+    if (!hinted) return null;
+    const hasNamedLocked = existing.volumes.some((volume) =>
       volume.volumeNumber != null
       && volume.startChapter != null
-      && volume.endChapter != null,
+      && volume.endChapter != null
+      && !isPlaceholderVolumeTitle(volume.title),
     );
-    if (hasRealVolumes) return null;
-    return planVolumeRangesFromHints(parseProseVolumeHints(volumeMap), targetChapters);
+    if (hasNamedLocked) return null;
+    return hinted;
   }
 
   private resolveVolumeRanges(
@@ -449,6 +458,9 @@ export class VolumeMapMaterializer extends BaseAgent {
           volumeNumber: volume.volumeNumber!,
           startChapter: volume.startChapter!,
           endChapter: Math.min(volume.endChapter!, targetChapters),
+          ...(isPlaceholderVolumeTitle(volume.title)
+            ? {}
+            : { title: volume.title.replace(/^第\s*[一二三四五六七八九十百\d]+\s*卷\s*/, "").replace(/^Volume\s+\d+\s*/i, "").trim() || undefined }),
         }));
       }
     }
@@ -460,7 +472,7 @@ export class VolumeMapMaterializer extends BaseAgent {
 
   private shortVolumeTitle(title: string | undefined, volumeNumber: number, language: "zh" | "en"): string {
     const cleaned = (title ?? "").replace(/^#+\s*/, "").trim();
-    if (cleaned && cleaned.length <= 16 && !/埋线?|各卷OKR|KR\s*\d+/.test(cleaned)) {
+    if (!isPlaceholderVolumeTitle(cleaned)) {
       return cleaned.replace(/^第\s*[一二三四五六七八九十百\d]+\s*卷\s*/, "").replace(/^Volume\s+\d+\s*/i, "").trim()
         || (language === "en" ? `Arc ${volumeNumber}` : `第${volumeNumber}程`);
     }
@@ -518,6 +530,8 @@ export class VolumeMapMaterializer extends BaseAgent {
     readonly title: string;
     readonly body: string;
     readonly needed: ReadonlyArray<number>;
+    readonly volumeCount: number;
+    readonly targetChapters: number;
     readonly onChunk?: (chunk: ReadonlyArray<number>) => void;
   }): Promise<ReadonlyArray<AssembledVolumeChapter>> {
     // Hard cap: even if a caller still passes "all missing", only one batch of 10 runs.
@@ -538,10 +552,10 @@ export class VolumeMapMaterializer extends BaseAgent {
           volumeTitle: params.title,
           chapterStart: chunk[0],
           chapterEnd: chunk[chunk.length - 1],
-          volumeCount: 0,
+          volumeCount: params.volumeCount,
           completedVolumes: 0,
           completedChapters: collected.length,
-          targetChapters: needed.length,
+          targetChapters: params.targetChapters,
           generatedChapterNumbers: collected.map((chapter) => chapter.chapterNumber),
         });
       }
@@ -559,10 +573,10 @@ export class VolumeMapMaterializer extends BaseAgent {
           volumeTitle: params.title,
           chapterStart: missing[0],
           chapterEnd: missing[missing.length - 1],
-          volumeCount: 0,
+          volumeCount: params.volumeCount,
           completedVolumes: 0,
           completedChapters: collected.length,
-          targetChapters: needed.length,
+          targetChapters: params.targetChapters,
           generatedChapterNumbers: collected.map((chapter) => chapter.chapterNumber),
         });
       }
@@ -613,6 +627,7 @@ export class VolumeMapMaterializer extends BaseAgent {
       firstEventTimeoutMs: MATERIALIZER_FIRST_EVENT_TIMEOUT_MS,
       streamIdleTimeoutMs: MATERIALIZER_STREAM_IDLE_TIMEOUT_MS,
       overallTimeoutMs: MATERIALIZER_OVERALL_TIMEOUT_MS,
+      ...(isKimiK3Model(this.ctx.model) ? { extra: { reasoning_effort: "low" } } : {}),
     });
 
     const parsed = parseVolumeMapTree(response.content);
@@ -653,7 +668,7 @@ export class VolumeMapMaterializer extends BaseAgent {
       chapterEnd: extras.chapterEnd,
     });
     return new VolumeMapWeaveError(
-      formatWeaveFailureMessage(extras.language, extras, cause),
+      formatWeaveFailureMessage(extras.language, extras, cause, isWeaveTimeoutCause(error, cause)),
       extras,
     );
   }
@@ -689,10 +704,16 @@ export function formatWeaveProgressMessage(progress: {
   return `${volumeBit}${chapterBit}${talking} · ${progress.completedChapters}/${progress.targetChapters}`;
 }
 
+export function isWeaveTimeoutCause(error: unknown, cause = ""): boolean {
+  if (error instanceof LLMStreamInactivityError) return true;
+  return /exceeded overall timeout|produced no (?:event|token)|调用超时|模型还在想|织卷超时/i.test(cause);
+}
+
 export function formatWeaveFailureMessage(
   language: "zh" | "en",
   failure: Pick<VolumeMapWeaveFailure, "volumeNumber" | "volumeCount" | "volumeTitle" | "chapterStart" | "chapterEnd" | "completedChapters" | "targetChapters">,
   cause: string,
+  timedOut = isWeaveTimeoutCause(undefined, cause),
 ): string {
   const where = failure.volumeNumber != null
     ? (language === "en"
@@ -704,6 +725,11 @@ export function formatWeaveFailureMessage(
       ? ` chapters ${failure.chapterStart}–${failure.chapterEnd}`
       : ` 第${failure.chapterStart}–${failure.chapterEnd}章`)
     : "";
+  if (timedOut) {
+    return language === "en"
+      ? `Weave timed out — the model was still thinking. ${where}${chunk}: ${cause} Completed ${failure.completedChapters}/${failure.targetChapters} chapters. Retry remaining after review.`
+      : `织卷超时，模型还在想：${where}${chunk} — ${cause} 已完成 ${failure.completedChapters}/${failure.targetChapters} 章。可再点织卷补 remaining。`;
+  }
   return language === "en"
     ? `Weave failed on ${where}${chunk}: ${cause} Completed ${failure.completedChapters}/${failure.targetChapters} chapters. Retry remaining after review.`
     : `织卷失败：${where}${chunk} — ${cause} 已完成 ${failure.completedChapters}/${failure.targetChapters} 章。可再点织卷补 remaining。`;

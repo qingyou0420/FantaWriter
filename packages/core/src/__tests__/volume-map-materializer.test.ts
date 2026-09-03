@@ -13,7 +13,7 @@ import {
   parseVolumeMapTree,
   volumeMapHasLockedVolumes,
 } from "../utils/volume-map-tree.js";
-import { ZUI_CI_PROSE_FIXTURE } from "./volume-map-tree.test.js";
+import { ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE, ZUI_CI_PROSE_FIXTURE } from "./volume-map-tree.test.js";
 
 const ZERO_USAGE = {
   promptTokens: 0,
@@ -37,7 +37,7 @@ function book(overrides: Partial<BookConfig> = {}): BookConfig {
   };
 }
 
-function buildAgent(): VolumeMapMaterializer {
+function buildAgent(model = "test-model"): VolumeMapMaterializer {
   return new VolumeMapMaterializer({
     client: {
       provider: "openai",
@@ -51,7 +51,7 @@ function buildAgent(): VolumeMapMaterializer {
         extra: {},
       },
     },
-    model: "test-model",
+    model,
     projectRoot: process.cwd(),
   });
 }
@@ -121,7 +121,54 @@ describe("VolumeMapMaterializer", () => {
     for (const volume of tree.volumes) {
       expect(volume.title).not.toContain("卷一埋");
       expect(volume.title).not.toContain("各卷OKR");
+      expect(volume.title).not.toMatch(/第\d+程/);
     }
+  });
+
+  it("auto-weaves the 醉词 stub as volumes, not a 第N程 batch", async () => {
+    const agent = buildAgent();
+    const chat = mockChapterChat(agent);
+
+    const result = await agent.materialize({
+      book: book({ targetChapters: 260, chapterWordCount: 5000, title: "醉词" }),
+      volumeMap: ZUI_CI_PROSE_FIXTURE,
+      language: "zh",
+    });
+
+    expect(chat).not.toHaveBeenCalled();
+    expect(result.step).toBe("volumes");
+    expect(parseVolumeMapTree(result.markdown).volumes.map((volume) => volume.title.replace(/^第\d+卷\s*/, ""))).toEqual([
+      "冕旒", "棋枰", "白羽", "商陆", "醉生", "江山", "清溪",
+    ]);
+    expect(result.nextBatchStart).toBe(1);
+    expect(result.nextBatchEnd).toBe(10);
+  });
+
+  it("re-locks a 第N程 even-split book from leftover 原架构笔记", async () => {
+    const agent = buildAgent();
+    const chat = mockChapterChat(agent);
+
+    const result = await agent.materialize({
+      book: book({ targetChapters: 260, chapterWordCount: 5000, title: "醉词" }),
+      volumeMap: ZUI_CI_PLACEHOLDER_LOCKED_FIXTURE,
+      language: "zh",
+    });
+
+    expect(chat).not.toHaveBeenCalled();
+    expect(result.step).toBe("volumes");
+    const tree = parseVolumeMapTree(result.markdown);
+    expect(tree.volumes.map((volume) => volume.title.replace(/^第\d+卷\s*/, ""))).toEqual([
+      "冕旒", "棋枰", "白羽", "商陆", "醉生", "江山", "清溪",
+    ]);
+    expect(tree.volumes.map((volume) => [volume.startChapter, volume.endChapter])).toEqual([
+      [1, 40],
+      [41, 80],
+      [81, 125],
+      [126, 165],
+      [166, 200],
+      [201, 235],
+      [236, 260],
+    ]);
   });
 
   it("init never dumps all planned chapters — only locks the volume split", async () => {
@@ -217,6 +264,28 @@ describe("VolumeMapMaterializer", () => {
       streamIdleTimeoutMs: MATERIALIZER_STREAM_IDLE_TIMEOUT_MS,
       overallTimeoutMs: MATERIALIZER_OVERALL_TIMEOUT_MS,
     });
+    expect(MATERIALIZER_OVERALL_TIMEOUT_MS).toBeGreaterThan(240_000);
+  });
+
+  it("omits default max thinking on kimi-k3 weave batches", async () => {
+    const agent = buildAgent("kimi-k3");
+    const chat = vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
+      .mockResolvedValue({
+        content: chapterList(1, 10),
+        usage: ZERO_USAGE,
+      });
+
+    await agent.materialize({
+      book: book({ targetChapters: 40, title: "醉词" }),
+      volumeMap: LOCKED_ZUI_CI,
+      language: "zh",
+      mode: "batch",
+    });
+
+    expect(chat.mock.calls[0]?.[1]).toMatchObject({
+      extra: { reasoning_effort: "low" },
+      overallTimeoutMs: MATERIALIZER_OVERALL_TIMEOUT_MS,
+    });
   });
 
   it("aborts a stalled batch and names the 10-chapter range", async () => {
@@ -237,8 +306,13 @@ describe("VolumeMapMaterializer", () => {
       expect(weave.chapterStart).toBe(1);
       expect(weave.chapterEnd).toBe(10);
       expect(weave.volumeNumber).toBe(1);
-      expect(weave.message).toContain("第1");
+      expect(weave.volumeCount).toBe(3);
+      expect(weave.message).toContain("第1/3卷");
+      expect(weave.message).toContain("冕旒");
       expect(weave.message).toContain("第1–10章");
+      expect(weave.message).toContain("织卷超时，模型还在想");
+      expect(weave.message).not.toContain("第1/?卷");
+      expect(weave.message).not.toContain("请求参数错误");
       expect(weave.message).toContain("no token");
       return true;
     });
