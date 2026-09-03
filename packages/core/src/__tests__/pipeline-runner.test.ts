@@ -377,19 +377,15 @@ describe("PipelineRunner", () => {
         ...range,
         title: `弧${range.volumeNumber}`,
         body: `Objective：第${range.volumeNumber}卷。`,
-        chapters: Array.from({ length: range.endChapter - range.startChapter + 1 }, (_, index) => ({
-          chapterNumber: range.startChapter + index,
-          title: `节点${range.startChapter + index}`,
-          summary: `推进到节点${range.startChapter + index}。`,
-        })),
+        chapters: [],
       }));
       const markdown = renderVolumeMapMarkdown(volumes);
       return {
         markdown,
         volumeCount: volumes.length,
-        chapterCount: target,
+        chapterCount: 0,
         targetChapters: target,
-        generatedChapterNumbers: Array.from({ length: target }, (_, index) => index + 1),
+        generatedChapterNumbers: [],
         step: "volumes" as const,
         moreRemaining: true,
         nextBatchStart: 1,
@@ -538,8 +534,8 @@ describe("PipelineRunner", () => {
       expect(currentFocus).toContain("当前聚焦");
       expect(runtimeDir.isDirectory()).toBe(true);
       const volumeMap = await readFile(join(storyDir, "outline", "volume_map.md"), "utf-8");
-      expect(volumeMap).toMatch(/## 第 1 章/);
-      expect(volumeMap).toContain("节点1");
+      expect(volumeMap).toMatch(/## 第1卷/);
+      expect(volumeMap).not.toMatch(/## 第 \d+ 章/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
