@@ -25,7 +25,13 @@ import {
   createManageBookReferenceTool,
   createWriteFileTool,
   createWriteTruthFileTool,
+  createLsTool,
 } from "../agent/agent-tools.js";
+import {
+  createAndPersistBookSession,
+  loadBookSession,
+  migrateBookSession,
+} from "../interaction/book-session-store.js";
 import { ingestMaterial } from "../materials/ingest.js";
 import { createPlayDB } from "../play/play-db-factory.js";
 import { PlayStore } from "../play/play-store.js";
@@ -1434,6 +1440,51 @@ describe("agent deterministic writing tools", () => {
       path: "醉词/story/outline/story_frame.md",
     });
     expect(qualified.content[0]).toEqual({ type: "text", text: "# 醉词骨架\n" });
+  });
+
+  it("propagates a session bookId bind from null to 醉词 into later read/edit/ls calls", async () => {
+    await mkdir(join(root, "books", "醉词", "story", "outline"), { recursive: true });
+    await writeFile(
+      join(root, "books", "醉词", "story", "outline", "story_frame.md"),
+      "# 醉词骨架\n",
+      "utf-8",
+    );
+
+    const session = await createAndPersistBookSession(root, null, "1788447537029-bs51a7", "book-create");
+    expect(session.bookId).toBeNull();
+
+    const liveBookId: { current: string | null } = { current: session.bookId };
+    const read = createReadTool(root, { activeBookId: () => liveBookId.current });
+    const edit = createEditTool(root, { activeBookId: () => liveBookId.current });
+    const ls = createLsTool(root, { activeBookId: () => liveBookId.current });
+
+    const unbound = await read.execute("tool-read-before-bind", { path: "outline/story_frame.md" });
+    expect(unbound.content[0]).toEqual(expect.objectContaining({
+      type: "text",
+      text: expect.stringContaining("No active book"),
+    }));
+
+    const migrated = await migrateBookSession(root, session.sessionId, "醉词");
+    expect(migrated?.bookId).toBe("醉词");
+    liveBookId.current = (await loadBookSession(root, session.sessionId))?.bookId ?? null;
+
+    const result = await read.execute("tool-read-after-bind", { path: "outline/story_frame.md" });
+    expect(result.content[0]).toEqual({ type: "text", text: "# 醉词骨架\n" });
+
+    const listed = await ls.execute("tool-ls-after-bind", { subdir: "story/outline" });
+    expect(listed.content[0]?.type).toBe("text");
+    if (listed.content[0]?.type === "text") {
+      expect(listed.content[0].text).toContain("story_frame.md");
+    }
+
+    const edited = await edit.execute("tool-edit-after-bind", {
+      path: "outline/story_frame.md",
+      old_string: "骨架",
+      new_string: "骨架已改",
+    });
+    expect(edited.content[0]?.type).toBe("text");
+    await expect(readFile(join(root, "books", "醉词", "story", "outline", "story_frame.md"), "utf-8"))
+      .resolves.toBe("# 醉词骨架已改\n");
   });
 
   it("does not let an active-book edit write to books/outline", async () => {

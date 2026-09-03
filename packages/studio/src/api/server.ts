@@ -31,6 +31,7 @@ import {
   migrateBookSession,
   SessionAlreadyMigratedError,
   abortAgentSession,
+  bindCachedAgentBookId,
   runAgentSession,
   resolveServicePreset,
   resolveServiceProviderFamily,
@@ -5416,6 +5417,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
                 const migratedSession = await migrateBookSession(root, bookSession.sessionId, createdBookId);
                 if (migratedSession) {
                   bookSession = migratedSession;
+                  bindCachedAgentBookId(root, bookSession.sessionId, createdBookId);
                 }
               } catch (e) {
                 if (!(e instanceof SessionAlreadyMigratedError)) {
@@ -5652,6 +5654,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           const migratedSession = await migrateBookSession(root, bookSession.sessionId, createdBookId);
           if (migratedSession) {
             bookSession = migratedSession;
+            bindCachedAgentBookId(root, bookSession.sessionId, createdBookId);
           }
         } catch (e) {
           if (!(e instanceof SessionAlreadyMigratedError)) {

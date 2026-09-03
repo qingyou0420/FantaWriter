@@ -80,6 +80,18 @@ function isBookTreePrefix(segment: string | undefined): boolean {
   return segment === "story" || segment === "chapters";
 }
 
+/** Static book id or a live getter so tools follow session bind (null → 醉词). */
+export type ActiveBookIdInput = string | (() => string | null | undefined);
+
+export function peekActiveBookId(activeBookId?: ActiveBookIdInput | null): string | undefined {
+  if (activeBookId == null) return undefined;
+  if (typeof activeBookId === "function") {
+    const value = activeBookId();
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+  return activeBookId.trim() ? activeBookId : undefined;
+}
+
 /**
  * Active-book file tools resolve truth-relative paths under
  * `books/<activeBookId>/story/` so the model can ask for
@@ -138,28 +150,41 @@ export function resolveActiveBookScopedPath(
 function resolveBookFileToolPath(
   projectRoot: string,
   requestedPath: string,
-  activeBookId: string | undefined,
+  activeBookId?: ActiveBookIdInput,
 ): string {
-  if (activeBookId) {
-    return resolveActiveBookScopedPath(projectRoot, activeBookId, requestedPath);
+  const bookId = peekActiveBookId(activeBookId);
+  if (bookId) {
+    return resolveActiveBookScopedPath(projectRoot, bookId, requestedPath);
+  }
+  // A live getter that is still empty means the session has not bound a book.
+  // Do not fall back to books/ or the model opens books/outline/story_frame.md.
+  if (typeof activeBookId === "function") {
+    throw new Error(
+      `No active book is bound. Cannot resolve "${requestedPath}" under books/.`,
+    );
   }
   return safeBooksPath(join(projectRoot, "books"), requestedPath);
 }
 
-function bookScopedPathDescription(activeBookId: string | undefined): string {
-  if (!activeBookId) return "File path relative to books/";
+function bookScopedPathDescription(activeBookId?: ActiveBookIdInput): string {
+  const bookId = peekActiveBookId(activeBookId);
+  if (!bookId) {
+    return typeof activeBookId === "function"
+      ? "File path relative to the active book's story directory (books/<activeBookId>/story/). Example: outline/story_frame.md. The tool uses the session's current book even if it was bound after the session started."
+      : "File path relative to books/";
+  }
   return (
-    `File path relative to the active book's story directory (books/${activeBookId}/story/). ` +
-    `Example: outline/story_frame.md. Book-qualified paths such as ${activeBookId}/story/outline/story_frame.md are also accepted.`
+    `File path relative to the active book's story directory (books/${bookId}/story/). ` +
+    `Example: outline/story_frame.md. Book-qualified paths such as ${bookId}/story/outline/story_frame.md are also accepted.`
   );
 }
 
 function resolveToolBookId(
   toolName: string,
   paramsBookId: string | undefined,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
 ): string {
-  const resolvedBookId = paramsBookId ?? activeBookId ?? undefined;
+  const resolvedBookId = paramsBookId ?? peekActiveBookId(activeBookId) ?? undefined;
   if (!resolvedBookId) {
     throw new Error(`${toolName} requires bookId when there is no active book.`);
   }
@@ -999,7 +1024,7 @@ function resolveProductionToolSkills(options: SkillAwareProductionOptions): Acti
 
 export function createSubAgentTool(
   pipeline: PipelineRunner,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
   projectRoot?: string,
   options: {
     readonly actionPayload?: ActionPayload;
@@ -1614,9 +1639,8 @@ type ManageBookReferenceParamsType = Static<typeof ManageBookReferenceParams>;
 
 export function createManageBookReferenceTool(
   projectRoot: string,
-  activeBookId: string,
+  activeBookId: ActiveBookIdInput,
 ): AgentTool<typeof ManageBookReferenceParams> {
-  const bookId = assertSafeBookId(activeBookId, "manage_book_reference.bookId");
   return {
     name: "manage_book_reference",
     description:
@@ -1631,6 +1655,7 @@ export function createManageBookReferenceTool(
       onUpdate?: AgentToolUpdateCallback,
     ): Promise<AgentToolResult<unknown>> {
       signal?.throwIfAborted();
+      const bookId = resolveToolBookId("manage_book_reference", undefined, activeBookId);
       if (params.action === "list") {
         const listed = await listBookReferences(projectRoot, bookId);
         const references = listed.references.map((reference) => ({
@@ -1726,7 +1751,7 @@ type ImportChaptersParamsType = Static<typeof ImportChaptersParams>;
 
 export function createImportChaptersTool(
   pipeline: PipelineRunner,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
   projectRoot: string,
 ): AgentTool<typeof ImportChaptersParams> {
   return {
@@ -1994,7 +2019,7 @@ type ContinuationImportParamsType = Static<typeof ContinuationImportParams>;
 
 export function createContinuationImportTool(
   pipeline: PipelineRunner,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
   projectRoot: string,
   options: SkillAwareProductionOptions = {},
 ): AgentTool<typeof ContinuationImportParams> {
@@ -2009,7 +2034,7 @@ export function createContinuationImportTool(
       }
       const sourcePath = safeChildPath(projectRoot, params.sourcePath);
       const state = new StateManager(projectRoot);
-      const requestedBookId = params.bookId ?? activeBookId ?? undefined;
+      const requestedBookId = params.bookId ?? peekActiveBookId(activeBookId) ?? undefined;
       let bookId: string;
       let created = false;
       if (requestedBookId) {
@@ -3406,7 +3431,7 @@ const WriteTruthFileParams = Type.Object({
 export function createWriteTruthFileTool(
   pipeline: PipelineRunner,
   projectRoot: string,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
 ): AgentTool<typeof WriteTruthFileParams> {
   const tools = createDeterministicInteractionTools(pipeline, projectRoot);
   return {
@@ -3465,7 +3490,7 @@ const RenameEntityParams = Type.Object({
 export function createRenameEntityTool(
   pipeline: PipelineRunner,
   projectRoot: string,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
 ): AgentTool<typeof RenameEntityParams> {
   const tools = createDeterministicInteractionTools(pipeline, projectRoot);
   return {
@@ -3500,7 +3525,7 @@ const DeleteLatestChapterParams = Type.Object({
 
 export function createDeleteLatestChapterTool(
   projectRoot: string,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
 ): AgentTool<typeof DeleteLatestChapterParams> {
   return {
     name: "delete_latest_chapter",
@@ -3534,7 +3559,7 @@ export function createDeleteLatestChapterTool(
 export function createPatchChapterTextTool(
   pipeline: PipelineRunner,
   projectRoot: string,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
 ): AgentTool<typeof PatchChapterTextParams> {
   const tools = createDeterministicInteractionTools(pipeline, projectRoot);
   return {
@@ -3567,7 +3592,7 @@ const ReplaceChapterTextParams = Type.Object({
 export function createReplaceChapterTextTool(
   pipeline: PipelineRunner,
   projectRoot: string,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
 ): AgentTool<typeof ReplaceChapterTextParams> {
   const tools = createDeterministicInteractionTools(pipeline, projectRoot);
   return {
@@ -3603,7 +3628,7 @@ const ResyncChapterStateParams = Type.Object({
 
 export function createResyncChapterStateTool(
   pipeline: PipelineRunner,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
   options: SkillAwareProductionOptions & { readonly language?: "zh" | "en" } = {},
 ): AgentTool<typeof ResyncChapterStateParams> {
   return {
@@ -3661,7 +3686,7 @@ const ReadParams = Type.Object({
 export interface ReadToolOptions {
   readonly allowSystemPaths?: boolean;
   readonly scope?: "books" | "project";
-  readonly activeBookId?: string;
+  readonly activeBookId?: ActiveBookIdInput;
 }
 
 function resolveReadPath(projectRoot: string, requestedPath: string, options: ReadToolOptions): string {
@@ -3675,20 +3700,24 @@ function resolveReadPath(projectRoot: string, requestedPath: string, options: Re
 }
 
 function readToolDescription(options: ReadToolOptions): string {
+  const bookId = peekActiveBookId(options.activeBookId);
   if (options.allowSystemPaths) {
-    const relativeRoot = options.activeBookId
-      ? `books/${options.activeBookId}/story/`
-      : "books/";
+    const relativeRoot = bookId
+      ? `books/${bookId}/story/`
+      : typeof options.activeBookId === "function"
+        ? "the active book's story directory"
+        : "books/";
     return `Read a file. Relative paths resolve under ${relativeRoot}; absolute paths read from the system filesystem.`;
   }
   if (options.scope === "project") {
     return "Read a UTF-8 file inside the current InkOS project. Path is relative to the project root.";
   }
-  if (options.activeBookId) {
+  if (bookId || typeof options.activeBookId === "function") {
+    const rootLabel = bookId ? `books/${bookId}/story/` : "the active book's story directory (books/<activeBookId>/story/)";
     return (
-      `Read a file from the active book's story directory. Path is relative to books/${options.activeBookId}/story/ ` +
-      `(example: outline/story_frame.md). Do not omit the book — the tool already scopes to it. ` +
-      `Book-qualified paths such as ${options.activeBookId}/story/outline/story_frame.md are also accepted.`
+      `Read a file from the active book's story directory. Path is relative to ${rootLabel} ` +
+      `(example: outline/story_frame.md). Do not omit the book — the tool uses the session's current book even if it was bound after the session started. ` +
+      `Book-qualified paths such as ${bookId ?? "<bookId>"}/story/outline/story_frame.md are also accepted.`
     );
   }
   return "Read a file from the book directory. Path is relative to books/.";
@@ -3698,10 +3727,10 @@ export function createReadTool(
   projectRoot: string,
   options: ReadToolOptions = {},
 ): AgentTool<typeof ReadParams> {
-  if (options.activeBookId && options.scope !== "project") {
+  if (typeof options.activeBookId === "string" && options.scope !== "project") {
     assertSafeBookId(options.activeBookId, "activeBookId");
   }
-  const parameters = options.activeBookId && options.scope !== "project"
+  const parameters = (options.activeBookId && options.scope !== "project")
     ? Type.Object({
       path: Type.String({ description: bookScopedPathDescription(options.activeBookId) }),
     })
@@ -3738,14 +3767,14 @@ const EditParams = Type.Object({
 });
 
 export interface BookFileToolOptions {
-  readonly activeBookId?: string;
+  readonly activeBookId?: ActiveBookIdInput;
 }
 
 export function createEditTool(
   projectRoot: string,
   options: BookFileToolOptions = {},
 ): AgentTool<typeof EditParams> {
-  if (options.activeBookId) {
+  if (typeof options.activeBookId === "string") {
     assertSafeBookId(options.activeBookId, "activeBookId");
   }
   const parameters = options.activeBookId
@@ -3755,9 +3784,12 @@ export function createEditTool(
       new_string: Type.String({ description: "Replacement string" }),
     })
     : EditParams;
-  const rootLabel = options.activeBookId
-    ? `books/${options.activeBookId}/story/`
-    : "books/";
+  const peeked = peekActiveBookId(options.activeBookId);
+  const rootLabel = peeked
+    ? `books/${peeked}/story/`
+    : typeof options.activeBookId === "function"
+      ? "the active book's story directory"
+      : "books/";
 
   return {
     name: "edit",
@@ -3805,7 +3837,7 @@ export function createWriteFileTool(
   projectRoot: string,
   options: BookFileToolOptions = {},
 ): AgentTool<typeof WriteFileParams> {
-  if (options.activeBookId) {
+  if (typeof options.activeBookId === "string") {
     assertSafeBookId(options.activeBookId, "activeBookId");
   }
   const parameters = options.activeBookId
@@ -3814,9 +3846,12 @@ export function createWriteFileTool(
       content: Type.String({ description: "Full file content to write" }),
     })
     : WriteFileParams;
-  const rootLabel = options.activeBookId
-    ? `books/${options.activeBookId}/story/`
-    : "books/";
+  const peeked = peekActiveBookId(options.activeBookId);
+  const rootLabel = peeked
+    ? `books/${peeked}/story/`
+    : typeof options.activeBookId === "function"
+      ? "the active book's story directory"
+      : "books/";
 
   return {
     name: "write",
@@ -3850,17 +3885,20 @@ export function createWriteFileTool(
 // ---------------------------------------------------------------------------
 
 const GrepParams = Type.Object({
-  bookId: Type.String({ description: "Book ID to search within" }),
+  bookId: Type.Optional(Type.String({ description: "Book ID to search within. Omit to use the active book." })),
   pattern: Type.String({ description: "Search pattern (plain text or regex)" }),
 });
 
-export function createGrepTool(projectRoot: string): AgentTool<typeof GrepParams> {
+export function createGrepTool(
+  projectRoot: string,
+  options: BookFileToolOptions = {},
+): AgentTool<typeof GrepParams> {
   const booksRoot = join(projectRoot, "books");
 
   return {
     name: "grep",
     description:
-      "Search for a text pattern across a book's story/ and chapters/ directories. Returns matching lines.",
+      "Search for a text pattern across a book's story/ and chapters/ directories. Returns matching lines. Omit bookId to use the session's current active book.",
     label: "Search",
     parameters: GrepParams,
     async execute(
@@ -3868,7 +3906,11 @@ export function createGrepTool(projectRoot: string): AgentTool<typeof GrepParams
       params: Static<typeof GrepParams>,
     ): Promise<AgentToolResult<undefined>> {
       try {
-        const bookDir = safeBooksPath(booksRoot, params.bookId);
+        const bookId = params.bookId ?? peekActiveBookId(options.activeBookId);
+        if (!bookId) {
+          return textResult("grep requires bookId when there is no active book.");
+        }
+        const bookDir = safeBooksPath(booksRoot, bookId);
         const regex = new RegExp(params.pattern, "gi");
         const results: string[] = [];
 
@@ -3903,7 +3945,7 @@ export function createGrepTool(projectRoot: string): AgentTool<typeof GrepParams
         ]);
 
         if (results.length === 0) {
-          return textResult(`No matches for "${params.pattern}" in book "${params.bookId}".`);
+          return textResult(`No matches for "${params.pattern}" in book "${bookId}".`);
         }
 
         const truncated = results.length > 100
@@ -3923,18 +3965,21 @@ export function createGrepTool(projectRoot: string): AgentTool<typeof GrepParams
 // ---------------------------------------------------------------------------
 
 const LsParams = Type.Object({
-  bookId: Type.String({ description: "Book ID" }),
+  bookId: Type.Optional(Type.String({ description: "Book ID. Omit to use the active book." })),
   subdir: Type.Optional(
     Type.String({ description: "Subdirectory within the book, e.g. 'story', 'chapters', 'story/runtime'" }),
   ),
 });
 
-export function createLsTool(projectRoot: string): AgentTool<typeof LsParams> {
+export function createLsTool(
+  projectRoot: string,
+  options: BookFileToolOptions = {},
+): AgentTool<typeof LsParams> {
   const booksRoot = join(projectRoot, "books");
 
   return {
     name: "ls",
-    description: "List files in a book directory. Optionally specify a subdirectory like 'story' or 'chapters'.",
+    description: "List files in a book directory. Optionally specify a subdirectory like 'story' or 'chapters'. Omit bookId to use the session's current active book.",
     label: "List Files",
     parameters: LsParams,
     async execute(
@@ -3942,7 +3987,11 @@ export function createLsTool(projectRoot: string): AgentTool<typeof LsParams> {
       params: Static<typeof LsParams>,
     ): Promise<AgentToolResult<undefined>> {
       try {
-        const base = safeBooksPath(booksRoot, params.bookId);
+        const bookId = params.bookId ?? peekActiveBookId(options.activeBookId);
+        if (!bookId) {
+          return textResult("ls requires bookId when there is no active book.");
+        }
+        const base = safeBooksPath(booksRoot, bookId);
         const target = params.subdir ? safeBooksPath(base, params.subdir) : base;
 
         const entries = await readdir(target);
@@ -3960,12 +4009,12 @@ export function createLsTool(projectRoot: string): AgentTool<typeof LsParams> {
         }
 
         if (details.length === 0) {
-          return textResult(`Directory is empty: ${params.bookId}/${params.subdir ?? ""}`);
+          return textResult(`Directory is empty: ${bookId}/${params.subdir ?? ""}`);
         }
 
         return textResult(details.join("\n"));
       } catch (err: any) {
-        return textResult(`Failed to list "${params.bookId}/${params.subdir ?? ""}": ${err?.message ?? String(err)}`);
+        return textResult(`Failed to list "${params.bookId ?? peekActiveBookId(options.activeBookId) ?? ""}/${params.subdir ?? ""}": ${err?.message ?? String(err)}`);
       }
     },
   };

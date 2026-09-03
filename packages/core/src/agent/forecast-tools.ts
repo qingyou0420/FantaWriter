@@ -8,6 +8,7 @@ import {
 } from "../forecast/runner.js";
 import type { ForecastBranch, NarrativeForecast } from "../forecast/schema.js";
 import { assertSafeBookId } from "../utils/book-id.js";
+import { peekActiveBookId, type ActiveBookIdInput } from "./agent-tools.js";
 
 // Narrative forecast tools (RFC #342). All three operate strictly on
 // story/runtime/narrative-forecasts/ — they never modify canonical prose,
@@ -27,14 +28,15 @@ function textResult<T = undefined>(text: string, details?: T): AgentToolResult<T
 function resolveForecastBookId(
   toolName: string,
   paramsBookId: string | undefined,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
 ): string {
-  const resolvedBookId = paramsBookId ?? activeBookId ?? undefined;
+  const currentActive = peekActiveBookId(activeBookId) ?? null;
+  const resolvedBookId = paramsBookId ?? currentActive ?? undefined;
   if (!resolvedBookId) {
     throw new Error(`${toolName} requires bookId when there is no active book.`);
   }
   const safeBookId = assertSafeBookId(resolvedBookId, `${toolName}.bookId`);
-  if (paramsBookId && activeBookId && safeBookId !== activeBookId) {
+  if (paramsBookId && currentActive && safeBookId !== currentActive) {
     throw new Error(`${toolName}.bookId must match the active book.`);
   }
   return safeBookId;
@@ -81,7 +83,7 @@ type ForecastCreateParamsType = Static<typeof ForecastCreateParams>;
 
 export function createNarrativeForecastCreateTool(
   pipeline: PipelineRunner,
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
   projectRoot: string,
 ): AgentTool<typeof ForecastCreateParams> {
   return {
@@ -142,7 +144,7 @@ const ForecastGetParams = Type.Object({
 type ForecastGetParamsType = Static<typeof ForecastGetParams>;
 
 export function createNarrativeForecastGetTool(
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
   projectRoot: string,
 ): AgentTool<typeof ForecastGetParams> {
   return {
@@ -190,7 +192,7 @@ const ForecastSelectParams = Type.Object({
 type ForecastSelectParamsType = Static<typeof ForecastSelectParams>;
 
 export function createNarrativeForecastSelectTool(
-  activeBookId: string | null,
+  activeBookId: ActiveBookIdInput | null,
   projectRoot: string,
 ): AgentTool<typeof ForecastSelectParams> {
   return {

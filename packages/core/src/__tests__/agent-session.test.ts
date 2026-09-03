@@ -283,6 +283,7 @@ describe("runAgentSession cache — bookId switch", () => {
     evictAgentCache("s-interleave-seq");
     evictAgentCache("s-context-window");
     evictAgentCache("trace-session");
+    evictAgentCache("s-bind-zui-ci");
     evictAgentCache("book-create-session");
     evictAgentCache("book-create-confirmed-session");
     evictAgentCache("short-session");
@@ -319,6 +320,63 @@ describe("runAgentSession cache — bookId switch", () => {
     expect(body).toContain("书B 的真相");
     expect(body).not.toContain("书A 的真相");
     expect(body).toContain("earlier question about book A");
+  });
+
+  it("reads outline/story_frame.md under 醉词 after the session binds from null", async () => {
+    const { createAndPersistBookSession, migrateBookSession } = await import("../interaction/book-session-store.js");
+    const { bindCachedAgentBookId } = await import("../agent/agent-session.js");
+    const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
+    const pipeline = {} as any;
+    await mkdir(join(projectRoot, "books", "醉词", "story", "outline"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "books", "醉词", "story", "outline", "story_frame.md"),
+      "# 醉词骨架\n",
+      "utf-8",
+    );
+
+    await createAndPersistBookSession(projectRoot, null, "s-bind-zui-ci", "book-create");
+    await runAgentSession(
+      {
+        sessionId: "s-bind-zui-ci",
+        bookId: null,
+        sessionKind: "book-create",
+        language: "zh",
+        pipeline,
+        projectRoot,
+        model,
+      },
+      "hi",
+    );
+
+    const createdRead = agentInstances[0].state.tools.find((tool: any) => tool.name === "read");
+    expect(createdRead).toBeTruthy();
+    const before = await createdRead.execute("read-before-bind", { path: "outline/story_frame.md" });
+    expect(before.content[0]).toEqual(expect.objectContaining({
+      type: "text",
+      text: expect.stringContaining("No active book"),
+    }));
+
+    await migrateBookSession(projectRoot, "s-bind-zui-ci", "醉词");
+    bindCachedAgentBookId(projectRoot, "s-bind-zui-ci", "醉词");
+
+    const bound = await createdRead.execute("read-after-bind", { path: "outline/story_frame.md" });
+    expect(bound.content[0]).toEqual({ type: "text", text: "# 醉词骨架\n" });
+
+    await runAgentSession(
+      {
+        sessionId: "s-bind-zui-ci",
+        bookId: null,
+        sessionKind: "book-create",
+        language: "zh",
+        pipeline,
+        projectRoot,
+        model,
+      },
+      "hi",
+    );
+    const laterRead = agentInstances.at(-1).state.tools.find((tool: any) => tool.name === "read");
+    const again = await laterRead.execute("read-after-stale-null", { path: "outline/story_frame.md" });
+    expect(again.content[0]).toEqual({ type: "text", text: "# 醉词骨架\n" });
   });
 
   it("rebuilds Agent when bookId goes from null to a real book", async () => {
@@ -820,6 +878,8 @@ describe("runAgentSession cache — bookId switch", () => {
       "research_web",
       "ingest_material",
       "retrieve_material",
+      "read",
+      "ls",
       "use_skill",
     ]);
   });

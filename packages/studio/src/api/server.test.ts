@@ -343,6 +343,7 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     resolveSessionActiveBook: resolveSessionActiveBookMock,
     runAgentSession: runAgentSessionMock,
     abortAgentSession: abortAgentSessionMock,
+    bindCachedAgentBookId: vi.fn(() => false),
     createSubAgentTool: actual.createSubAgentTool,
     createShortFictionRunTool: createShortFictionRunToolMock,
     createFanficBookTool: createFanficBookToolMock,
