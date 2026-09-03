@@ -1,20 +1,30 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PipelineRunner } from "@actalk/inkos-core";
 import { createStudioServer } from "./server.js";
 
 const projectConfig = {
   name: "test",
+  version: "0.1.0",
   language: "zh",
   llm: {
     provider: "custom",
     service: "custom",
     configSource: "studio",
-    baseUrl: "https://example.invalid",
+    baseUrl: "https://example.com/v1",
     model: "test-model",
     apiFormat: "chat",
     stream: true,
+    services: [
+      {
+        service: "custom",
+        name: "Custom",
+        baseUrl: "https://example.com/v1",
+        models: ["test-model"],
+      },
+    ],
   },
 } as never;
 
@@ -27,7 +37,7 @@ describe("P1 studio gates", () => {
     await mkdir(join(root, "books", "demo-book", "chapters"), { recursive: true });
     await mkdir(join(root, ".inkos"), { recursive: true });
     await writeFile(join(root, "inkos.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
-    await writeFile(join(root, ".inkos", "secrets.json"), JSON.stringify({ services: { custom: { apiKey: "sk-test" } } }), "utf-8");
+    await writeFile(join(root, ".inkos", "secrets.json"), JSON.stringify({ services: { "custom:Custom": { apiKey: "sk-test" } } }), "utf-8");
     await writeFile(join(root, "books", "demo-book", "book.json"), JSON.stringify({
       id: "demo-book",
       title: "Demo",
@@ -57,6 +67,7 @@ describe("P1 studio gates", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(root, { recursive: true, force: true });
   });
 
@@ -96,5 +107,36 @@ describe("P1 studio gates", () => {
     const body = await response.json() as { status: string; override?: { why: string } };
     expect(body.status).toBe("approved");
     expect(body.override?.why).toBe("带病定稿");
+  });
+
+  it("weaves a full outline tree through the confirm gate", async () => {
+    vi.spyOn(PipelineRunner.prototype, "weaveVolumeMap").mockResolvedValue({
+      markdown: "## 第1卷 试炼（1-2章）\nObjective：开局。\n\n## 第 1 章 入局\n走进酒楼。\n\n## 第 2 章 夜谈\n听见旧案。\n",
+      volumeCount: 1,
+      chapterCount: 2,
+      proposal: {
+        id: "prop-1",
+        bookId: "demo-book",
+        fileName: "outline/volume_map.md",
+        authority: "foundation",
+        baseRevision: "abc",
+        currentContent: "# 卷\n",
+        proposedContent: "## 第1卷 试炼（1-2章）\n",
+        unifiedDiff: "--- a\n+++ b\n",
+        status: "pending",
+        createdAt: "2026-09-03T00:00:00.000Z",
+        updatedAt: "2026-09-03T00:00:00.000Z",
+      },
+    });
+    const app = createStudioServer(projectConfig, root);
+    const response = await app.request("/api/v1/books/demo-book/outline/weave", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "full" }),
+    });
+    const body = await response.json() as { proposal?: { id: string; fileName: string }; chapterCount?: number; error?: string };
+    expect(response.status, body.error ?? JSON.stringify(body)).toBe(200);
+    expect(body.chapterCount).toBe(2);
+    expect(body.proposal?.fileName).toBe("outline/volume_map.md");
   });
 });

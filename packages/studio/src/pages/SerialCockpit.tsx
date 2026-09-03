@@ -354,7 +354,7 @@ export function SerialCockpit({
           <p className="text-sm text-muted-foreground">{snapshot.volumeClose.reason}</p>
           <button
             type="button"
-            onClick={() => nav.toBookChat(bookId)}
+            onClick={() => nav.toOutline(bookId)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2 text-xs font-bold"
           >
             <Feather size={14} />
@@ -382,7 +382,7 @@ export function SerialCockpit({
         </button>
         <button
           type="button"
-          onClick={() => nav.toBookChat(bookId)}
+          onClick={() => nav.toOutline(bookId)}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground"
         >
           <Feather size={14} />

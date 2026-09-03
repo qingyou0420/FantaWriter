@@ -345,8 +345,9 @@ describe("ArchitectAgent — Phase 5 prose output", () => {
     const messages = chat.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? "";
     expect(system).toContain("散文密度");
-    // Post-refactor: architect stays at volume level; chapter-level planning is planner's job.
-    expect(system).toContain("只写到卷级 prose");
+    // Architect emits a parseable volume skeleton; chapter entries are filled by the materializer.
+    expect(system).toContain("不要在本段枚举全部章目");
+    expect(system).toContain("## 第N卷 短标题（起始章-结束章）");
     expect(system).toContain("反差细节");
     expect(system).toContain("节奏原则");
     expect(system).toContain("=== SECTION: story_frame ===");

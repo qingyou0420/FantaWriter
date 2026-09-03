@@ -21,7 +21,7 @@ import type { StoredHook } from "../state/memory-db.js";
 // folder, plus compat pointer shims. The LLM output contract is 5 blocks:
 //
 //   === SECTION: story_frame ===   4 散文段（主题 / 冲突 / 世界铁律+质感 / 终局）
-//   === SECTION: volume_map ===    5 散文段 + 尾段「6 条节奏原则（具体化 + 通用）」
+//   === SECTION: volume_map ===    短标题卷骨架 + 卷级 OKR 正文 + 尾段「6 条节奏原则」
 //   === SECTION: roles ===         一人一卡；主角卡承载完整弧线（起点→终点→代价）
 //   === SECTION: book_rules ===    普通 Markdown 规则卡，宿主负责结构化解析
 //   === SECTION: pending_hooks ===  13-column 表；可含 startChapter=0 种子行
@@ -42,7 +42,7 @@ import type { StoredHook } from "../state/memory-db.js";
 //
 // 输出落盘 contract（未变）：
 //   outline/story_frame.md      ← 4 prose sections
-//   outline/volume_map.md       ← 5 prose sections + 节奏原则尾段
+//   outline/volume_map.md       ← 短标题卷骨架；章级条目由织卷材料化器补齐
 //   roles/主要角色/<name>.md    ← one file per major character
 //   roles/次要角色/<name>.md    ← one file per minor character
 //   story_bible.md              ← compat shim
@@ -187,7 +187,7 @@ ${reviseFrom.characterMatrix || "（无）"}
 你的任务：
 1. 把现有内容重新组织成当前 5 段 SECTION：story_frame / volume_map / roles / book_rules / pending_hooks
 2. story_frame 使用段落式世界观与核心冲突，不要退回条目表格
-3. volume_map 使用段落式卷/章级方向，并把节奏原则放进末段
+3. volume_map 使用短标题卷头 + 卷级正文，并把节奏原则放进末段；不要枚举全部章目
 4. roles 必须按一人一卡输出，主要/次要角色判断沿用原内容，缺失才按主线重要性推断
 5. pending_hooks 必须保留原有未回收伏笔，不要因为重写架构稿而清空
 6. 不要改动已写章节的运行时事实，不要重置 current_state / pending_hooks 之外的运行时日志
@@ -265,31 +265,27 @@ ${eraBlock}
 
 === SECTION: volume_map ===
 
-这是分卷散文地图，**5 段主体 + 1 段节奏原则尾段**。**关键要求：只写到卷级 prose**——写清楚每卷的主题、情绪曲线、卷间钩子、角色阶段目标、卷尾不可逆事件。**禁止指定具体章号任务**（不要写"第 17 章让他回家"这种章级布局）。章级规划是 Phase 3 planner 的职责，架构师只搭骨架、不编章目。
+这是分卷地图的**卷骨架**。必须输出可被大纲页解析的短标题卷头；卷级散文写在标题下面的正文里。**不要在本段枚举全部章目**——建书后的织卷材料化器会按卷补齐每一章的短标题与 1-3 句提要。
 
-### 段 1：各卷主题与情绪曲线
-有几卷？每卷的主题一句话，每卷的情绪曲线一段（哪里压、哪里爽、哪里冷、哪里暖）。不要机械的"第一卷打小怪第二卷打大怪"，写情绪的流动。
+硬性格式（每一卷都必须有，按卷分段，不要写成「卷一埋 / 各卷OKR / KR1」这种整段散文墙）：
 
-### 段 2：卷间钩子与回收承诺（前台/后台双层都要覆盖）
-第 1 卷埋什么钩子、在哪一卷回收；第 2 卷埋什么、在哪一卷回收。散文写，不要表格。**只写卷级**（如"第 1 卷埋的身世之谜在第 3 卷回收"），不要写具体章号。
+## 第N卷 短标题（起始章-结束章）
 
-**钩子必须覆盖前台 + 后台两层**（对应 story_frame.段 2 建立的双层故事）：
-- 前台钩子：当前卷内 arc 层面的短期钩子（查案谜题、对手身份、资源争夺等），预期在 1-2 卷内回收
-- 后台钩子：贯穿全书的主线钩子（幕后真相、身世、体制秘密等），预期在终卷前后回收，核心的 3-7 条属于 core_hook=true
+标题行只允许：第N卷 + 不超过 8 字的短标题 + 可选（a-b章）。
+禁止把 埋线 / OKR / KR / 节奏原则 写进标题行。
+禁止写「卷一埋：……」这种把整段散文塞进标题的格式。
 
-**如果本段只写前台钩子、没有后台钩子暗桩，说明你漏了整本书的引力轴，必须补上。**
+卷的章号范围必须覆盖 1 到目标章数 ${book.targetChapters}，不要把全部章节塞进一卷（除非用户只要一卷）。合理分卷：大约每卷 20–40 章。
 
-### 段 3：各卷 OKR（Objective + Key Results）
-用 OKR 递归大纲法分解全书 Objective（story_frame.段 4 末尾定的根 O）：每一卷都必须明确给出：
-- **Objective（卷级目标）**：本卷结束时主角必须达成的**可验证状态**，一句话，与全书 Objective 逻辑递进相连（例：全书 O = "成为宗门长老并公开冤案"；卷 1 O = "从杂役转入正式弟子籍并拿到第一份能指向真相的线索"）
-- **Key Results（3 条，可量化/可观察）**：支撑该 O 达成的三个关键子成果，每条必须是外部观察者能判定是否完成的状态变更（例 KR1 = "拿下药园执事位置"、KR2 = "与灵安峰结成稳定盟约"、KR3 = "发现父辈案卷的第一半页残片"）。不要写"变强"、"成长"这类模糊 KR
+卷正文（标题下一行开始）必须写：
+- Objective（卷级目标，一句话可验证状态）
+- Key Results（3 条可观察 KR）
+- 本卷埋线与回收承诺（前台/后台）
+- 卷尾不可逆事件
 
-次要角色的阶段性变化也要点到（师父在第 2 卷会死、对手在第 3 卷会黑化等），写在 KR 条目下作为附注。写阶段性，不写完整弧线（完整弧线在 roles）。**每一卷 3 个 KR 是下游 planner 分解章节任务的直接依据——planner 拿到一卷的 3 个 KR 后，按每 3-5 章推进一个 KR 的节奏排章。**
+钩子必须覆盖前台 + 后台两层。次要角色的阶段性变化写在 KR 附注里。
 
-### 段 4：卷尾必须发生的改变
-每一卷最后一章必须发生什么不可逆的事——权力结构改变、关系破裂、秘密暴露、主角身份重定位。写散文，一卷一段。**只写"必须发生什么"，不指定是第几章**。
-
-### 段 5：节奏原则（具体化 + 通用）
+### 最后一段：节奏原则（具体化 + 通用）
 **这是节奏原则的唯一归宿，不再有独立 rhythm_principles section。** 本段输出 6 条节奏原则。**至少 3 条必须具体化到本书**（例："前 30 章每 5 章一个小爽点"），其余可保留通用原则（例："拒绝机械降神"、"高潮前 3-5 章埋伏笔"）。具体化 + 通用混合是合法的。反面例子："节奏要张弛有度"（废话）。正面例子："前 30 章每 5 章一个小爽点，且小爽点必须落在章末 300 字内"。6 条各写 2-3 句，覆盖（顺序不强制、可替换同权重议题）：
 1. 高潮间距——本书大高潮之间最长多少章？（具体化优先）
 2. 喘息频率——高压段多长必须插一章喘息？喘息章承担什么任务？
@@ -298,7 +294,7 @@ ${eraBlock}
 5. 爽点节奏——爽点间距多少章一个？什么类型为主？（具体化优先）
 6. 情感节点递进——情感关系每多少章必须有一次实质推进？
 
-如果外部指令给了内容比例（例如权谋线/感情线各半、事业线/恋爱线的权重），必须在本段写成全书节奏承诺：哪些卷偏哪条线、每个 3-5 章小周期里哪条线必须可见、高潮后哪条线要承担后效。不要只写"保持平衡"。
+如果外部指令给了内容比例（例如权谋线/感情线各半、事业线/恋爱线的权重），必须在本段写成全书节奏承诺：哪些卷偏哪条线、每个 3-5 章小周期里哪条线必须可见、高潮后哪条线要承担后效。不要只写"保持平衡"。节奏原则写在全部卷头之后，不要写进任何一卷的标题行。
 
 === SECTION: roles ===
 
@@ -471,34 +467,30 @@ What the last chapter roughly feels like. The final shot: where, doing what, aro
 
 === SECTION: volume_map ===
 
-Prose volume map, **5 sections + 1 closing rhythm paragraph**. **Critical requirement: stay at volume-level prose only** — specify each volume's theme, emotional curve, cross-volume hooks, character stage goals, and volume-end irreversible changes. **Do NOT prescribe chapter-level tasks** (no "chapter 17 sends him home"). Chapter planning is the Phase 3 planner's job; the architect builds the skeleton, not the chapter list.
+This is the **volume skeleton**. Emit parseable short volume headings; put volume-level prose in the body under each heading. **Do NOT enumerate every chapter here** — a post-architect materializer will fill each chapter's short title and 1-3 sentence summary.
 
-## 01_Volume_Themes_and_Emotional_Curves
-How many volumes? Each volume's theme in one sentence; each volume's emotional curve as a paragraph (where pressured, where rewarding, where cold, where warm). Not mechanical rotation.
+Required format (one block per volume; never a prose wall like "Vol1 plants / all-volume OKRs / KR1"):
 
-## 02_Cross_Volume_Hooks_and_Payoff_Promises (cover BOTH foreground and background layers)
-Volume 1 plants hook A, paid off in volume N; volume 2 plants hook B, paid off in volume M. Prose, not tables. **Stay at volume-level** (e.g., "the origin mystery planted in volume 1 pays off in volume 3"); do not specify chapter numbers.
+## Volume N Short Title (start-end)
 
-**Hooks must cover BOTH foreground and background layers** (matching the two-layer story established in story_frame.02):
-- Foreground hooks: short-range arc-level hooks (case mystery, opponent identity, resource grab), paid off within 1-2 volumes
-- Background hooks: full-book main-line hooks (ultimate truth, origin, systemic secret), paid off near the finale. The 3-7 load-bearing ones are core_hook=true
+The heading line may only contain: Volume N + a short title (≤ 8 words) + optional (a-b).
+Never put hooks / OKR / KR / rhythm principles into the heading.
+Never write "Volume 1 plants: …" as a heading that swallows a paragraph.
 
-**If this paragraph only carries foreground hooks with no background seeds, you have lost the book's forward pull axis. Add them.**
+Chapter ranges must cover 1 through ${book.targetChapters}. Do not dump every chapter into one volume unless the author asked for a single volume. Split reasonably: about 20–40 chapters per volume.
 
-## 03_Per_Volume_OKRs (Objective + 3 Key Results)
-Recursive OKR outline that decomposes the Book Objective (root O set at the end of story_frame.04): every volume must explicitly state:
-- **Objective (volume-level goal)**: a **verifiable state** the protagonist must reach by volume end, one sentence, logically chained to the Book Objective (e.g., if Book O = "become sect elder and vindicate the parental case", then Vol 1 O = "move from errand disciple into the registered disciple roster and recover the first lead pointing to the truth")
-- **Key Results (3 items, quantifiable / observable)**: three concrete sub-achievements whose completion can be checked by an outside observer (e.g., KR1 = "take over the pharmacy garden steward seat", KR2 = "lock in a stable alliance with Lingan Peak", KR3 = "uncover the first half-page fragment of the parental case file"). No vague KRs like "gets stronger" / "matures".
+Volume body (starting the line after the heading) must include:
+- Objective (verifiable volume-end state)
+- Key Results (3 observable KRs)
+- Hooks and payoff promises (foreground + background)
+- Volume-end irreversible event
 
-Supporting characters' stage changes (master dies end of vol 2, opponent breaks bad in vol 3) go as notes under the relevant KR. Stage only — full arc lives in roles. **The 3 KRs per volume are the direct input for the planner: once it sees 3 KRs for a volume, it paces chapter tasks at roughly one KR advanced every 3-5 chapters.**
-
-## 04_Volume_End_Mandatory_Changes
-Each volume's last chapter must contain an irreversible event. Prose, one paragraph per volume. **Write what must happen, not which chapter**.
+Hooks must cover both story layers. Supporting-character stage notes go under the relevant KR.
 
 ## 05_Rhythm_Principles (concrete + universal)
 **This is the single home for rhythm principles — no separate rhythm_principles section exists.** Output 6 rhythm principles. **At least 3 must be concretized for this book** (e.g., "every 5 chapters in the first 30, hit one small payoff"); the rest may stay as universal rules (e.g., "no deus ex machina", "plant the foreshadow 3-5 chapters before the climax"). A mix of concrete + universal is valid. Bad: "rhythm must balance tension and release". Good: "every 5 chapters in the first 30 carries a small payoff landing in the last 300 chars of the chapter". Cover (order flexible, substitutions of equal weight are allowed): (1) climax spacing, (2) breath frequency, (3) hook density, (4) information release pacing, (5) payoff rhythm, (6) relationship advancement — each 2-3 sentences.
 
-If the external instructions specify content proportions (for example politics/romance 50/50 or career/relationship weighting), this paragraph must turn that into a full-book rhythm promise: which volumes lean toward which line, which line must be visible in every 3-5 chapter mini-cycle, and which line carries fallout after climaxes. Do not merely say "keep it balanced."
+If the external instructions specify content proportions (for example politics/romance 50/50 or career/relationship weighting), this paragraph must turn that into a full-book rhythm promise: which volumes lean toward which line, which line must be visible in every 3-5 chapter mini-cycle, and which line carries fallout after climaxes. Do not merely say "keep it balanced." Write rhythm principles after all volume headings, never inside a heading line.
 
 === SECTION: roles ===
 
@@ -1058,7 +1050,7 @@ ${continuationDirective}
 ## Output contract
 Follow the consolidated 5-section === SECTION: === layout: story_frame, volume_map, roles, book_rules, pending_hooks. Do NOT emit rhythm_principles or current_state — rhythm principles live in the last paragraph of volume_map; character initial status lives in roles.Current_State; initial hooks live in pending_hooks start_chapter=0 rows; era / setting anchors (only when the genre pins to a real year) are woven into story_frame's world-tonal-ground paragraph.
 
-All prose must be derived from the source package. Do not invent settings. If the package says it is compressed, treat chapter catalog + excerpts as evidence for the foundation; the full chapters will be replayed later for detailed truth files. For volume_map, treat existing chapters as "review" (one paragraph) and continuation as prose chapter-level planning. Hook extraction must be complete for the evidence provided.
+All prose must be derived from the source package. Do not invent settings. If the package says it is compressed, treat chapter catalog + excerpts as evidence for the foundation; the full chapters will be replayed later for detailed truth files. For volume_map, emit short Volume N headings with chapter ranges covering the target length; put review notes in the volume body. Do not enumerate every continuation chapter — the materializer will fill those. Hook extraction must be complete for the evidence provided.
 
 All output MUST be written in English.`
       : `你是专业的网络小说架构师。从已有章节中反向推导散文密度的基础设定，同时设计续写路径。${contextBlock}${reviewFeedbackBlock}
@@ -1079,7 +1071,7 @@ ${continuationDirective}
 ## 输出契约
 合并后的 5 段 === SECTION: === 结构：story_frame / volume_map / roles / book_rules / pending_hooks。**不要输出 rhythm_principles 或 current_state 两个 section**——节奏原则合并进 volume_map 尾段，角色初始状态合并进 roles.当前现状，初始钩子写在 pending_hooks startChapter=0 行；环境/时代锚（只有年代文 / 历史同人 / 都市重生等真实年份题材需要）织进 story_frame.世界观底色，其他题材直接省略。
 
-所有 prose 必须从资料包中推导，不得臆造。若资料包声明为压缩包，把章节目录和正文摘录当作基础设定证据；完整章节会在后续回放阶段逐章进入 truth files。volume_map 中，已有章节作为"回顾段"（一段散文），续写部分写到章级 prose。伏笔识别以资料包提供的证据为准，尽量完整。`;
+所有 prose 必须从资料包中推导，不得臆造。若资料包声明为压缩包，把章节目录和正文摘录当作基础设定证据；完整章节会在后续回放阶段逐章进入 truth files。volume_map 必须用「第N卷 短标题（a-b章）」短标题卷头，已有章节作为回顾写在卷正文里，不要枚举全部续写章目。伏笔识别以资料包提供的证据为准，尽量完整。`;
 
     const userMessage = resolvedLanguage === "en"
       ? `Generate the complete foundation for an imported ${gp.name} novel titled "${book.title}". Write everything in English.\n\n${chaptersText}`

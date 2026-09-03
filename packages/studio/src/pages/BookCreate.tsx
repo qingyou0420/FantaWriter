@@ -14,6 +14,7 @@ import {
 interface Nav {
   toDashboard: () => void;
   toBook: (id: string) => void;
+  toOutline: (id: string) => void;
 }
 
 interface PlatformOption {
@@ -712,7 +713,7 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         setStatus(data.response ?? null);
         setDraft(undefined);
         await waitForBookReady(createdBookId);
-        nav.toBook(createdBookId);
+        nav.toOutline(createdBookId);
         return;
       }
       setInput("");
@@ -744,7 +745,7 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
         throw new Error(projectLang === "zh" ? "创建请求没有返回书籍 ID。" : "Create request did not return a book id.");
       }
       await waitForBookReady(data.bookId);
-      nav.toBook(data.bookId);
+      nav.toOutline(data.bookId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       setStatus(null);
@@ -769,7 +770,7 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       setStatus(data.response ?? null);
       setDraft(undefined);
       await waitForBookReady(bookId);
-      nav.toBook(bookId);
+      nav.toOutline(bookId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {

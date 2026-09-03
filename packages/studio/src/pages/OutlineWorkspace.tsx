@@ -17,10 +17,12 @@ import {
   outlineEditorSource,
   parseVolumeMapTree,
   recommendedOutlineNodeId,
+  truncateOutlineLabel,
   type VolumeMapChapterNode,
 } from "../lib/volume-map-tree";
+import { outlineTreeVolumeLabel, resolveOutlineWeaveMode } from "../lib/outline-weave";
 import { resolveWriteThisChapterAction } from "../lib/serial-cockpit";
-import { useChatStore } from "../store/chat";
+import { TruthProposalCard, type PendingTruthProposal } from "../components/TruthProposalCard";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { ChevronLeft, Feather, Plus, Zap, Eye } from "lucide-react";
@@ -85,7 +87,8 @@ export function OutlineWorkspace({
   const [query, setQuery] = useState("");
   const [preflight, setPreflight] = useState<WritePreflightEvaluation | null>(null);
   const [writePending, setWritePending] = useState(false);
-  const setInput = useChatStore((state) => state.setInput);
+  const [weaving, setWeaving] = useState(false);
+  const [weaveProposal, setWeaveProposal] = useState<PendingTruthProposal | null>(null);
 
   const isZh = data?.book.language !== "en";
   const tree = useMemo(() => parseVolumeMapTree(volumeMap), [volumeMap]);
@@ -134,12 +137,36 @@ export function OutlineWorkspace({
   const visibleOrphans = tree.orphanChapters.filter((node) => nodeVisible(node, filter, query.trim().toLowerCase(), written));
   const writtenCount = data?.chapters.length ?? 0;
 
-  const openWeave = () => {
-    const next = data?.nextChapter ?? 1;
-    setInput(isZh
-      ? `请织卷：为第 ${next} 章补 volume_map 章级条目与本卷 OKR。正典改动必须走确认闸，不要直接覆盖未确认草稿。`
-      : `Please 织卷: add a volume_map entry for chapter ${next} and this volume's OKR. Canon edits must go through the confirm gate.`);
-    nav.toBookChat(bookId);
+  const reloadVolumeMap = () => {
+    void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
+      .then((body) => setVolumeMap(body.content ?? ""))
+      .catch(() => setVolumeMap(""));
+  };
+
+  const openWeave = async () => {
+    const mode = resolveOutlineWeaveMode(tree.chapterCount);
+    setWeaving(true);
+    try {
+      const result = await fetchJson<{
+        proposal?: PendingTruthProposal;
+        written?: boolean;
+        unchanged?: boolean;
+      }>(`/books/${bookId}/outline/weave`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      if (result.proposal) {
+        setWeaveProposal(result.proposal);
+        return;
+      }
+      setWeaveProposal(null);
+      reloadVolumeMap();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "织卷 failed");
+    } finally {
+      setWeaving(false);
+    }
   };
 
   const saveSelected = async () => {
@@ -247,11 +274,12 @@ export function OutlineWorkspace({
           <button
             type="button"
             data-testid="outline-weave"
-            onClick={openWeave}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"
+            onClick={() => void openWeave()}
+            disabled={weaving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
           >
             <Feather size={14} />
-            {isZh ? "织卷" : "织卷"}
+            {weaving ? (isZh ? "织卷中…" : "Weaving…") : (isZh ? "织卷" : "织卷")}
           </button>
           <button
             type="button"
@@ -284,13 +312,25 @@ export function OutlineWorkspace({
         ))}
       </div>
 
+      {weaveProposal && (
+        <TruthProposalCard
+          bookId={bookId}
+          proposal={weaveProposal}
+          isZh={isZh}
+          onResolved={() => {
+            setWeaveProposal(null);
+            reloadVolumeMap();
+          }}
+        />
+      )}
+
       {empty ? (
         <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-empty">
           <p className="text-sm text-muted-foreground">
-            {isZh ? "还没有章级大纲。推荐先让织卷排纲（走确认闸），或手工占一章。" : "No chapter outline yet. Prefer 织卷 (confirm gate), or add a stub chapter."}
+            {isZh ? "还没有章级大纲。用织卷按目标章数一次排完全书卷→章（走确认闸），或手工占一章。" : "No chapter outline yet. Use 织卷 to materialize the full volume→chapter tree (confirm gate), or add a stub chapter."}
           </p>
           <div className="flex justify-center gap-2">
-            <button type="button" onClick={openWeave} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
+            <button type="button" onClick={() => void openWeave()} disabled={weaving} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
               {isZh ? "织卷 · 排大纲" : "织卷 · Outline"}
             </button>
             <button type="button" onClick={() => void addFirstChapter()} className="rounded-lg bg-secondary px-4 py-2 text-sm font-bold">
@@ -305,12 +345,14 @@ export function OutlineWorkspace({
               <div key={volume.id}>
                 <button
                   type="button"
+                  data-testid="outline-volume-label"
                   onClick={() => setSelectedId(volume.id)}
-                  className={`w-full px-3 py-2 text-left text-sm font-medium border-b border-border/30 ${
+                  className={`w-full truncate px-3 py-2 text-left text-sm font-medium border-b border-border/30 ${
                     selectedId === volume.id ? "bg-primary/10 text-primary" : "hover:bg-muted/30"
                   }`}
+                  title={volume.title}
                 >
-                  {volume.title || (isZh ? "未命名卷" : "Untitled volume")}
+                  {outlineTreeVolumeLabel(volume.volumeNumber, volume.title, isZh) || (isZh ? "未命名卷" : "Untitled volume")}
                 </button>
                 {volume.chapters.map((node) => (
                   <ChapterRow
@@ -384,8 +426,9 @@ export function OutlineWorkspace({
                   )}
                   <button
                     type="button"
-                    onClick={openWeave}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-2 text-xs font-bold"
+                    onClick={() => void openWeave()}
+                    disabled={weaving}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-2 text-xs font-bold disabled:opacity-50"
                   >
                     <Feather size={14} />
                     {isZh ? "织卷" : "织卷"}
@@ -437,7 +480,7 @@ function ChapterRow({
       }`}
     >
       <span className="text-[11px]">{written ? "✓" : "○"}</span>
-      <span className="truncate">{label}{node.title ? ` ${node.title}` : ""}</span>
+      <span className="truncate">{label}{node.title ? ` ${truncateOutlineLabel(node.title)}` : ""}</span>
     </button>
   );
 }

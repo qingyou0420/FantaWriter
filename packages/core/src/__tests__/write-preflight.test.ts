@@ -6,6 +6,7 @@ import { rm } from "node:fs/promises";
 import { evaluateWritePreflight, WritePreflightError, assertWritePreflight } from "../pipeline/write-preflight.js";
 import { PipelineRunner } from "../pipeline/runner.js";
 import { findVolumeMapEntry } from "../utils/volume-map-entry.js";
+import { ZUI_CI_PROSE_FIXTURE } from "./volume-map-tree.test.js";
 
 describe("G1 write preflight", () => {
   const temps: string[] = [];
@@ -30,6 +31,27 @@ describe("G1 write preflight", () => {
     expect(findVolumeMapEntry("## 第 3 章 入局\n主角走进档案室。", 3)).toContain("入局");
     expect(findVolumeMapEntry("- Chapter 2-4: harbor arc", 3)).toBeTruthy();
     expect(findVolumeMapEntry("## 第 1 章 开场", 2)).toBeUndefined();
+  });
+
+  it("refuses write when volume_map is 醉词-style prose with no chapter entry", async () => {
+    const prose = [
+      "卷一埋：开篇在酒楼听曲，把旧案残页混进宾客闲话。",
+      "各卷OKR：卷一先站稳酒楼眼线。",
+      "KR1 = 拿到醉词令残页",
+    ].join("\n");
+    const dir = await bookDir(prose);
+    const evaluation = await evaluateWritePreflight({ bookDir: dir, chapterNumber: 1 });
+    expect(evaluation.ok).toBe(false);
+    expect(evaluation.reasons.map((reason) => reason.code)).toContain("missing_volume_map_entry");
+    expect(findVolumeMapEntry(prose, 1)).toBeUndefined();
+  });
+
+  it("treats the 醉词 empty 第 1 章 stub as a G1 entry but still blocks chapter 2", async () => {
+    const dir = await bookDir(ZUI_CI_PROSE_FIXTURE);
+    const chapter1 = await evaluateWritePreflight({ bookDir: dir, chapterNumber: 1 });
+    expect(chapter1.reasons.map((reason) => reason.code)).not.toContain("missing_volume_map_entry");
+    const chapter2 = await evaluateWritePreflight({ bookDir: dir, chapterNumber: 2 });
+    expect(chapter2.reasons.map((reason) => reason.code)).toContain("missing_volume_map_entry");
   });
 
   it("refuses write when volume_map has no target chapter", async () => {

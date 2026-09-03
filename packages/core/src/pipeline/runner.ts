@@ -8,6 +8,7 @@ import type { ChapterMeta } from "../models/chapter.js";
 import type { NotifyChannel, LLMConfig, AgentLLMOverride } from "../models/project.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { ArchitectAgent, type ArchitectOutput } from "../agents/architect.js";
+import { VolumeMapMaterializer, rolesExcerptFromArchitect } from "../agents/volume-map-materializer.js";
 import {
   FoundationReviewerAgent,
   FoundationReviewParseError,
@@ -56,7 +57,7 @@ import {
 } from "./chapter-state-recovery.js";
 import { persistChapterArtifacts } from "./chapter-persistence.js";
 import { writeChapterAuditSnapshot } from "./approve-gate.js";
-import type { TruthProposal } from "../interaction/truth-proposals.js";
+import { commitOrStageTruthFile, type TruthProposal } from "../interaction/truth-proposals.js";
 import {
   assertWritePreflight,
   evaluateWritePreflight,
@@ -835,6 +836,8 @@ export class PipelineRunner {
         gp.numericalSystem,
         book.language ?? gp.language,
       );
+      this.logStage(stageLanguage, { zh: "展开卷章大纲", en: "materializing outline tree" });
+      await this.materializeVolumeMapAt(stagingBookDir, book, foundation, { immediate: true });
 
       if (effectiveExternalContext && effectiveExternalContext.trim().length > 0) {
         const storyDir = join(stagingBookDir, "story");
@@ -873,6 +876,81 @@ export class PipelineRunner {
       await rm(stagingBookDir, { recursive: true, force: true }).catch(() => undefined);
       throw error;
     }
+  }
+
+  /**
+   * Fill every planned chapter into outline/volume_map.md. Init writes
+   * immediately; 织卷 on an existing book stages a G3 confirm proposal.
+   */
+  async weaveVolumeMap(
+    bookId: string,
+    mode: "remaining" | "full" = "remaining",
+  ): Promise<{
+    readonly markdown: string;
+    readonly volumeCount: number;
+    readonly chapterCount: number;
+    readonly proposal?: TruthProposal;
+    readonly written?: boolean;
+    readonly unchanged?: boolean;
+  }> {
+    const book = await this.state.loadBookConfig(bookId);
+    const bookDir = this.state.bookDir(bookId);
+    const storyFrame = await readStoryFrame(bookDir).catch(() => "");
+    const volumeMap = await readVolumeMap(bookDir).catch(() => "");
+    const rolesExcerpt = await readCharacterContext(bookDir).catch(() => "");
+    const language = (book.language ?? "zh") === "en" ? "en" as const : "zh" as const;
+    const materializer = new VolumeMapMaterializer(this.agentCtxFor("volume-map-materializer", bookId));
+    const result = await materializer.materialize({
+      book,
+      storyFrame,
+      volumeMap,
+      rolesExcerpt,
+      language,
+      mode,
+    });
+    const commit = await commitOrStageTruthFile({
+      bookDir,
+      bookId,
+      fileName: "outline/volume_map.md",
+      content: result.markdown,
+    });
+    return {
+      markdown: result.markdown,
+      volumeCount: result.volumeCount,
+      chapterCount: result.chapterCount,
+      proposal: commit.kind === "proposed" ? commit.proposal : undefined,
+      written: commit.kind === "written",
+      unchanged: commit.kind === "unchanged",
+    };
+  }
+
+  private async materializeVolumeMapAt(
+    bookDir: string,
+    book: BookConfig,
+    foundation: ArchitectOutput,
+    options: { readonly immediate: boolean },
+  ): Promise<void> {
+    const language = (book.language ?? "zh") === "en" ? "en" as const : "zh" as const;
+    const materializer = new VolumeMapMaterializer(this.agentCtxFor("volume-map-materializer", book.id));
+    const result = await materializer.materialize({
+      book,
+      storyFrame: foundation.storyFrame ?? foundation.storyBible ?? "",
+      volumeMap: foundation.volumeMap ?? foundation.volumeOutline ?? "",
+      rolesExcerpt: rolesExcerptFromArchitect(foundation.roles),
+      language,
+      mode: "init",
+    });
+    if (options.immediate) {
+      await mkdir(join(bookDir, "story", "outline"), { recursive: true });
+      await writeFile(join(bookDir, "story", "outline", "volume_map.md"), result.markdown, "utf-8");
+      return;
+    }
+    await commitOrStageTruthFile({
+      bookDir,
+      bookId: book.id,
+      fileName: "outline/volume_map.md",
+      content: result.markdown,
+    });
   }
 
   /**
@@ -1082,6 +1160,8 @@ export class PipelineRunner {
       gp.numericalSystem,
       book.language ?? gp.language,
     );
+    this.logStage(stageLanguage, { zh: "展开卷章大纲", en: "materializing outline tree" });
+    await this.materializeVolumeMapAt(bookDir, book, foundation, { immediate: true });
     this.logStage(stageLanguage, { zh: "初始化控制文档", en: "initializing control documents" });
     await this.state.ensureControlDocuments(book.id, this.config.externalContext);
 
@@ -1133,6 +1213,8 @@ export class PipelineRunner {
 
     this.logStage(stageLanguage, { zh: "写入基础设定文件", en: "writing foundation files" });
     await architect.writeFoundationFiles(bookDir, foundation, gp.numericalSystem, book.language ?? gp.language);
+    this.logStage(stageLanguage, { zh: "展开卷章大纲", en: "materializing outline tree" });
+    await this.materializeVolumeMapAt(bookDir, book, foundation, { immediate: true });
 
     this.logStage(stageLanguage, { zh: "初始化控制文档", en: "initializing control documents" });
     await this.state.ensureControlDocuments(book.id, direction?.trim() || this.config.externalContext);
@@ -3196,6 +3278,7 @@ ${matrix}`,
           gp.numericalSystem,
           resolvedLanguage,
         );
+        await this.materializeVolumeMapAt(bookDir, book, foundation, { immediate: true });
         await this.resetImportReplayTruthFiles(bookDir, resolvedLanguage);
         await this.state.saveChapterIndex(input.bookId, [], { allowEmptyWithChapterFiles: true });
         await this.state.snapshotState(input.bookId, 0);

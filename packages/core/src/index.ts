@@ -571,6 +571,51 @@ export { probeModelsFromUpstream, type ProbedModel } from "./llm/providers/probe
 // Agents
 export { BaseAgent, type AgentContext } from "./agents/base.js";
 export { ArchitectAgent, type ArchitectOutput } from "./agents/architect.js";
+export {
+  VolumeMapMaterializer,
+  rolesExcerptFromArchitect,
+  volumeMapNeedsMaterialize,
+  type VolumeMapMaterializeInput,
+  type VolumeMapMaterializeResult,
+  type VolumeMapMaterializeMode,
+} from "./agents/volume-map-materializer.js";
+export {
+  parseVolumeMapTree,
+  formatVolumeLabel,
+  truncateOutlineLabel,
+  MAX_VOLUME_TREE_LABEL_CHARS,
+  findChapterNode,
+  findVolumeForChapter,
+  findNodeById,
+  recommendedOutlineNodeId,
+  applyOutlineWorkspaceSave,
+  applyVolumeMapNodeEdit,
+  insertChapterStub,
+  outlineEditorSource,
+  buildOutlineEditPatch,
+  volumeContainsChapter,
+  plannedChapterCount,
+  lastPlannedChapter,
+  parseChineseInt,
+  resolveTargetChapterCount,
+  planVolumeRanges,
+  parseProseVolumeHints,
+  planVolumeRangesFromHints,
+  listedExactChapterNumbers,
+  missingExactChapters,
+  volumeMapHasReviewableTree,
+  leftoverVolumeMapProse,
+  renderVolumeMapMarkdown,
+  chapterNodesByNumber,
+  type VolumeMapTree,
+  type VolumeMapVolumeNode,
+  type VolumeMapChapterNode,
+  type VolumeMapNodeKind,
+  type PlannedVolumeRange,
+  type ProseVolumeHint,
+  type AssembledVolume,
+  type AssembledVolumeChapter,
+} from "./utils/volume-map-tree.js";
 export { WriterAgent, type WriteChapterInput, type WriteChapterOutput, type TokenUsage } from "./agents/writer.js";
 export { ContinuityAuditor, type AuditResult, type AuditIssue } from "./agents/continuity.js";
 export { ReviserAgent, DEFAULT_REVISE_MODE, type ReviseOutput, type ReviseMode } from "./agents/reviser.js";
