@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -34,6 +34,18 @@ describe("sidebar create block", () => {
     expect(createBlock).not.toMatch(/nav\.createTranslation/);
     expect(createBlock).not.toMatch(/nav\.createBranching/);
     expect(createBlock).not.toMatch(/nav\.createFree/);
+  });
+
+  it("hides translation and radar sidebar entries without deleting the features", () => {
+    const sidebar = read("src/components/Sidebar.tsx");
+    const toolsBlock = sidebar.slice(sidebar.indexOf("nav.tools"), sidebar.indexOf("nav.agentOnline"));
+    expect(toolsBlock).toMatch(/nav\.style/);
+    expect(toolsBlock).toMatch(/nav\.import/);
+    expect(toolsBlock).toMatch(/nav\.doctor/);
+    expect(toolsBlock).not.toMatch(/nav\.translation/);
+    expect(toolsBlock).not.toMatch(/nav\.radar/);
+    expect(existsSync(join(studioRoot, "src/pages/TranslationManager.tsx"))).toBe(true);
+    expect(existsSync(join(studioRoot, "src/pages/RadarView.tsx"))).toBe(true);
   });
 });
 

@@ -18,7 +18,6 @@ export function CheckUpdate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFun
   const c = useColors(theme);
   const bridge = getDesktopBridge();
   const [info, setInfo] = useState<DesktopAppInfo | null>(null);
-  const [repo, setRepo] = useState("qingyou0420/FantaWriter");
   const [busy, setBusy] = useState<"check" | "download" | "install" | null>(null);
   const [result, setResult] = useState<CheckUpdateResult | null>(null);
   const [installerPath, setInstallerPath] = useState("");
@@ -28,9 +27,6 @@ export function CheckUpdate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFun
   useEffect(() => {
     if (!bridge) return;
     void bridge.getAppInfo?.().then((next) => setInfo(next)).catch(() => undefined);
-    void bridge.getUpdateSettings?.().then((s) => {
-      if (s?.repo) setRepo(s.repo);
-    }).catch(() => undefined);
   }, [bridge]);
 
   const actions = updateActionsFromCheck(result);
@@ -125,7 +121,6 @@ export function CheckUpdate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFun
           <RefreshCw size={28} className="text-primary" />
           {t("update.title")}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground max-w-xl">{t("update.subtitle")}</p>
       </div>
 
       {!bridge ? (
@@ -142,10 +137,6 @@ export function CheckUpdate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFun
             <div className="flex justify-between gap-4">
               <span className="text-muted-foreground">{t("update.latestLabel")}</span>
               <span className="font-mono">{result?.latest || "—"}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-muted-foreground">{t("update.repo")}</span>
-              <span className="font-mono text-xs">{repo}</span>
             </div>
           </div>
 

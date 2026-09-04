@@ -41,7 +41,6 @@ import {
   Boxes,
   Wand2,
   FileInput,
-  TrendingUp,
   Stethoscope,
   RefreshCw,
   Zap,
@@ -54,7 +53,6 @@ import {
   Clapperboard,
   Rows3,
   Film,
-  Languages,
   Download,
   BarChart2,
 } from "lucide-react";
@@ -719,13 +717,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
               {t("nav.tools")}
             </span>
           </div>
-          <div className="space-y-1">
-            <SidebarItem
-              label={t("nav.translation")}
-              icon={<Languages size={16} />}
-              active={activePage === "translation"}
-              onClick={nav.toTranslation}
-            />
+          <div className="space-y-1" data-testid="sidebar-tools-list">
             <SidebarItem
               label={t("nav.style")}
               icon={<Wand2 size={16} />}
@@ -737,12 +729,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<FileInput size={16} />}
               active={activePage === "import"}
               onClick={() => nav.toImport()}
-            />
-            <SidebarItem
-              label={t("nav.radar")}
-              icon={<TrendingUp size={16} />}
-              active={activePage === "radar"}
-              onClick={nav.toRadar}
             />
             <SidebarItem
               label={t("nav.doctor")}
