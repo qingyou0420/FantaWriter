@@ -6,9 +6,10 @@ import { BaseAgent, type AgentContext } from "../agents/base.js";
 const chatCompletionMock = vi.hoisted(() => vi.fn());
 const guardedPiStreamMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../llm/provider.js", () => ({
-  chatCompletion: chatCompletionMock,
-}));
+vi.mock("../llm/provider.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../llm/provider.js")>();
+  return { ...actual, chatCompletion: chatCompletionMock };
+});
 
 vi.mock("../agent/pi-stream.js", async () => {
   const actual = await vi.importActual<typeof import("../agent/pi-stream.js")>("../agent/pi-stream.js");
@@ -205,5 +206,8 @@ describe("Pi worker harness", () => {
 
     expect(result).toEqual({ label: "母亲", status: "等待退烧药" });
     expect(guardedPiStreamMock).toHaveBeenCalledTimes(1);
+    expect(guardedPiStreamMock.mock.calls[0]?.[3]).toMatchObject({
+      idleTimeoutMs: 180_000,
+    });
   });
 });

@@ -33,6 +33,8 @@ import {
   abortAgentSession,
   bindCachedAgentBookId,
   runAgentSession,
+  detectPseudoToolText,
+  formatPseudoToolFailureMessage,
   resolveServicePreset,
   resolveServiceProviderFamily,
   resolveServiceModelsBaseUrl,
@@ -1082,6 +1084,17 @@ function validateAgentActionExecution(args: {
   }
 
   return undefined;
+}
+
+function validatePseudoToolProse(args: {
+  readonly responseText: string;
+  readonly collectedToolExecs: ReadonlyArray<CollectedToolExec>;
+  readonly language?: StudioLanguage;
+}): string | undefined {
+  const marker = detectPseudoToolText(args.responseText);
+  if (!marker) return undefined;
+  if (hasSuccessfulToolExec(args.collectedToolExecs, marker.toolName)) return undefined;
+  return formatPseudoToolFailureMessage(marker, args.language === "en" ? "en" : "zh");
 }
 
 type AgentFailureKind = "busy" | "llm" | "internal" | "unknown";
@@ -5658,6 +5671,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           instruction,
           agentBookId,
           requestedIntent,
+          collectedToolExecs,
+          language,
+        }) ?? validatePseudoToolProse({
+          responseText: result.responseText,
           collectedToolExecs,
           language,
         });

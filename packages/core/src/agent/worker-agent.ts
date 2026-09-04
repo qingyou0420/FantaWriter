@@ -19,7 +19,7 @@ import {
   type LLMResponse,
   type OnStreamProgress,
 } from "../llm/provider.js";
-import { guardedPiStream } from "./pi-stream.js";
+import { guardedPiStream, resolveGuardedPiStreamDeadline } from "./pi-stream.js";
 import { isLlmStubEnabled, stubChatCompletion } from "./llm-stub.js";
 
 export interface WorkerAgentOptions {
@@ -355,7 +355,17 @@ export async function runWorkerAgentTool<TParameters extends TSchema>(
           ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
           ...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
           signal: combineSignals(streamOptions?.signal, options.signal),
-        }),
+        }, resolveGuardedPiStreamDeadline(context, {
+          ...(options.firstEventTimeoutMs !== undefined
+            ? { firstEventTimeoutMs: options.firstEventTimeoutMs }
+            : {}),
+          ...(options.streamIdleTimeoutMs !== undefined
+            ? { idleTimeoutMs: options.streamIdleTimeoutMs }
+            : {}),
+          ...(options.overallTimeoutMs !== undefined
+            ? { overallTimeoutMs: options.overallTimeoutMs }
+            : {}),
+        })),
     getApiKey: () => client._apiKey,
   });
   const abortAgent = () => agent.abort();

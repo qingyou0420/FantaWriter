@@ -21,7 +21,9 @@ describe("buildAgentSystemPrompt", () => {
       expect(prompt).toContain("当前正在处理书籍「my-book」");
       expect(prompt).toContain("sub_agent");
       expect(prompt).toContain("writer");
-      expect(prompt).toContain("修改设定或角色卡时先读取权威文件");
+      expect(prompt).toContain("修改设定、骨架或角色卡时先读取权威文件");
+      expect(prompt).toContain("write_truth_file");
+      expect(prompt).toContain("（tool_write_truth_file: …）");
     });
 
     it("English plain chat also has no production tool instructions", () => {
@@ -525,6 +527,11 @@ describe("buildAgentSystemPrompt", () => {
     it("forbids claiming side effects without successful tool execution", () => {
       expect(buildAgentSystemPrompt(null, "zh", "chat")).toContain("不要虚报工具执行结果");
       expect(buildAgentSystemPrompt(null, "en", "chat")).toContain("do not claim side effects without successful tool results");
+    });
+
+    it("forbids printing （tool_…） prose markers instead of native tool calls", () => {
+      expect(buildAgentSystemPrompt("my-book", "zh", "book")).toContain("不要在正文里书写（tool_write_truth_file: …）");
+      expect(buildAgentSystemPrompt("my-book", "en", "book")).toContain("Never print a prose marker");
     });
 
     it("treats tool calls as the answer instead of encouraging filler before tools", () => {
