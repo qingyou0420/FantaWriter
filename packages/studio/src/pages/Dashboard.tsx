@@ -142,6 +142,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: shortsData, refetch: refetchShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
   const shorts = shortsData?.shorts ?? [];
+  const bookDataVersion = useChatStore((s) => s.bookDataVersion);
   const writingBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
   const serviceStoreServices = useServiceStore((s) => s.services);
   const fetchServices = useServiceStore((s) => s.fetchServices);
@@ -159,6 +160,10 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
       void refetchShorts();
     }
   }, [refetch, refetchShorts, sse.messages]);
+
+  useEffect(() => {
+    void refetchShorts();
+  }, [bookDataVersion, refetchShorts]);
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-32 space-y-4">

@@ -2554,6 +2554,14 @@ describe("createStudioServer daemon lifecycle", () => {
       contentKind: "manuscript",
       content: expect.stringContaining("终稿"),
     });
+
+    const encoded = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}`);
+    expect(encoded.status).toBe(200);
+    await expect(encoded.json()).resolves.toMatchObject({
+      id: "明日来信",
+      contentKind: "manuscript",
+      content: expect.stringContaining("终稿"),
+    });
   });
 
   it("seeds Chinese short-fiction stages and advances them from live progress", async () => {
