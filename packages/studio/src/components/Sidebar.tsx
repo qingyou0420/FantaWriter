@@ -3,7 +3,9 @@ import { fetchJson, useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
 import {
   applyBookCollectionEvent,
+  applyShortCollectionEvent,
   removeBookFromCollection,
+  removeShortFromCollection,
   shouldRefetchBookCollections,
   shouldRefetchDaemonStatus,
 } from "../hooks/use-book-activity";
@@ -33,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { SIDEBAR_CREATE_ITEM_KEYS } from "../lib/sidebar-create-items";
+import { deleteStudioShortWork } from "../lib/short-api";
 import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import {
   Settings,
@@ -156,22 +159,31 @@ export function Sidebar({ nav, activePage, sse, t }: {
     const recent = sse.messages.at(-1);
     if (!recent) return;
     if (shouldRefetchBookCollections(recent)) {
-      let appliedIncrementally = false;
+      let appliedBooks = false;
+      let appliedShorts = false;
       mutateBooks((current) => {
         const updatedBooks = applyBookCollectionEvent(current?.books ?? [], recent);
         if (!updatedBooks) return current;
-        appliedIncrementally = true;
+        appliedBooks = true;
         return { books: updatedBooks };
       });
-      if (appliedIncrementally) {
-        return;
+      mutateShorts((current) => {
+        const updatedShorts = applyShortCollectionEvent(current?.shorts ?? [], recent);
+        if (!updatedShorts) return current;
+        appliedShorts = true;
+        return { shorts: updatedShorts };
+      });
+      if (!appliedBooks) {
+        refetchBooks();
       }
-      refetchBooks();
+      if (!appliedShorts) {
+        void refetchShorts();
+      }
     }
     if (shouldRefetchDaemonStatus(recent)) {
       refetchDaemon();
     }
-  }, [mutateBooks, refetchBooks, refetchDaemon, sse.messages]);
+  }, [mutateBooks, mutateShorts, refetchBooks, refetchDaemon, refetchShorts, sse.messages]);
 
   // bookDataVersion 变化（外部数据信号）时才重拉当前已展开书的 session 列表；
   // 展开/折叠本身不触发请求（展开由 toggleBook 驱动，已带"首次加载"判断）。
@@ -323,11 +335,14 @@ export function Sidebar({ nav, activePage, sse, t }: {
     if (!deleteShortTarget) return;
     const shortId = deleteShortTarget.id;
     mutateShorts((current) => current
-      ? { shorts: current.shorts.filter((short) => short.id !== shortId) }
+      ? { shorts: removeShortFromCollection(current.shorts, shortId) }
       : current);
     setDeleteShortTarget(null);
+    if (activePage === `short:${shortId}`) {
+      nav.toDashboard();
+    }
     try {
-      await fetchJson(`/shorts/${encodeURIComponent(shortId)}`, { method: "DELETE" });
+      await deleteStudioShortWork(shortId);
       bumpBookDataVersion();
     } catch {
       void refetchShorts();

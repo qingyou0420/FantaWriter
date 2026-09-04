@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { SSEMessage } from "./use-sse";
 import {
   applyBookCollectionEvent,
+  applyShortCollectionEvent,
   deriveActiveBookIds,
   deriveBookActivity,
   removeBookFromCollection,
+  removeShortFromCollection,
   shouldRefetchBookCollections,
   shouldRefetchBookView,
   shouldRefetchDaemonStatus,
@@ -144,5 +146,21 @@ describe("applyBookCollectionEvent", () => {
     ]);
     expect(applyBookCollectionEvent(books, msg("book:deleted", { bookId: "missing" }, 2))).toEqual(books);
     expect(applyBookCollectionEvent(books, msg("book:deleted", {}, 3))).toBeNull();
+  });
+
+  it("removes a deleted short including Chinese ids like 明日来信", () => {
+    const shorts = [
+      { id: "elevator", title: "电梯多一层" },
+      { id: "明日来信", title: "明日来信" },
+    ];
+
+    expect(removeShortFromCollection(shorts, "明日来信")).toEqual([
+      { id: "elevator", title: "电梯多一层" },
+    ]);
+    expect(applyShortCollectionEvent(shorts, msg("short:deleted", { shortId: "明日来信" }, 1))).toEqual([
+      { id: "elevator", title: "电梯多一层" },
+    ]);
+    expect(applyShortCollectionEvent(shorts, msg("short:deleted", { shortId: "already-gone" }, 2))).toEqual(shorts);
+    expect(applyShortCollectionEvent(shorts, msg("book:deleted", { bookId: "alpha" }, 3))).toBeNull();
   });
 });

@@ -7,7 +7,8 @@ import type { SSEMessage } from "../hooks/use-sse";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
-import { deriveActiveBookIds, removeBookFromCollection, shouldRefetchBookCollections } from "../hooks/use-book-activity";
+import { deriveActiveBookIds, removeBookFromCollection, removeShortFromCollection, shouldRefetchBookCollections } from "../hooks/use-book-activity";
+import { deleteStudioShortWork } from "../lib/short-api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { StudioShortSummary } from "../shared/short-works";
 import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
@@ -159,7 +160,7 @@ function ShortMenu({ short, nav, t, onDelete, onOpenChange }: {
   const handleDelete = async () => {
     setConfirmDelete(false);
     setOpen(false);
-    await fetchJson(`/shorts/${encodeURIComponent(short.id)}`, { method: "DELETE" });
+    await deleteStudioShortWork(short.id);
     onDelete();
   };
 
@@ -403,7 +404,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     t={t}
                     onDelete={() => {
                       mutateShorts((current) => current
-                        ? { shorts: current.shorts.filter((item) => item.id !== short.id) }
+                        ? { shorts: removeShortFromCollection(current.shorts, short.id) }
                         : current);
                       bumpBookDataVersion();
                     }}

@@ -150,14 +150,16 @@ export async function fetchJson<T>(
 
   const fetchImpl = deps?.fetchImpl ?? fetch;
   const res = await fetchImpl(url, init);
+  const method = String(init.method ?? "GET").toUpperCase();
 
   if (!res.ok) {
     const error = await readError(res);
     if (error.code === "BOOK_BUSY") emitBookBusy(error);
+    if (method === "DELETE" && (res.status === 404 || error.code === "NOT_FOUND")) {
+      invalidateApiPaths(deriveInvalidationPaths(path));
+    }
     throw error;
   }
-
-  const method = String(init.method ?? "GET").toUpperCase();
 
   if (res.status === 204) {
     if (method === "DELETE") {

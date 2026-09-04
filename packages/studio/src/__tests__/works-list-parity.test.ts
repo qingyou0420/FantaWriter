@@ -167,6 +167,23 @@ describe("works list long/short parity", () => {
 });
 
 describe("works list delete refresh", () => {
+  it("drops a deleted short like 明日来信 from sidebar and dashboard via short DELETE", () => {
+    const sidebar = read("src/components/Sidebar.tsx");
+    const dashboard = read("src/pages/Dashboard.tsx");
+
+    expect(sidebar).toMatch(/deleteStudioShortWork/);
+    expect(sidebar).toMatch(/removeShortFromCollection/);
+    expect(sidebar).toMatch(/applyShortCollectionEvent/);
+    expect(sidebar).toMatch(/handleDeleteShortConfirm/);
+    expect(sidebar).not.toMatch(/short_fiction_created/);
+    expect(sidebar).toMatch(/shortsData\?\.shorts/);
+
+    expect(dashboard).toMatch(/deleteStudioShortWork/);
+    expect(dashboard).toMatch(/removeShortFromCollection/);
+    expect(dashboard).not.toMatch(/\/books\/\$\{short/);
+    expect(dashboard).not.toMatch(/\/books\/\$\{encodeURIComponent\(short/);
+  });
+
   it("drops a deleted book from sidebar and dashboard lists immediately", () => {
     const sidebar = read("src/components/Sidebar.tsx");
     const dashboard = read("src/pages/Dashboard.tsx");

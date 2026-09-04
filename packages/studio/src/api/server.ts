@@ -166,6 +166,7 @@ import {
 import { summarizeToolResult } from "../shared/tool-result.js";
 import {
   computeStudioShortAnalytics,
+  decodeStoryId,
   deleteStudioShort,
   exportStudioShortManuscript,
   listStudioShorts,
@@ -6921,7 +6922,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   });
 
   app.get("/api/v1/shorts/:id/analytics", async (c) => {
-    const id = c.req.param("id");
+    const id = decodeStoryId(c.req.param("id"));
     if (!isSafeBookId(id)) {
       return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
     }
@@ -6933,7 +6934,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   });
 
   app.get("/api/v1/shorts/:id/export", async (c) => {
-    const id = c.req.param("id");
+    const id = decodeStoryId(c.req.param("id"));
     if (!isSafeBookId(id)) {
       return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
     }
@@ -6962,7 +6963,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   });
 
   app.put("/api/v1/shorts/:id", async (c) => {
-    const id = c.req.param("id");
+    const id = decodeStoryId(c.req.param("id"));
     if (!isSafeBookId(id)) {
       return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
     }
@@ -6988,14 +6989,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   });
 
   app.delete("/api/v1/shorts/:id", async (c) => {
-    const id = c.req.param("id");
+    const id = decodeStoryId(c.req.param("id"));
     if (!isSafeBookId(id)) {
       return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
     }
     try {
       const deleted = await deleteStudioShort(root, id);
       if (!deleted) {
-        return c.json({ error: { code: "NOT_FOUND", message: `Short "${id}" not found` } }, 404);
+        return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
       }
       broadcast("short:deleted", { shortId: id });
       return c.json({ ok: true, shortId: id });
@@ -7007,7 +7008,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   });
 
   app.get("/api/v1/shorts/:id", async (c) => {
-    const id = c.req.param("id");
+    const id = decodeStoryId(c.req.param("id"));
     if (!isSafeBookId(id)) {
       throw new ApiError(400, "INVALID_ID", `Invalid short id: "${id}"`);
     }

@@ -58,6 +58,12 @@ function getBookId(message: SSEMessage): string | null {
   return typeof data?.bookId === "string" ? data.bookId : null;
 }
 
+function getShortId(message: SSEMessage): string | null {
+  const data = message.data as { shortId?: unknown; bookId?: unknown } | null;
+  if (typeof data?.shortId === "string") return data.shortId;
+  return typeof data?.bookId === "string" ? data.bookId : null;
+}
+
 function getBookSummary(message: SSEMessage): SidebarBookSummary | null {
   const data = message.data as { book?: unknown } | null;
   const book = data?.book;
@@ -163,6 +169,13 @@ export function removeBookFromCollection<T extends { readonly id: string }>(
   return books.filter((book) => book.id !== bookId);
 }
 
+export function removeShortFromCollection<T extends { readonly id: string }>(
+  shorts: ReadonlyArray<T>,
+  shortId: string,
+): ReadonlyArray<T> {
+  return shorts.filter((short) => short.id !== shortId);
+}
+
 export function applyBookCollectionEvent(
   books: ReadonlyArray<SidebarBookSummary>,
   message: SSEMessage | undefined,
@@ -183,6 +196,30 @@ export function applyBookCollectionEvent(
     const bookId = getBookId(message);
     if (!bookId) return null;
     return removeBookFromCollection(books, bookId);
+  }
+
+  return null;
+}
+
+export function applyShortCollectionEvent<T extends { readonly id: string }>(
+  shorts: ReadonlyArray<T>,
+  message: SSEMessage | undefined,
+): ReadonlyArray<T> | null {
+  if (!message) return null;
+
+  if (message.event === "short:deleted") {
+    const shortId = getShortId(message);
+    if (!shortId) return null;
+    return removeShortFromCollection(shorts, shortId);
+  }
+
+  if (message.event === "short:updated") {
+    const data = message.data as { short?: T } | null;
+    const short = data?.short;
+    if (!short || typeof short.id !== "string") return null;
+    const existingIndex = shorts.findIndex((candidate) => candidate.id === short.id);
+    if (existingIndex < 0) return [...shorts, short];
+    return shorts.map((candidate, index) => index === existingIndex ? short : candidate);
   }
 
   return null;
