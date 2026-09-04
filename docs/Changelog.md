@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.11
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.11.exe`（#82 书聊识别 kimi 等模型把（tool_write_truth_file: …）写成正文假标记，自动重试或给出可恢复中文错误；交互流 idle 与长工具调用更稳）。
+
 ## 2.0.10
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.10.exe`（#80 修复自定义服务加载时把 custom:zenmux 裁成 custom 导致无 baseUrl）。
