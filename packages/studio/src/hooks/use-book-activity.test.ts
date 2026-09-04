@@ -162,5 +162,9 @@ describe("applyBookCollectionEvent", () => {
     ]);
     expect(applyShortCollectionEvent(shorts, msg("short:deleted", { shortId: "already-gone" }, 2))).toEqual(shorts);
     expect(applyShortCollectionEvent(shorts, msg("book:deleted", { bookId: "alpha" }, 3))).toBeNull();
+    expect(applyShortCollectionEvent([], msg("short:updated", {
+      shortId: "明日来信",
+      short: { id: "明日来信", title: "明日来信" },
+    }, 4))).toBeNull();
   });
 });

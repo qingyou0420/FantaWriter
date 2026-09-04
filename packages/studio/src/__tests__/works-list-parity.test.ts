@@ -174,11 +174,12 @@ describe("works list delete refresh", () => {
     expect(sidebar).toMatch(/deleteStudioShortWork/);
     expect(sidebar).toMatch(/removeShortFromCollection/);
     expect(sidebar).toMatch(/applyShortCollectionEvent/);
+    expect(sidebar).toMatch(/selectWorksListShorts/);
     expect(sidebar).toMatch(/handleDeleteShortConfirm/);
     expect(sidebar).not.toMatch(/short_fiction_created/);
-    expect(sidebar).toMatch(/shortsData\?\.shorts/);
 
     expect(dashboard).toMatch(/deleteStudioShortWork/);
+    expect(dashboard).toMatch(/selectWorksListShorts/);
     expect(dashboard).toMatch(/removeShortFromCollection/);
     expect(dashboard).not.toMatch(/\/books\/\$\{short/);
     expect(dashboard).not.toMatch(/\/books\/\$\{encodeURIComponent\(short/);

@@ -17,3 +17,13 @@ export interface StudioShortDetail extends StudioShortSummary {
   readonly content: string;
   readonly contentKind: StudioShortContentKind;
 }
+
+/**
+ * 「我的创作」 shorts come only from GET /shorts (disk under shorts/).
+ * Session jsonl / task short_fiction_created details must not appear here.
+ */
+export function selectWorksListShorts(
+  payload: { readonly shorts?: ReadonlyArray<StudioShortSummary> } | null | undefined,
+): ReadonlyArray<StudioShortSummary> {
+  return payload?.shorts ?? [];
+}

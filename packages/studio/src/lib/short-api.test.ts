@@ -1,11 +1,32 @@
 import { describe, expect, it, vi } from "vitest";
 import { StudioApiError } from "../hooks/use-api";
+import { selectWorksListShorts } from "../shared/short-works";
 import {
   deleteStudioShortWork,
   encodeShortApiPath,
   isShortAlreadyGoneError,
   shortCollectionInvalidationPaths,
 } from "./short-api";
+
+describe("works list short source", () => {
+  it("reads only GET /shorts and ignores session/task short_fiction_created leftovers", () => {
+    expect(selectWorksListShorts({ shorts: [] })).toEqual([]);
+    expect(selectWorksListShorts(null)).toEqual([]);
+    expect(selectWorksListShorts({
+      shorts: [{
+        id: "elevator",
+        title: "电梯多一层",
+        status: "outlining",
+        manuscriptPath: "shorts/elevator",
+        kind: "short",
+      }],
+    }).map((item) => item.id)).toEqual(["elevator"]);
+    expect(selectWorksListShorts({
+      sessions: [{ details: { kind: "short_fiction_created", storyId: "明日来信" } }],
+      tasks: [{ kind: "short_fiction_created", storyId: "明日来信" }],
+    } as { shorts?: never; sessions: unknown; tasks: unknown })).toEqual([]);
+  });
+});
 
 describe("short API paths", () => {
   it("encodes Chinese short ids the same way as the reader", () => {

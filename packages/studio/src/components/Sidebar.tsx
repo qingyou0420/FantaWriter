@@ -10,7 +10,7 @@ import {
   shouldRefetchDaemonStatus,
 } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
-import type { StudioShortSummary } from "../shared/short-works";
+import { selectWorksListShorts, type StudioShortSummary } from "../shared/short-works";
 import { tr } from "../lib/app-language";
 import {
   forgetBookCreateSessionIfMatches,
@@ -139,7 +139,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const [myBooksExpanded, setMyBooksExpanded] = useState(true);
 
   const books = data?.books ?? [];
-  const shorts = shortsData?.shorts ?? [];
+  const shorts = selectWorksListShorts(shortsData);
   const projectChatKey = "__null__";
   const projectChatSessions = useMemo(
     () =>

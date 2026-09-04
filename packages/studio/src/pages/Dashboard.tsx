@@ -10,7 +10,7 @@ import { useColors } from "../hooks/use-colors";
 import { deriveActiveBookIds, removeBookFromCollection, removeShortFromCollection, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 import { deleteStudioShortWork } from "../lib/short-api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import type { StudioShortSummary } from "../shared/short-works";
+import { selectWorksListShorts, type StudioShortSummary } from "../shared/short-works";
 import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import { tr } from "../lib/app-language";
 import {
@@ -241,7 +241,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   };
   const { data, loading, error, refetch, mutate } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: shortsData, refetch: refetchShorts, mutate: mutateShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
-  const shorts = shortsData?.shorts ?? [];
+  const shorts = selectWorksListShorts(shortsData);
   const bookDataVersion = useChatStore((s) => s.bookDataVersion);
   const bumpBookDataVersion = useChatStore((s) => s.bumpBookDataVersion);
   const writingBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);

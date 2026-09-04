@@ -218,7 +218,8 @@ export function applyShortCollectionEvent<T extends { readonly id: string }>(
     const short = data?.short;
     if (!short || typeof short.id !== "string") return null;
     const existingIndex = shorts.findIndex((candidate) => candidate.id === short.id);
-    if (existingIndex < 0) return [...shorts, short];
+    // Never insert from SSE/session metadata. New rows appear only after GET /shorts.
+    if (existingIndex < 0) return null;
     return shorts.map((candidate, index) => index === existingIndex ? short : candidate);
   }
 

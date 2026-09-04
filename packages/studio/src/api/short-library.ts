@@ -94,6 +94,7 @@ async function loadShortSummary(root: string, storyId: string): Promise<StudioSh
   };
 }
 
+/** Disk-only: shorts/<id>/ directories. Session/task artifacts are not a source. */
 export async function listStudioShorts(root: string): Promise<StudioShortSummary[]> {
   let entries: string[] = [];
   try {
