@@ -82,6 +82,8 @@ export function formatLlmStreamTimeoutMessage(
     readonly model?: string;
     readonly service?: string;
     readonly language?: "zh" | "en";
+    /** Stream died after a tool argument started — execute never ran. */
+    readonly incompleteTool?: boolean;
   },
 ): string {
   const language = context?.language === "en" ? "en" : "zh";
@@ -96,22 +98,29 @@ export function formatLlmStreamTimeoutMessage(
   const stage = error instanceof LLMStreamInactivityError
     ? error.stage
     : inferTimeoutStageFromMessage(error instanceof Error ? error.message : String(error));
+  const incompleteTool = Boolean(context?.incompleteTool);
   if (language === "en") {
+    const retry = incompleteTool
+      ? " The in-flight tool call did not finish, so no canon/truth file was written. Retry this turn."
+      : "";
     if (stage === "first-event") {
-      return `${who} produced no stream event within ${seconds}s. Check this service's timeout or stream compatibility, or switch models.`;
+      return `${who} produced no stream event within ${seconds}s. Check this service's timeout or stream compatibility, or switch models.${retry}`;
     }
     if (stage === "overall") {
-      return `${who} exceeded the overall ${seconds}s call limit. Check this service's timeout or stream compatibility, or switch models.`;
+      return `${who} exceeded the overall ${seconds}s call limit. Check this service's timeout or stream compatibility, or switch models.${retry}`;
     }
-    return `${who} produced no useful stream content for ${seconds}s. Check this service's timeout or stream compatibility, or switch models.`;
+    return `${who} produced no useful stream content for ${seconds}s. Check this service's timeout or stream compatibility, or switch models.${retry}`;
   }
+  const retry = incompleteTool
+    ? "当前工具调用没有完成，设定文件尚未写入。请重试。"
+    : "";
   if (stage === "first-event") {
-    return `${who} 在 ${seconds} 秒内没有开始输出。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。`;
+    return `${who} 在 ${seconds} 秒内没有开始输出。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。${retry}`;
   }
   if (stage === "overall") {
-    return `${who} 整次调用超过 ${seconds} 秒仍未完成。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。`;
+    return `${who} 整次调用超过 ${seconds} 秒仍未完成。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。${retry}`;
   }
-  return `${who} 已超过 ${seconds} 秒没有新的有效内容（思考/正文/工具调用）。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。`;
+  return `${who} 已超过 ${seconds} 秒没有新的有效内容（思考/正文/工具调用）。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。${retry}`;
 }
 
 function readTimeoutSecondsFromMessage(message: string): number {
@@ -216,6 +225,11 @@ function isModelTokenStreamEvent(event: { readonly type?: string }): boolean {
     || type === "tool_call";
 }
 
+function isToolArgumentStreamEvent(event: { readonly type?: string }): boolean {
+  const type = event.type ?? "";
+  return type === "toolcall_delta" || type === "tool_call" || type === "toolcall_start";
+}
+
 function readPositiveTimeout(value: string | number | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
@@ -232,6 +246,7 @@ export function guardAssistantMessageStream<TApi extends PiApi>(
 
   void (async () => {
     let terminalSeen = false;
+    let sawToolStream = false;
     try {
       const upstream = start(deadline.signal);
       const iterator = upstream[Symbol.asyncIterator]();
@@ -241,6 +256,7 @@ export function guardAssistantMessageStream<TApi extends PiApi>(
         const event = next.value;
         if (isModelTokenStreamEvent(event)) deadline.activity();
         else deadline.opened();
+        if (isToolArgumentStreamEvent(event)) sawToolStream = true;
         terminalSeen ||= event.type === "done" || event.type === "error";
         guarded.push(event);
       }
@@ -266,6 +282,7 @@ export function guardAssistantMessageStream<TApi extends PiApi>(
           ? formatLlmStreamTimeoutMessage(resolved, {
               model: model.name || model.id,
               service: String(model.provider),
+              incompleteTool: sawToolStream,
             })
           : resolved instanceof Error ? resolved.message : String(resolved),
         timestamp: Date.now(),

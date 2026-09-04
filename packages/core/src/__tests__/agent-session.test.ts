@@ -221,6 +221,7 @@ import {
   isTerminalProductionToolName,
   runAgentSession,
 } from "../agent/agent-session.js";
+import { resolveGuardedPiStreamDeadline } from "../agent/pi-stream.js";
 import {
   appendManualSessionMessages,
   appendTranscriptEvent,
@@ -1293,6 +1294,9 @@ describe("runAgentSession cache — bookId switch", () => {
       "ls",
       "use_skill",
     ]);
+    expect(resolveGuardedPiStreamDeadline({ tools: agentInstances[0].state.tools })).toEqual({
+      idleTimeoutMs: 180_000,
+    });
   });
 
   it("suppresses book-mutating production tools while a background task runs and restores them on flag change", async () => {

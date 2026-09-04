@@ -205,5 +205,8 @@ describe("Pi worker harness", () => {
 
     expect(result).toEqual({ label: "母亲", status: "等待退烧药" });
     expect(guardedPiStreamMock).toHaveBeenCalledTimes(1);
+    expect(guardedPiStreamMock.mock.calls[0]?.[3]).toMatchObject({
+      idleTimeoutMs: 180_000,
+    });
   });
 });

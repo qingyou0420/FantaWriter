@@ -87,7 +87,7 @@ import {
   type ActivatedSkillGuidance,
 } from "./skill-tool.js";
 import { opaqueConversationId, runWithAgentTrajectory } from "../llm/agent-trajectory.js";
-import { guardedPiStream } from "./pi-stream.js";
+import { guardedPiStream, resolveGuardedPiStreamDeadline } from "./pi-stream.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1225,7 +1225,12 @@ async function runAgentSessionUnlocked(
           return localAssistantStopStream(streamModel);
         }
         if (isLlmStubEnabled()) return stubAgentStream(streamModel, context);
-        return guardedPiStream(streamModel, context, options);
+        return guardedPiStream(
+          streamModel,
+          context,
+          options,
+          resolveGuardedPiStreamDeadline(context),
+        );
       },
       getApiKey: (provider: string) => {
         if (config.apiKey) return config.apiKey;
