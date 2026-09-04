@@ -20,8 +20,10 @@ describe("sidebar create block", () => {
 
     expect(SIDEBAR_CREATE_ITEM_KEYS).toEqual(["nav.createNovel", "nav.createShort"]);
     expect(createBlock).toMatch(/sidebar-create-list/);
+    expect(createBlock).toMatch(/SIDEBAR_CREATE_ITEM_KEYS/);
+    expect(createBlock).toMatch(/sidebar-create-novel/);
+    expect(createBlock).toMatch(/sidebar-create-short/);
     expect(createBlock).toMatch(/nav\.createNovel/);
-    expect(createBlock).toMatch(/nav\.createShort/);
     expect(createBlock).not.toMatch(/nav\.createScript/);
     expect(createBlock).not.toMatch(/nav\.createStoryboard/);
     expect(createBlock).not.toMatch(/nav\.createInteractiveFilm/);

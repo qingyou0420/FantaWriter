@@ -2563,16 +2563,16 @@ describe("createStudioServer daemon lifecycle", () => {
       content: expect.stringContaining("终稿"),
     });
 
-    const exported = await app.request("http://localhost/api/v1/shorts/明日来信/export?format=txt");
+    const exported = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}/export?format=txt`);
     expect(exported.status).toBe(200);
     expect(exported.headers.get("content-type")).toContain("text/plain");
     expect(await exported.text()).toContain("终稿");
 
-    const exportedMd = await app.request("http://localhost/api/v1/shorts/明日来信/export?format=md");
+    const exportedMd = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}/export?format=md`);
     expect(exportedMd.status).toBe(200);
     expect(await exportedMd.text()).toContain("# 明日来信");
 
-    const analytics = await app.request("http://localhost/api/v1/shorts/明日来信/analytics");
+    const analytics = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}/analytics`);
     expect(analytics.status).toBe(200);
     await expect(analytics.json()).resolves.toMatchObject({
       kind: "short",
@@ -2580,7 +2580,7 @@ describe("createStudioServer daemon lifecycle", () => {
       statusDistribution: { completed: 1 },
     });
 
-    const updated = await app.request("http://localhost/api/v1/shorts/明日来信", {
+    const updated = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "明日已回信", chapterCount: 10 }),
@@ -2594,7 +2594,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const traversal = await app.request("http://localhost/api/v1/shorts/..%2Fbooks%2Fdemo-book", { method: "DELETE" });
     expect(traversal.status).toBe(400);
 
-    const removed = await app.request("http://localhost/api/v1/shorts/明日来信", { method: "DELETE" });
+    const removed = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}`, { method: "DELETE" });
     expect(removed.status).toBe(200);
     await expect(removed.json()).resolves.toEqual({ ok: true, shortId: "明日来信" });
     await expect(access(join(root, "shorts", "明日来信"))).rejects.toThrow();

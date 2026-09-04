@@ -6920,6 +6920,92 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     return c.json({ shorts });
   });
 
+  app.get("/api/v1/shorts/:id/analytics", async (c) => {
+    const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
+    }
+    const analytics = await computeStudioShortAnalytics(root, id);
+    if (!analytics) {
+      return c.json({ error: { code: "NOT_FOUND", message: `Short "${id}" not found` } }, 404);
+    }
+    return c.json(analytics);
+  });
+
+  app.get("/api/v1/shorts/:id/export", async (c) => {
+    const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
+    }
+    const format = (c.req.query("format") ?? "txt") as string;
+    if (format !== "txt" && format !== "md") {
+      return c.json({ error: { code: "INVALID_FORMAT", message: "Short export format must be txt or md" } }, 400);
+    }
+    try {
+      const artifact = await exportStudioShortManuscript(root, id, format);
+      if (!artifact) {
+        return c.json({ error: { code: "NOT_FOUND", message: `Short "${id}" not found` } }, 404);
+      }
+      return new Response(artifact.payload, {
+        headers: {
+          "Content-Type": artifact.contentType,
+          "Content-Disposition": attachmentDisposition(artifact.fileName),
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "No manuscript to export") {
+        return c.json({ error: { code: "NO_MANUSCRIPT", message } }, 409);
+      }
+      return c.json({ error: { code: "EXPORT_FAILED", message } }, 500);
+    }
+  });
+
+  app.put("/api/v1/shorts/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
+    }
+    const updates = await c.req.json<{
+      title?: string;
+      chapterCount?: number;
+      direction?: string;
+    }>().catch(() => ({}));
+    try {
+      const short = await updateStudioShort(root, id, updates);
+      if (!short) {
+        return c.json({ error: { code: "NOT_FOUND", message: `Short "${id}" not found` } }, 404);
+      }
+      broadcast("short:updated", { shortId: id, short });
+      return c.json({ ok: true, short });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "title is required" || message.includes("chapterCount")) {
+        return c.json({ error: { code: "INVALID_SHORT_UPDATE", message } }, 400);
+      }
+      return c.json({ error: { code: "SHORT_UPDATE_FAILED", message } }, 500);
+    }
+  });
+
+  app.delete("/api/v1/shorts/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      return c.json({ error: { code: "INVALID_ID", message: `Invalid short id: "${id}"` } }, 400);
+    }
+    try {
+      const deleted = await deleteStudioShort(root, id);
+      if (!deleted) {
+        return c.json({ error: { code: "NOT_FOUND", message: `Short "${id}" not found` } }, 404);
+      }
+      broadcast("short:deleted", { shortId: id });
+      return c.json({ ok: true, shortId: id });
+    } catch (error) {
+      return c.json({
+        error: { code: "SHORT_DELETE_FAILED", message: error instanceof Error ? error.message : String(error) },
+      }, 500);
+    }
+  });
+
   app.get("/api/v1/shorts/:id", async (c) => {
     const id = c.req.param("id");
     if (!isSafeBookId(id)) {
@@ -6930,93 +7016,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       throw new ApiError(404, "NOT_FOUND", `Short "${id}" not found`);
     }
     return c.json(short);
-  });
-
-  app.get("/api/v1/shorts/:id/analytics", async (c) => {
-    const id = c.req.param("id");
-    if (!isSafeBookId(id)) {
-      throw new ApiError(400, "INVALID_ID", `Invalid short id: "${id}"`);
-    }
-    const analytics = await computeStudioShortAnalytics(root, id);
-    if (!analytics) {
-      throw new ApiError(404, "NOT_FOUND", `Short "${id}" not found`);
-    }
-    return c.json(analytics);
-  });
-
-  app.get("/api/v1/shorts/:id/export", async (c) => {
-    const id = c.req.param("id");
-    if (!isSafeBookId(id)) {
-      throw new ApiError(400, "INVALID_ID", `Invalid short id: "${id}"`);
-    }
-    const format = (c.req.query("format") ?? "txt") as string;
-    if (format !== "txt" && format !== "md") {
-      throw new ApiError(400, "INVALID_FORMAT", "Short export format must be txt or md");
-    }
-    try {
-      const artifact = await exportStudioShortManuscript(root, id, format);
-      if (!artifact) {
-        throw new ApiError(404, "NOT_FOUND", `Short "${id}" not found`);
-      }
-      return new Response(artifact.payload, {
-        headers: {
-          "Content-Type": artifact.contentType,
-          "Content-Disposition": attachmentDisposition(artifact.fileName),
-        },
-      });
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      const message = error instanceof Error ? error.message : String(error);
-      if (message === "No manuscript to export") {
-        throw new ApiError(409, "NO_MANUSCRIPT", message);
-      }
-      throw new ApiError(500, "EXPORT_FAILED", message);
-    }
-  });
-
-  app.put("/api/v1/shorts/:id", async (c) => {
-    const id = c.req.param("id");
-    if (!isSafeBookId(id)) {
-      throw new ApiError(400, "INVALID_ID", `Invalid short id: "${id}"`);
-    }
-    const updates = await c.req.json<{
-      title?: string;
-      chapterCount?: number;
-      direction?: string;
-    }>().catch(() => ({}));
-    try {
-      const short = await updateStudioShort(root, id, updates);
-      if (!short) {
-        throw new ApiError(404, "NOT_FOUND", `Short "${id}" not found`);
-      }
-      broadcast("short:updated", { shortId: id, short });
-      return c.json({ ok: true, short });
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      const message = error instanceof Error ? error.message : String(error);
-      if (message === "title is required" || message.includes("chapterCount")) {
-        throw new ApiError(400, "INVALID_SHORT_UPDATE", message);
-      }
-      throw new ApiError(500, "SHORT_UPDATE_FAILED", message);
-    }
-  });
-
-  app.delete("/api/v1/shorts/:id", async (c) => {
-    const id = c.req.param("id");
-    if (!isSafeBookId(id)) {
-      throw new ApiError(400, "INVALID_ID", `Invalid short id: "${id}"`);
-    }
-    try {
-      const deleted = await deleteStudioShort(root, id);
-      if (!deleted) {
-        throw new ApiError(404, "NOT_FOUND", `Short "${id}" not found`);
-      }
-      broadcast("short:deleted", { shortId: id });
-      return c.json({ ok: true, shortId: id });
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError(500, "SHORT_DELETE_FAILED", error instanceof Error ? error.message : String(error));
-    }
   });
 
   app.get("/api/v1/translations", async (c) => {
