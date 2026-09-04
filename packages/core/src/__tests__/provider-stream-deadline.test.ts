@@ -219,7 +219,7 @@ describe("formatLlmStreamTimeoutMessage", () => {
       model: "kimi-k2-thinking",
       service: "openai",
     })).toBe(
-      "模型「kimi-k2-thinking」（服务：openai）已超过 180 秒没有新的有效内容（思考/正文/工具调用）。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。",
+      "模型「kimi-k2-thinking」（服务：openai） 已超过 180 秒没有新的有效内容（思考/正文/工具调用）。请检查该服务的超时或流式兼容性，或换一个响应更快的模型。",
     );
     expect(formatLlmStreamTimeoutMessage(idle, {
       model: "kimi-k2-thinking",
