@@ -4,6 +4,15 @@
 
 ## [未发布]
 
+## [2.0.11] - 2026-09-04
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.11.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
+### 修复
+
+- 书聊：识别 kimi 等模型把（tool_write_truth_file: …）写成正文假标记的问题，自动重试或给出可恢复中文错误，避免「没有完成」空芯片。
+- 书聊长工具/改写骨架：交互流 idle 与长工具调用更稳（对齐 #82）。
+
 ## [2.0.10] - 2026-09-04
 
 Windows 补丁安装包：`FantaWriter-Setup-2.0.10.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
@@ -332,6 +341,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.11]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.11
 [2.0.10]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.10
 [2.0.9]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.9
 [2.0.8]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.8
