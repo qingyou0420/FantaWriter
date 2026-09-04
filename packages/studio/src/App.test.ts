@@ -17,6 +17,7 @@ describe("deriveActiveBookId", () => {
     expect(deriveActiveBookId({ page: "services" })).toBeUndefined();
     expect(deriveActiveBookId({ page: "style" })).toBeUndefined();
     expect(deriveActiveBookId({ page: "update" })).toBeUndefined();
+    expect(deriveActiveBookId({ page: "short", storyId: "明日来信" })).toBeUndefined();
   });
 });
 

@@ -308,6 +308,36 @@ describe("groupChronologically", () => {
     expect(html).toContain("inkos-play-world");
   });
 
+  it("shows a Chinese stage list and current-step badge while short fiction is running", () => {
+    const exec = makeExec({
+      id: "short-running",
+      tool: "short_fiction_run",
+      label: "短篇生产",
+      status: "running",
+      stages: [
+        { label: "创建大纲", status: "completed" },
+        { label: "审大纲", status: "completed" },
+        { label: "改大纲", status: "completed" },
+        { label: "写第 3 章", status: "active" },
+        { label: "审稿", status: "pending" },
+        { label: "修订", status: "pending" },
+        { label: "封面", status: "pending" },
+      ],
+    });
+
+    const html = renderToStaticMarkup(React.createElement(ToolExecutionSteps, { executions: [exec] }));
+    expect(html).toContain("执行中");
+    expect(html).toContain("写第 3 章");
+    expect(html).toContain("创建大纲");
+    expect(html).toContain("审大纲");
+    expect(html).toContain("改大纲");
+    expect(html).toContain("审稿");
+    expect(html).toContain("修订");
+    expect(html).toContain("封面");
+    expect(html).toContain("pipeline-stage-list");
+    expect(html).toContain("current-stage-badge");
+  });
+
   it("extracts generated cover details from public short fiction tools", () => {
     const exec = makeExec({
       id: "short-1",

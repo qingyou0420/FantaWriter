@@ -3,6 +3,7 @@ import { useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
 import { applyBookCollectionEvent, shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
+import type { StudioShortSummary } from "../shared/short-works";
 import { tr } from "../lib/app-language";
 import {
   forgetBookCreateSessionIfMatches,
@@ -96,6 +97,7 @@ interface Nav {
   toDoctor: () => void;
   toCheckUpdate: () => void;
   toFilmStudio: (id: string) => void;
+  toShort: (id: string) => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -105,6 +107,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   t: TFunction;
 }) {
   const { data, refetch: refetchBooks, mutate: mutateBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
+  const { data: shortsData, refetch: refetchShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
   const { data: filmsData, refetch: refetchFilms } = useApi<{ films: ReadonlyArray<{ projectId: string; title: string }> }>("/interactive-films");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
   const sessions = useChatStore((s) => s.sessions);
@@ -127,6 +130,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const [filmsExpanded, setFilmsExpanded] = useState(true);
 
   const books = data?.books ?? [];
+  const shorts = shortsData?.shorts ?? [];
   const films = filmsData?.films ?? [];
   const projectChatKey = "__null__";
   const projectChatSessions = useMemo(
@@ -178,7 +182,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   useEffect(() => {
     void refetchFilms();
-  }, [bookDataVersion, refetchFilms]);
+    void refetchShorts();
+  }, [bookDataVersion, refetchFilms, refetchShorts]);
 
   useEffect(() => {
     if (activePage === "chat") {
@@ -432,7 +437,28 @@ export function Sidebar({ nav, activePage, sse, t }: {
               );
             })}
 
-            {books.length === 0 && (
+            {shorts.map((short) => {
+              const isActiveShort = activePage === `short:${short.id}`;
+              return (
+                <button
+                  key={`short-${short.id}`}
+                  type="button"
+                  data-testid={`sidebar-short-${short.id}`}
+                  onClick={() => nav.toShort(short.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-left transition-colors ${
+                    isActiveShort ? "bg-secondary/50 text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                  }`}
+                >
+                  <ScrollText size={14} className="shrink-0 text-muted-foreground/60" />
+                  <span className="truncate flex-1 text-[15px] leading-6">{short.title}</span>
+                  <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                    {t("short.badge")}
+                  </span>
+                </button>
+              );
+            })}
+
+            {books.length === 0 && shorts.length === 0 && (
               <div className="px-3 py-6 text-xs text-muted-foreground/50 italic text-center">
                 {t("dash.noBooks")}
               </div>

@@ -28,7 +28,7 @@ function ExecStatusBadge({ status }: { status: ToolExecution["status"] }) {
   switch (status) {
     case "running":
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-primary">
+        <span className="inline-flex items-center gap-1 text-xs text-primary" data-testid="exec-status-running">
           <Loader2 size={12} className="animate-spin" />
           <span>{tr("执行中", "Running")}</span>
         </span>
@@ -66,6 +66,38 @@ function StageIcon({ status }: { status: PipelineStage["status"] }) {
     case "completed":
       return <CheckCircle2 size={14} className="text-green-600 dark:text-green-400 shrink-0" />;
   }
+}
+
+function currentStageLabel(stages: ToolExecution["stages"]): string | undefined {
+  return stages?.find((stage) => stage.status === "active")?.label
+    ?? stages?.find((stage) => stage.status === "pending")?.label;
+}
+
+function PipelineStageList({ stages }: { stages: NonNullable<ToolExecution["stages"]> }) {
+  return (
+    <ol className="mb-2 space-y-1.5" data-testid="pipeline-stage-list">
+      {stages.map((stage, index) => (
+        <li
+          key={`${index}-${stage.label}`}
+          data-testid={stage.status === "active" ? "pipeline-stage-active" : "pipeline-stage"}
+          className={[
+            "flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs",
+            stage.status === "active" ? "bg-primary/10 text-foreground ring-1 ring-primary/25" : "text-muted-foreground",
+          ].join(" ")}
+        >
+          <StageIcon status={stage.status} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium">{stage.label}</div>
+            {stage.progress && (
+              <div className="mt-0.5 text-[10px] text-muted-foreground/70">
+                {formatProgress(stage.progress)}
+              </div>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function formatProgress(progress: NonNullable<PipelineStage["progress"]>): string {
@@ -708,34 +740,51 @@ function ShortFictionOutlinePreview({
 }
 
 function ShortFictionResultPreview({ exec }: { exec: ToolExecution }) {
+  const openProjectArtifact = useChatStore((s) => s.openProjectArtifact);
   if (!["short_fiction_run", "generate_cover"].includes(exec.tool) || exec.status !== "completed") return null;
   const details = getGeneratedArtifactDetails(exec);
+  const manuscriptPath = details?.finalMarkdownPath ?? extractResultPath(exec.result, "Final");
   const coverPath = details?.coverImagePath ?? extractResultPath(exec.result, "Cover image");
   const coverError = details?.coverError ?? extractResultPath(exec.result, "Cover image reason");
+  const manuscriptButton = manuscriptPath ? (
+    <button
+      type="button"
+      onClick={() => openProjectArtifact(manuscriptPath)}
+      className="mx-3 mb-3 mt-1 text-[13px] font-medium text-primary hover:underline"
+    >
+      {tr("打开正文", "Open manuscript")}
+    </button>
+  ) : null;
   if (!coverPath || !/\.(png|jpe?g|webp)$/iu.test(coverPath)) {
-    if (!coverError) return null;
+    if (!coverError) return manuscriptButton;
     return (
-      <div className="mx-3 mb-3 mt-1 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-        {tr("封面未生成：", "Cover not generated: ")}{coverError}
+      <div>
+        <div className="mx-3 mb-3 mt-1 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {tr("封面未生成：", "Cover not generated: ")}{coverError}
+        </div>
+        {manuscriptButton}
       </div>
     );
   }
 
   const coverUrl = buildApiUrl(`/project/files/${encodeProjectPath(coverPath)}`);
-  if (!coverUrl) return null;
+  if (!coverUrl) return manuscriptButton;
   const title = details?.title ?? details?.storyId ?? tr("短篇封面", "Short fiction cover");
 
   return (
-    <div className="mx-3 mb-3 mt-1 overflow-hidden rounded-xl border border-border/40 bg-background/70">
-      <img
-        src={coverUrl}
-        alt={title}
-        className="block max-h-[360px] w-full object-contain bg-muted/20"
-        loading="lazy"
-      />
-      <div className="border-t border-border/40 px-3 py-2 text-[11px] text-muted-foreground break-all">
-        {coverPath}
+    <div>
+      <div className="mx-3 mb-3 mt-1 overflow-hidden rounded-xl border border-border/40 bg-background/70">
+        <img
+          src={coverUrl}
+          alt={title}
+          className="block max-h-[360px] w-full object-contain bg-muted/20"
+          loading="lazy"
+        />
+        <div className="border-t border-border/40 px-3 py-2 text-[11px] text-muted-foreground break-all">
+          {coverPath}
+        </div>
       </div>
+      {manuscriptButton}
     </div>
   );
 }
@@ -1204,6 +1253,7 @@ function PipelineExecution({
 
   const bookId = exec.args?.bookId as string | undefined;
   const forecastDetails = getNarrativeForecastPreviewDetails(exec);
+  const activeStageLabel = currentStageLabel(exec.stages);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="rounded-xl border border-border/40 bg-card/60">
@@ -1220,6 +1270,14 @@ function PipelineExecution({
               ? formatDuration(exec.startedAt, exec.startedAt + elapsedMs)
               : exec.completedAt ? formatDuration(exec.startedAt, exec.completedAt) : ""}
           </span>
+          {isActive && activeStageLabel && (
+            <span
+              data-testid="current-stage-badge"
+              className="max-w-[10rem] truncate rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary"
+            >
+              {activeStageLabel}
+            </span>
+          )}
           <ExecStatusBadge status={exec.status} />
           <ChevronDown size={16} className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
         </div>
@@ -1255,31 +1313,13 @@ function PipelineExecution({
       {!forecastDetails && !hasStructuredResultPreview(exec) && typeof exec.result === "string" && exec.result.trim() && (
         <PipelineResultDetails result={exec.result} defaultOpen={toolDetailsDefaultOpen} />
       )}
+      {exec.stages && exec.stages.length > 0 && (
+        <div className="px-3 pb-2">
+          <PipelineStageList stages={exec.stages} />
+        </div>
+      )}
       <CollapsibleContent>
         <div className="px-3 pb-3 pt-1">
-          {exec.stages && exec.stages.length > 0 && (
-            <ol className="mb-2 space-y-1.5">
-              {exec.stages.map((stage) => (
-                <li
-                  key={stage.label}
-                  className={[
-                    "flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs",
-                    stage.status === "active" ? "bg-primary/5 text-foreground" : "text-muted-foreground",
-                  ].join(" ")}
-                >
-                  <StageIcon status={stage.status} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate">{stage.label}</div>
-                    {stage.progress && (
-                      <div className="mt-0.5 text-[10px] text-muted-foreground/70">
-                        {formatProgress(stage.progress)}
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
           {/* Real-time execution logs */}
           {exec.logs && exec.logs.length > 0 && (
             <ul className="space-y-0.5">

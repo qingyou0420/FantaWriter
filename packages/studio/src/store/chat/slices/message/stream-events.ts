@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { ChatStore, Message, MessageActions, MessagePart, PipelineStage, ToolExecution } from "../../types";
 import { shouldRefreshSidebarForTool } from "../../message-policy";
 import { tr } from "../../../../lib/app-language";
+import { advanceShortFictionStages, normalizeToolStartStages } from "../../../../shared/short-fiction-stages";
 import {
   deriveFlat,
   extractToolDetails,
@@ -497,9 +498,7 @@ export function attachSessionStreamListeners({
           }
 
           const agent = data.tool === "sub_agent" ? (data.args?.agent as string | undefined) : undefined;
-          const stages: PipelineStage[] | undefined = Array.isArray(data.stages) && data.stages.length > 0
-            ? (data.stages as string[]).map((label) => ({ label, status: "pending" as const }))
-            : undefined;
+          const stages: PipelineStage[] | undefined = normalizeToolStartStages(data.stages, data.tool as string);
 
           parts.push({
             type: "tool",
@@ -579,6 +578,9 @@ export function attachSessionStreamListeners({
           const appendLog = (execution: ToolExecution): ToolExecution => ({
             ...execution,
             logs: appendBoundedToolLogs(execution.logs, [message]),
+            stages: execution.tool === "short_fiction_run"
+              ? advanceShortFictionStages(execution.stages, message)
+              : execution.stages,
           });
           // 带 executionId 的日志（后台生产任务）按 id 精确定位工具卡；卡还没
           // 出现时直接丢弃这条（任务快照重放会带回累积的 logs），不能回退到
@@ -586,6 +588,34 @@ export function attachSessionStreamListeners({
           const messages = executionId
             ? updateToolPartById(runtime.messages, executionId, appendLog)
             : updateLatestRunningToolMessage(runtime.messages, appendLog);
+          return messages ? { messages } : {};
+        }),
+      }));
+    } catch {
+      // ignore
+    }
+  });
+
+  streamEs.addEventListener("log:stage", (event: MessageEvent) => {
+    try {
+      const data = event.data ? JSON.parse(event.data) : null;
+      if (!sessionMatchesEvent(sessionId, data)) return;
+      const stageName = typeof data?.stageName === "string" ? data.stageName : "";
+      if (!stageName) return;
+      const executionId = eventExecutionId(data) ?? (typeof data?.id === "string" ? data.id : undefined);
+      flushTextDeltas();
+      set((state) => ({
+        sessions: updateSession(state.sessions, sessionId, (runtime) => {
+          const applyStage = (execution: ToolExecution): ToolExecution => {
+            if (!execution.stages || execution.stages.length === 0) return execution;
+            return {
+              ...execution,
+              stages: advanceShortFictionStages(execution.stages, stageName) ?? execution.stages,
+            };
+          };
+          const messages = executionId
+            ? updateToolPartById(runtime.messages, executionId, applyStage)
+            : updateLatestRunningToolMessage(runtime.messages, applyStage);
           return messages ? { messages } : {};
         }),
       }));

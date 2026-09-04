@@ -1205,6 +1205,51 @@ describe("chat message actions", () => {
     await sent;
   });
 
+  it("advances the short-fiction stage list live from tagged progress logs", async () => {
+    const store = createTestStore();
+    const sessionId = await setupRunningTaskSession(store);
+
+    fakeEventSources[0]?.emit("task:snapshot", {
+      sessionId,
+      execution: {
+        id: "direct-short_run-1",
+        tool: "short_fiction_run",
+        label: "短篇生产",
+        status: "running",
+        startedAt: 10,
+        stages: [
+          { label: "创建大纲", status: "active" },
+          { label: "审大纲", status: "pending" },
+          { label: "改大纲", status: "pending" },
+          { label: "写章", status: "pending" },
+          { label: "审稿", status: "pending" },
+          { label: "修订", status: "pending" },
+          { label: "封面", status: "pending" },
+        ],
+      },
+    });
+
+    fakeEventSources[0]?.emit("log", {
+      sessionId,
+      executionId: "direct-short_run-1",
+      message: "正在审阅大纲…",
+    });
+    expect(findTaskExecution(store, sessionId)?.stages?.slice(0, 3)).toEqual([
+      { label: "创建大纲", status: "completed" },
+      { label: "审大纲", status: "active" },
+      { label: "改大纲", status: "pending" },
+    ]);
+
+    fakeEventSources[0]?.emit("log", {
+      sessionId,
+      executionId: "direct-short_run-1",
+      message: "正在撰写第 2 章（2/12）…",
+    });
+    expect(findTaskExecution(store, sessionId)?.stages?.find((stage) => stage.status === "active")).toMatchObject({
+      label: "写第 2 章",
+    });
+  });
+
   it("drops id-less logs and progress instead of attaching them to a background task card", async () => {
     const store = createTestStore();
     const sessionId = await setupRunningTaskSession(store);

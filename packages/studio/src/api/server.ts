@@ -159,7 +159,12 @@ import {
   chapterRuntimeSlug,
 } from "@actalk/inkos-core";
 import { isConfirmedProductionAction } from "../shared/confirmed-production.js";
+import {
+  advanceShortFictionStages,
+  shortFictionToolStages,
+} from "../shared/short-fiction-stages.js";
 import { summarizeToolResult } from "../shared/tool-result.js";
+import { listStudioShorts, loadStudioShort } from "./short-library.js";
 import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isSafeBookId } from "./safety.js";
@@ -223,69 +228,6 @@ const PIPELINE_STAGES: Record<string, ReadonlyArray<BilingualLabel>> = {
 
 function pipelineStages(agent: string, lang: StudioLanguage = "zh"): string[] | undefined {
   return PIPELINE_STAGES[agent]?.map((stage) => pick(lang, stage.zh, stage.en));
-}
-
-function shortFictionToolStages(
-  phase: "outline" | "draft" | "full" | undefined,
-  chapterCount: number,
-  lang: StudioLanguage,
-): Array<{ label: string; status: "pending" | "active" | "completed" }> {
-  const chapters = Number.isInteger(chapterCount) && chapterCount > 0 ? chapterCount : 12;
-  const outline = [
-    { zh: "撰写大纲", en: "Write outline" },
-    { zh: "审阅大纲", en: "Review outline" },
-    { zh: "修订大纲", en: "Revise outline" },
-  ];
-  const draft = [
-    ...Array.from({ length: chapters }, (_, index) => ({
-      zh: `撰写第${index + 1}章`,
-      en: `Write chapter ${index + 1}`,
-    })),
-    { zh: "审阅全文", en: "Review draft" },
-    { zh: "修订全文", en: "Revise draft" },
-    { zh: "生成简介与封面", en: "Package synopsis and cover" },
-  ];
-  const labels = phase === "draft" ? draft : phase === "outline" ? outline : [...outline, ...draft];
-  return labels.map((label) => ({ label: pick(lang, label.zh, label.en), status: "pending" as const }));
-}
-
-function advanceShortFictionStages(
-  stages: Array<{ label: string; status: "pending" | "active" | "completed" }> | undefined,
-  message: string,
-): Array<{ label: string; status: "pending" | "active" | "completed" }> | undefined {
-  if (!stages || stages.length === 0) return stages;
-  const text = message.trim();
-  const chapterMatch = text.match(/第\s*(\d+)\s*章/) ?? text.match(/chapter\s+(\d+)/i);
-  const chapterNumber = chapterMatch ? Number(chapterMatch[1]) : undefined;
-  const completedChapter = /已写完|written/i.test(text) && chapterNumber !== undefined;
-  let targetIndex = -1;
-  if (chapterNumber !== undefined) {
-    targetIndex = stages.findIndex((stage) =>
-      stage.label.includes(`第${chapterNumber}章`) || new RegExp(`chapter\\s+${chapterNumber}\\b`, "i").test(stage.label),
-    );
-  } else if (/撰写短篇大纲|Writing the short-fiction outline/i.test(text)) {
-    targetIndex = stages.findIndex((stage) => /大纲|outline/i.test(stage.label) && /撰写|Write/i.test(stage.label));
-  } else if (/审阅大纲|Reviewing the outline/i.test(text)) {
-    targetIndex = stages.findIndex((stage) => /审阅大纲|Review outline/i.test(stage.label));
-  } else if (/修订大纲|Revising the outline|锁定|locked/i.test(text)) {
-    targetIndex = stages.findIndex((stage) => /修订大纲|Revise outline/i.test(stage.label));
-  } else if (/审阅全文|Reviewing the full draft/i.test(text)) {
-    targetIndex = stages.findIndex((stage) => /审阅全文|Review draft/i.test(stage.label));
-  } else if (/修订全文|Revising the full draft/i.test(text)) {
-    targetIndex = stages.findIndex((stage) => /修订全文|Revise draft/i.test(stage.label));
-  } else if (/简介|synopsis|封面提示|cover prompt/i.test(text)) {
-    targetIndex = stages.findIndex((stage) => /简介|Package/i.test(stage.label));
-  }
-  if (targetIndex < 0) return stages;
-  return stages.map((stage, index) => {
-    if (index < targetIndex || (completedChapter && index === targetIndex)) {
-      return { ...stage, status: "completed" as const };
-    }
-    if (index === targetIndex) {
-      return { ...stage, status: completedChapter ? "completed" as const : "active" as const };
-    }
-    return stage.status === "active" ? { ...stage, status: "pending" as const } : stage;
-  });
 }
 
 function attachmentDisposition(fileName: string): string {
@@ -1681,7 +1623,7 @@ async function executeConfirmedProductionAction(args: {
     id,
     tool: tool.name,
     args: params,
-    stages: exec.stages?.map(stage => stage.label),
+    stages: exec.stages,
     background: true,
     ...(args.sourceRequestId ? { sourceRequestId: args.sourceRequestId } : {}),
   });
@@ -1695,8 +1637,25 @@ async function executeConfirmedProductionAction(args: {
         const progress = toolResultText(partialResult, lang);
         if (progress) {
           exec.logs = [...(exec.logs ?? []), progress].slice(-80);
+          broadcast("log", {
+            sessionId: args.streamSessionId,
+            executionId: id,
+            level: "info",
+            tag: "studio",
+            message: progress,
+          });
           if (exec.tool === "short_fiction_run") {
-            exec.stages = advanceShortFictionStages(exec.stages, progress);
+            const previous = exec.stages?.find((stage) => stage.status === "active")?.label;
+            exec.stages = advanceShortFictionStages(exec.stages, progress, lang);
+            const current = exec.stages?.find((stage) => stage.status === "active")?.label;
+            if (current && current !== previous) {
+              broadcast("log:stage", {
+                sessionId: args.streamSessionId,
+                executionId: id,
+                id,
+                stageName: current,
+              });
+            }
           }
         }
         void args.onTaskChange(exec).catch(() => undefined);
@@ -6947,6 +6906,23 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
     films.sort((a, b) => a.title.localeCompare(b.title, "zh"));
     return c.json({ films });
+  });
+
+  app.get("/api/v1/shorts", async (c) => {
+    const shorts = await listStudioShorts(root);
+    return c.json({ shorts });
+  });
+
+  app.get("/api/v1/shorts/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      throw new ApiError(400, "INVALID_ID", `Invalid short id: "${id}"`);
+    }
+    const short = await loadStudioShort(root, id);
+    if (!short) {
+      throw new ApiError(404, "NOT_FOUND", `Short "${id}" not found`);
+    }
+    return c.json(short);
   });
 
   app.get("/api/v1/translations", async (c) => {
