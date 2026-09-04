@@ -96,6 +96,18 @@ function extractResultPath(result: string | undefined, label: string): string | 
   return path || null;
 }
 
+export interface ShortFictionOutlineReadyDetails {
+  readonly kind: "short_fiction_outline_ready";
+  readonly execId: string;
+  readonly storyId: string;
+  readonly title?: string;
+  readonly chapterCount?: number;
+  readonly outlinePath?: string;
+  readonly outlineSummary?: string;
+  readonly outlineMarkdown?: string;
+  readonly draftProposal?: ProposedActionDetails;
+}
+
 export interface GeneratedArtifactDetails {
   readonly kind: "short_fiction_created" | "cover_generated" | "script_created" | "storyboard_created" | "interactive_film_created";
   readonly title?: string;
@@ -482,6 +494,45 @@ function ChapterStateResyncPreview({ exec }: { exec: ToolExecution }) {
   );
 }
 
+export function getShortFictionOutlineDetails(exec: ToolExecution): ShortFictionOutlineReadyDetails | null {
+  if (exec.tool !== "short_fiction_run" || exec.status !== "completed") return null;
+  if (!exec.details || typeof exec.details !== "object") return null;
+  const record = exec.details as Record<string, unknown>;
+  if (record.kind !== "short_fiction_outline_ready") return null;
+  const storyId = stringField(record, "storyId");
+  if (!storyId) return null;
+  const proposalRecord = record.draftProposal && typeof record.draftProposal === "object" && !Array.isArray(record.draftProposal)
+    ? record.draftProposal as Record<string, unknown>
+    : undefined;
+  const action = stringField(proposalRecord ?? {}, "action") as ChatRequestedIntent | undefined;
+  const targetSessionKind = stringField(proposalRecord ?? {}, "targetSessionKind") as ChatSessionKind | undefined;
+  const instruction = stringField(proposalRecord ?? {}, "instruction");
+  return {
+    kind: "short_fiction_outline_ready",
+    execId: exec.id,
+    storyId,
+    title: stringField(record, "title"),
+    chapterCount: numberField(record, "chapterCount"),
+    outlinePath: stringField(record, "outlinePath"),
+    outlineSummary: stringField(record, "outlineSummary"),
+    outlineMarkdown: stringField(record, "outlineMarkdown"),
+    draftProposal: action && targetSessionKind && instruction
+      ? {
+          kind: "proposed_action",
+          execId: exec.id,
+          action,
+          targetSessionKind,
+          sameSession: booleanField(proposalRecord ?? {}, "sameSession") ?? true,
+          title: stringField(proposalRecord ?? {}, "title"),
+          summary: stringField(proposalRecord ?? {}, "summary"),
+          instruction,
+          requestedSkills: stringArrayField(proposalRecord ?? {}, "requestedSkills"),
+          actionPayload: actionPayloadField(proposalRecord ?? {}),
+        }
+      : undefined,
+  };
+}
+
 export function getGeneratedArtifactDetails(exec: ToolExecution): GeneratedArtifactDetails | null {
   if (!["short_fiction_run", "generate_cover", "script_create", "storyboard_create", "interactive_film_create"].includes(exec.tool)) return null;
   if (!exec.details || typeof exec.details !== "object") return null;
@@ -576,6 +627,82 @@ function ScriptStoryboardResultPreview({ exec, onOpenFilmStudio }: { exec: ToolE
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ShortFictionOutlinePreview({
+  exec,
+  onProposedAction,
+  onRejectProposedAction,
+}: {
+  exec: ToolExecution;
+  onProposedAction?: (details: ProposedActionDetails) => void;
+  onRejectProposedAction?: (details: ProposedActionDetails) => void;
+}) {
+  const openProjectArtifact = useChatStore((s) => s.openProjectArtifact);
+  const resolvedProposals = useChatStore((s) => s.resolvedProposals);
+  const isActiveSessionStreaming = useChatStore(chatSelectors.isActiveSessionStreaming);
+  const details = getShortFictionOutlineDetails(exec);
+  if (!details) return null;
+  const resolution = resolvedProposals[details.execId];
+  const streaming = isActiveSessionStreaming;
+  const locked = resolution !== undefined;
+  const preview = details.outlineSummary || details.outlineMarkdown || "";
+  return (
+    <div
+      className="mx-3 mb-3 mt-1 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3.5"
+      data-testid="short-fiction-outline-ready"
+    >
+      <div className="text-[17px] leading-6 font-semibold text-foreground">
+        {tr("大纲已锁定，请确认后写章", "Outline locked — confirm before drafting")}
+      </div>
+      <div className="mt-1.5 text-[15px] leading-7 text-muted-foreground">
+        {details.title ?? details.storyId}
+        {details.chapterCount ? tr(` · ${details.chapterCount} 章`, ` · ${details.chapterCount} chapters`) : ""}
+      </div>
+      {preview && (
+        <pre className="mt-2.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/70 px-3 py-2.5 text-[13px] leading-6 text-muted-foreground">
+          {preview}
+        </pre>
+      )}
+      {details.outlinePath && (
+        <button
+          type="button"
+          onClick={() => openProjectArtifact(details.outlinePath!)}
+          className="mt-2 text-[13px] font-medium text-primary hover:underline"
+        >
+          {tr("查看完整大纲", "Open full outline")}
+        </button>
+      )}
+      {resolution === "confirmed" ? (
+        <div className="mt-3 flex items-center gap-1.5 text-[15px] leading-6 font-medium text-primary">
+          <Check size={15} className="shrink-0" />
+          {tr("已确认写章", "Chapter writing confirmed")}
+        </div>
+      ) : resolution === "rejected" ? (
+        <div className="mt-3 text-[15px] leading-6 font-medium text-muted-foreground">{tr("已取消", "Cancelled")}</div>
+      ) : details.draftProposal ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="confirm-short-outline"
+            onClick={() => onProposedAction?.(details.draftProposal!)}
+            disabled={!onProposedAction || streaming || locked}
+            className="rounded-lg bg-primary px-3.5 py-2 text-[15px] leading-6 font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {streaming ? tr("执行中…", "Running…") : tr("确认按此大纲写章", "Write chapters from this outline")}
+          </button>
+          <button
+            type="button"
+            onClick={() => onRejectProposedAction?.(details.draftProposal!)}
+            disabled={!onRejectProposedAction || streaming || locked}
+            className="rounded-lg border border-border/60 bg-background/80 px-3.5 py-2 text-[15px] leading-6 font-medium text-muted-foreground disabled:opacity-50"
+          >
+            {tr("先不写", "Not now")}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -977,6 +1104,7 @@ function PlayEditPreview({ exec }: { exec: ToolExecution }) {
 
 function hasStructuredResultPreview(exec: ToolExecution): boolean {
   if (getProposedActionDetails(exec)) return true;
+  if (getShortFictionOutlineDetails(exec)) return true;
   if (getProposedTruthDiffDetails(exec)) return true;
   if (getPlayToolDetails(exec)?.sceneText) return true;
   if (getChapterRevisionDetails(exec)) return true;
@@ -1107,6 +1235,11 @@ function PipelineExecution({
         onRejectTruthDiff={onRejectTruthDiff}
       />
       <SkillUsagePreview exec={exec} />
+      <ShortFictionOutlinePreview
+        exec={exec}
+        onProposedAction={onProposedAction}
+        onRejectProposedAction={onRejectProposedAction}
+      />
       <ShortFictionResultPreview exec={exec} />
       <ScriptStoryboardResultPreview exec={exec} onOpenFilmStudio={onOpenFilmStudio} />
       <PlayResultPreview exec={exec} />

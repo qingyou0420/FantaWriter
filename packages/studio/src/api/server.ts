@@ -225,6 +225,69 @@ function pipelineStages(agent: string, lang: StudioLanguage = "zh"): string[] | 
   return PIPELINE_STAGES[agent]?.map((stage) => pick(lang, stage.zh, stage.en));
 }
 
+function shortFictionToolStages(
+  phase: "outline" | "draft" | "full" | undefined,
+  chapterCount: number,
+  lang: StudioLanguage,
+): Array<{ label: string; status: "pending" | "active" | "completed" }> {
+  const chapters = Number.isInteger(chapterCount) && chapterCount > 0 ? chapterCount : 12;
+  const outline = [
+    { zh: "撰写大纲", en: "Write outline" },
+    { zh: "审阅大纲", en: "Review outline" },
+    { zh: "修订大纲", en: "Revise outline" },
+  ];
+  const draft = [
+    ...Array.from({ length: chapters }, (_, index) => ({
+      zh: `撰写第${index + 1}章`,
+      en: `Write chapter ${index + 1}`,
+    })),
+    { zh: "审阅全文", en: "Review draft" },
+    { zh: "修订全文", en: "Revise draft" },
+    { zh: "生成简介与封面", en: "Package synopsis and cover" },
+  ];
+  const labels = phase === "draft" ? draft : phase === "outline" ? outline : [...outline, ...draft];
+  return labels.map((label) => ({ label: pick(lang, label.zh, label.en), status: "pending" as const }));
+}
+
+function advanceShortFictionStages(
+  stages: Array<{ label: string; status: "pending" | "active" | "completed" }> | undefined,
+  message: string,
+): Array<{ label: string; status: "pending" | "active" | "completed" }> | undefined {
+  if (!stages || stages.length === 0) return stages;
+  const text = message.trim();
+  const chapterMatch = text.match(/第\s*(\d+)\s*章/) ?? text.match(/chapter\s+(\d+)/i);
+  const chapterNumber = chapterMatch ? Number(chapterMatch[1]) : undefined;
+  const completedChapter = /已写完|written/i.test(text) && chapterNumber !== undefined;
+  let targetIndex = -1;
+  if (chapterNumber !== undefined) {
+    targetIndex = stages.findIndex((stage) =>
+      stage.label.includes(`第${chapterNumber}章`) || new RegExp(`chapter\\s+${chapterNumber}\\b`, "i").test(stage.label),
+    );
+  } else if (/撰写短篇大纲|Writing the short-fiction outline/i.test(text)) {
+    targetIndex = stages.findIndex((stage) => /大纲|outline/i.test(stage.label) && /撰写|Write/i.test(stage.label));
+  } else if (/审阅大纲|Reviewing the outline/i.test(text)) {
+    targetIndex = stages.findIndex((stage) => /审阅大纲|Review outline/i.test(stage.label));
+  } else if (/修订大纲|Revising the outline|锁定|locked/i.test(text)) {
+    targetIndex = stages.findIndex((stage) => /修订大纲|Revise outline/i.test(stage.label));
+  } else if (/审阅全文|Reviewing the full draft/i.test(text)) {
+    targetIndex = stages.findIndex((stage) => /审阅全文|Review draft/i.test(stage.label));
+  } else if (/修订全文|Revising the full draft/i.test(text)) {
+    targetIndex = stages.findIndex((stage) => /修订全文|Revise draft/i.test(stage.label));
+  } else if (/简介|synopsis|封面提示|cover prompt/i.test(text)) {
+    targetIndex = stages.findIndex((stage) => /简介|Package/i.test(stage.label));
+  }
+  if (targetIndex < 0) return stages;
+  return stages.map((stage, index) => {
+    if (index < targetIndex || (completedChapter && index === targetIndex)) {
+      return { ...stage, status: "completed" as const };
+    }
+    if (index === targetIndex) {
+      return { ...stage, status: completedChapter ? "completed" as const : "active" as const };
+    }
+    return stage.status === "active" ? { ...stage, status: "pending" as const } : stage;
+  });
+}
+
 function attachmentDisposition(fileName: string): string {
   const safeAscii = fileName.replace(/[^A-Za-z0-9._-]+/g, "_") || "download";
   return `attachment; filename="${safeAscii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
@@ -1317,12 +1380,20 @@ async function executeConfirmedProductionAction(args: {
     const direction = payload?.direction?.trim() || args.instruction.trim();
     if (!direction) throw new ApiError(400, "CONFIRMED_ACTION_PAYLOAD_INCOMPLETE", pick(lang, "确认短篇缺少方向，请重新生成确认卡。", "The short fiction confirmation is missing a direction. Regenerate the confirmation card."));
     tool = createShortFictionRunTool(args.pipeline, args.root, {
-      actionPayload,
+      actionPayload: {
+        ...actionPayload,
+        shortRun: {
+          ...payload,
+          direction,
+          phase: payload?.phase ?? "outline",
+        },
+      },
       language: lang,
       defaultSkills: productionSkills("shortWriting"),
     });
     params = {
       direction,
+      phase: payload?.phase ?? "outline",
       ...(payload?.reference ? { reference: payload.reference } : {}),
       ...(payload?.storyId ? { storyId: payload.storyId } : {}),
       ...(payload?.chapters ? { chapters: payload.chapters } : {}),
@@ -1590,7 +1661,13 @@ async function executeConfirmedProductionAction(args: {
     label: resolveToolLabel(tool.name, agent, lang),
     status: "running",
     args: params,
-    stages: agent ? pipelineStages(agent, lang)?.map(label => ({ label, status: "pending" as const })) : undefined,
+    stages: tool.name === "short_fiction_run"
+      ? shortFictionToolStages(
+          typeof params.phase === "string" ? params.phase as "outline" | "draft" | "full" : undefined,
+          typeof params.chapters === "number" ? params.chapters : (actionPayload?.shortRun?.chapters ?? 12),
+          lang,
+        )
+      : agent ? pipelineStages(agent, lang)?.map(label => ({ label, status: "pending" as const })) : undefined,
     startedAt: Date.now(),
   };
 
@@ -1616,7 +1693,12 @@ async function executeConfirmedProductionAction(args: {
       args.signal,
       (partialResult: unknown) => {
         const progress = toolResultText(partialResult, lang);
-        if (progress) exec.logs = [...(exec.logs ?? []), progress].slice(-80);
+        if (progress) {
+          exec.logs = [...(exec.logs ?? []), progress].slice(-80);
+          if (exec.tool === "short_fiction_run") {
+            exec.stages = advanceShortFictionStages(exec.stages, progress);
+          }
+        }
         void args.onTaskChange(exec).catch(() => undefined);
       },
     );
@@ -2671,6 +2753,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       },
     };
     await saveStudioTaskSnapshot(root, snapshot);
+    broadcast("task:snapshot", snapshot);
   };
 
   const loadReconciledTaskSnapshot = async (sessionId: string): Promise<StudioTaskSnapshot | null> => {

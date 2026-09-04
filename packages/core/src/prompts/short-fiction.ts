@@ -37,6 +37,12 @@ export interface ShortFictionDraftContinuationPromptInput extends ShortFictionDr
   readonly missingChapters: readonly number[];
 }
 
+export interface ShortFictionChapterDraftPromptInput extends ShortFictionDraftPromptInput {
+  readonly chapterNumber: number;
+  readonly previousChaptersMarkdown?: string;
+  readonly previousChapterTitles?: ReadonlyArray<string>;
+}
+
 export interface ShortFictionDraftReviewPromptInput extends ShortFictionDraftPromptInput {
   readonly draftMarkdown: string;
 }
@@ -234,6 +240,30 @@ export function buildShortFictionWriterSystemPrompt(language: ShortFictionLangua
   ].join("\n");
 }
 
+export function buildShortFictionChapterWriterSystemPrompt(language: ShortFictionLanguage = "zh"): string {
+  if (language === "en") {
+    return [
+      "You are an English short-fiction chapter writer. You write ONE assigned chapter, following the locked story plan.",
+      "Write natural, native English prose. Vary sentence length; mix short punchy sentences with longer flowing ones, and keep the narrative voice consistent with any previous chapters.",
+      "This is not serialized-novel continuation and not chapter synopsis. The chapter needs drama happening on the page: character action, dialogue or reaction, a shift in the situation, and a reason to keep reading at the chapter break.",
+      "Keep the drama dialed up, web-fiction style: real-world pressure may be amplified as far as readers will still believe, but never so absurd that immersion breaks.",
+      "The story title and chapter titles must read like platform content, not literary summaries. Keep the prose paced for mobile reading — short paragraphs, but never telegram-style fragments.",
+      "The word count is a calibration, not an averaging exercise. Big scenes may run long and transitions short; a clearly short chapter usually means you wrote a synopsis and must add real scenes.",
+      "Write only the assigned chapter. Do not write later chapters, do not recap the whole story, and do not output review comments.",
+      "Output must strictly use the specified blocks. No author notes, no word-count remarks, no review comments, no format explanations.",
+    ].join("\n");
+  }
+  return [
+    "你是中文短篇分章写手。你只写指定的一章，严格承接已锁定的故事方案。",
+    "这不是长篇连载续写，也不是章节梗概。这一章要有当场发生的戏：人物行动、对话或反应、局面变化、章尾继续读的理由。",
+    "网文戏剧性要足：现实压力可以放大到读者愿意信的程度，但不能荒诞到失去代入。",
+    "标题和章节标题要像平台内容，不要文艺化总结。正文保持移动端节奏，段落短但不要写成电报体。",
+    "字数是校准，不是平均数学题。大场面可略长，过渡章可略短；明显偏短通常说明写成了梗概，必须补有效场面。",
+    "只写指定的这一章。不要写后面的章，不要整篇复述，不要输出审稿意见。",
+    "输出必须严格使用指定 block，不要写作者说明、字数说明、审稿意见或格式解释。",
+  ].join("\n");
+}
+
 export function buildShortFictionWriterUserPrompt(
   input: ShortFictionDraftPromptInput,
   language: ShortFictionLanguage = "zh",
@@ -296,6 +326,84 @@ export function buildShortFictionWriterUserPrompt(
       ].join("\n");
     }),
   ].join("\n");
+}
+
+export function buildShortFictionChapterWriterUserPrompt(
+  input: ShortFictionChapterDraftPromptInput,
+  language: ShortFictionLanguage = "zh",
+): string {
+  const chapter = input.chapterNumber;
+  const previousTitles = (input.previousChapterTitles ?? []).filter(Boolean);
+  if (language === "en") {
+    return [
+      "## Task",
+      `Write ONLY chapter ${chapter} of a complete ${input.chapterCount}-chapter short, about ${input.charsPerChapter} words.`,
+      "Read the locked story plan first. This chapter must carry the plan's pressure, evidence, reversal, and payoff for this beat — do not swerve into a different story.",
+      "Do not write any other chapter. Do not summarize remaining chapters.",
+      "",
+      buildShortFictionCraftPrompt("en"),
+      "",
+      "## Creative Direction",
+      input.direction,
+      "",
+      "## Locked Story Plan",
+      input.outlineMarkdown,
+      "",
+      previousTitles.length > 0
+        ? `## Earlier Chapter Titles\n${previousTitles.map((title, index) => `${index + 1}. ${title}`).join("\n")}\n`
+        : "",
+      input.previousChaptersMarkdown?.trim()
+        ? `## Immediate Previous Prose (continuity only — do not rewrite)\n${input.previousChaptersMarkdown.trim()}\n`
+        : "",
+      "## Output Format",
+      ...(chapter === 1
+        ? [
+            "=== SHORT_FICTION_TITLE ===",
+            "The story title — plain text, platform-ready, nothing else",
+            "=== SHORT_FICTION_OPENING_HOOK ===",
+            "An optional pre-story hook of about 130 words; if no standalone teaser is needed, still write the small first-screen scene that opens chapter 1",
+          ]
+        : []),
+      `=== CHAPTER ${chapter} TITLE ===`,
+      "Chapter title — plain text only, no #, no \"Chapter N\" prefix",
+      `=== CHAPTER ${chapter} CONTENT ===`,
+      `Chapter ${chapter} prose — full scenes, no synopsis, no author notes`,
+    ].filter(Boolean).join("\n");
+  }
+  return [
+    "## 任务",
+    `只写第 ${chapter} 章。整篇共 ${input.chapterCount} 章，本章约 ${input.charsPerChapter} 字。`,
+    "先读已锁定的故事方案。这一章要承接方案在这一拍的压力、证据、反转和回报，不要临时改成另一种故事。",
+    "不要写其他章，不要预告或概述后面的章。",
+    "",
+    buildShortFictionCraftPrompt(),
+    "",
+    "## 创作方向",
+    input.direction,
+    "",
+    "## 已锁定故事方案",
+    input.outlineMarkdown,
+    "",
+    previousTitles.length > 0
+      ? `## 已写章节标题\n${previousTitles.map((title, index) => `${index + 1}. ${title}`).join("\n")}\n`
+      : "",
+    input.previousChaptersMarkdown?.trim()
+      ? `## 紧邻前文（只用于承接，不要重写）\n${input.previousChaptersMarkdown.trim()}\n`
+      : "",
+    "## 输出格式",
+    ...(chapter === 1
+      ? [
+          "=== SHORT_FICTION_TITLE ===",
+          "短篇标题，只写纯文本平台标题",
+          "=== SHORT_FICTION_OPENING_HOOK ===",
+          "可选正文前小钩子，约 200 字；如果不需要独立引子，也要写第 1 章第一屏的入局小场面",
+        ]
+      : []),
+    `=== CHAPTER ${chapter} TITLE ===`,
+    "章节标题，只写纯文本，不要 #，不要第几章前缀",
+    `=== CHAPTER ${chapter} CONTENT ===`,
+    `第${chapter}章正文，写完整场面，不要梗概，不要作者备注`,
+  ].filter(Boolean).join("\n");
 }
 
 export function buildShortFictionDraftContinuationUserPrompt(

@@ -403,6 +403,11 @@ const ProposeActionParams = Type.Object({
     cover: Type.Optional(Type.Boolean({
       description: "Whether to attempt cover generation.",
     })),
+    phase: Type.Optional(Type.Union([
+      Type.Literal("outline"),
+      Type.Literal("draft"),
+      Type.Literal("full"),
+    ], { description: "outline locks the plan for author review; draft writes chapters from a locked outline; full is the non-interactive CLI path." })),
   }, { description: "Structured execution args for action=short_run." })),
   playStart: Type.Optional(Type.Object({
     title: Type.String({ description: "Confirmed interactive world title." }),
@@ -2124,9 +2129,14 @@ const ShortFictionRunParams = Type.Object({
   charsPerChapter: Type.Optional(Type.Number({
     description: "Per-chapter length in the story language's native unit: 900-1200 Chinese characters (default 1000) for zh, or 600-800 English words (default 650) for en. Values outside the story language's range are rejected before the pipeline starts. Do not use total story length here.",
   })),
-  cover: Type.Optional(Type.Boolean({
-    description: "Whether to attempt cover image generation after synopsis and cover prompt. Default true; use false if the user only wants text assets.",
-  })),
+    cover: Type.Optional(Type.Boolean({
+      description: "Whether to attempt cover image generation after synopsis and cover prompt. Default true; use false if the user only wants text assets.",
+    })),
+    phase: Type.Optional(Type.Union([
+      Type.Literal("outline"),
+      Type.Literal("draft"),
+      Type.Literal("full"),
+    ], { description: "Studio confirm flow uses outline then draft. outline locks the plan and stops for author review. draft writes one chapter at a time from a locked outline. full runs outline and chapters without pausing (CLI)." })),
   coverBaseUrl: Type.Optional(Type.String({
     description: "Optional OpenAI-compatible Responses API base URL for cover generation.",
   })),
@@ -2172,8 +2182,9 @@ export function createShortFictionRunTool(
     name: "short_fiction_run",
     description:
       "Create a standalone short fiction project from a direction. " +
-      "Runs outline -> outline review/revision -> full draft -> draft review/revision -> synopsis/selling points/cover prompt -> optional cover image. " +
-      "Uses the user's direction and optional reference notes as input.",
+      "Default Studio path: outline -> outline review/revision, then pause for author confirm; " +
+      "after confirm, write one chapter at a time, then draft review/revision, synopsis/selling points/cover prompt, and optional cover. " +
+      "Pass phase=full only for a non-interactive run. Uses the user's direction and optional reference notes as input.",
     label: "Short Fiction",
     parameters: ShortFictionRunParams,
     async execute(
@@ -2186,6 +2197,7 @@ export function createShortFictionRunTool(
       const shortPayload = options.actionPayload?.shortRun;
       const language = shortPayload?.language ?? options.language;
       const charsPerChapter = shortPayload?.charsPerChapter ?? params.charsPerChapter;
+      const phase = shortPayload?.phase ?? params.phase ?? (options.language ? "outline" : "full");
       const activatedSkills = resolveProductionToolSkills(options);
       assertShortRunCharsPerChapter(charsPerChapter, language ?? "zh");
       const result = await runPipelineWithAgentContext(
@@ -2217,8 +2229,54 @@ export function createShortFictionRunTool(
           coverApiKeyEnv: params.coverApiKeyEnv,
           signal: _signal,
           onProgress: progress,
+          phase,
         }),
       );
+
+      if (result.status === "outline-ready") {
+        const title = result.title ?? result.storyId;
+        const isZh = (language ?? options.language ?? "zh") === "zh";
+        return textResult(
+          [
+            isZh
+              ? `短篇「${title}」大纲已锁定，等待确认后再写章。`
+              : `Short fiction "${title}" outline is locked. Confirm before drafting chapters.`,
+            `Outline: ${result.outlinePath}`,
+            result.outlineSummary ?? "",
+          ].filter(Boolean).join("\n"),
+          {
+            kind: "short_fiction_outline_ready",
+            ...result,
+            skillIds: activatedSkillIds(activatedSkills),
+            draftProposal: {
+              kind: "proposed_action",
+              action: "short_run",
+              targetSessionKind: "short",
+              sameSession: true,
+              title: isZh ? "确认按此大纲写章" : "Confirm this outline and write chapters",
+              summary: result.outlineSummary,
+              instruction: isZh
+                ? `按已锁定大纲写短篇「${title}」各章，一次一章。`
+                : `Write the locked short "${title}" one chapter at a time.`,
+              actionPayload: {
+                shortRun: {
+                  title: shortPayload?.title ?? params.title ?? title,
+                  direction: shortPayload?.direction ?? params.direction,
+                  ...(shortPayload?.reference ?? params.reference
+                    ? { reference: shortPayload?.reference ?? params.reference }
+                    : {}),
+                  storyId: result.storyId,
+                  language: language ?? "zh",
+                  chapters: shortPayload?.chapters ?? params.chapters ?? result.chapterCount,
+                  charsPerChapter,
+                  cover: shortPayload?.cover ?? params.cover,
+                  phase: "draft",
+                },
+              },
+            },
+          },
+        );
+      }
 
       return textResult(
         [

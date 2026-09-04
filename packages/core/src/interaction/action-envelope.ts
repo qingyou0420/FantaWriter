@@ -83,6 +83,7 @@ export const ShortRunActionPayloadSchema = z.object({
   chapters: z.number().int().min(12).max(18).optional(),
   charsPerChapter: z.number().int().min(600).max(1200).optional(),
   cover: z.boolean().optional(),
+  phase: z.enum(["outline", "draft", "full"]).optional(),
 }).strict().superRefine((payload, ctx) => {
   if (payload.language === undefined || payload.charsPerChapter === undefined) return;
   const { min, max } = shortRunCharsPerChapterRange(payload.language);

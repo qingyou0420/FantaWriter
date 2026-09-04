@@ -489,11 +489,15 @@ export {
   runShortFictionProduction,
   extractResponsesImageBase64,
   resolveCoverApiKey,
+  shortFictionProgress,
+  summarizeShortFictionOutline,
   type ShortFictionCoverOptions,
   type ShortFictionCoverResult,
   type ShortFictionRunOptions,
+  type ShortFictionRunPhase,
   type ShortFictionRunResult,
   type ShortFictionRunRuntimes,
+  type ShortFictionRunStatus,
 } from "./pipeline/short-fiction-runner.js";
 
 // Narrative forecast (issue #342): non-canonical multi-branch story projection
