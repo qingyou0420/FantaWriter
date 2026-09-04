@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.10
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.10.exe`（#80 修复自定义服务加载时把 custom:zenmux 裁成 custom 导致无 baseUrl）。
+
 ## 2.0.9
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.9.exe`（#77 活动书读/写/改路径自动带上当前书 id；流水线空流 idle 从 60s 放到 180s；旧书会话下一轮跟随 Studio 默认模型）。
