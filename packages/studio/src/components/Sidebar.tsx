@@ -500,7 +500,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                         short.status === "completed" ? nav.toShort(short.id) : handleContinueShort(short)
                       )}>
                         <Zap size={14} />
-                        <span>{short.status === "completed" ? t("short.finished") : t("short.continue")}</span>
+                        <span>{short.status === "completed" ? t("short.finished") : t("dash.writeNext")}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => nav.toShortAnalytics(short.id)}>
                         <BarChart2 size={14} />
@@ -508,7 +508,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => nav.toShortSettings(short.id)}>
                         <Settings size={14} />
-                        <span>{t("short.settings")}</span>
+                        <span>{t("book.settings")}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
@@ -527,7 +527,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                         onClick={() => setDeleteShortTarget({ id: short.id, title: short.title })}
                       >
                         <Trash2 size={14} />
-                        <span>{t("short.delete")}</span>
+                        <span>{t("book.deleteBook")}</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

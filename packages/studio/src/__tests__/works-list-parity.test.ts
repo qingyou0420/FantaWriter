@@ -72,8 +72,8 @@ describe("works list long/short parity", () => {
     expect(dashboard).toMatch(/short-settings-/);
     expect(dashboard).toMatch(/short-export-manuscript-/);
     expect(dashboard).toMatch(/short-delete-/);
-    expect(dashboard).toMatch(/short\.continue|short\.finished/);
-    expect(dashboard).toMatch(/short\.settings/);
+    expect(dashboard).toMatch(/short\.finished|dash\.writeNext/);
+    expect(dashboard).toMatch(/book\.settings/);
     expect(dashboard).toMatch(/book\.export/);
     expect(dashboard).toMatch(/shortManuscriptExportPath/);
     expect(dashboard).not.toMatch(/\/books\/\$\{short/);

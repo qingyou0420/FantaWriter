@@ -182,7 +182,7 @@ function ShortMenu({ short, nav, t, onDelete, onOpenChange }: {
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
           >
             <Settings size={14} className="text-muted-foreground" />
-            {t("short.settings")}
+            {t("book.settings")}
           </button>
           <a
             href={shortManuscriptExportPath(short.id)}
@@ -202,7 +202,7 @@ function ShortMenu({ short, nav, t, onDelete, onOpenChange }: {
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
           >
             <Trash2 size={14} />
-            {t("short.delete")}
+            {t("book.deleteBook")}
           </button>
         </div>
       )}
@@ -384,7 +384,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:scale-105 active:scale-95 transition-all shadow-sm"
                   >
                     <Zap size={16} />
-                    {short.status === "completed" ? t("short.finished") : t("short.continue")}
+                    {short.status === "completed" ? t("short.finished") : t("dash.writeNext")}
                   </button>
                   <button
                     type="button"
