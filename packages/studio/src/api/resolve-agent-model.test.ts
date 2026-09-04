@@ -50,6 +50,21 @@ describe("resolveAgentModelBinding", () => {
     });
   });
 
+  it("keeps a named custom:zenmux Studio default instead of collapsing to custom", () => {
+    const binding = resolveAgentModelBinding({
+      requestModel: "anthropic/claude-opus-4.8",
+      requestService: "custom",
+      defaultModel: "anthropic/claude-opus-4.8",
+      defaultService: "custom:zenmux",
+    });
+    expect(binding).toMatchObject({
+      model: "anthropic/claude-opus-4.8",
+      service: "custom:zenmux",
+      source: "studio-default",
+      reboundFromRequest: true,
+    });
+  });
+
   it("uses the request model only when Studio has no default", () => {
     const binding = resolveAgentModelBinding({
       requestModel: "kimi-k3",

@@ -549,6 +549,75 @@ describe("resolveEffectiveLLMConfig", () => {
     expect(result.llm.apiKey).toBe("");
   });
 
+  it("Studio 加载 named custom 服务时保留 custom:zenmux，并带上 baseUrl 供模型解析", async () => {
+    await writeProject({
+      configSource: "studio",
+      service: "custom:zenmux",
+      provider: "custom",
+      baseUrl: "https://zenmux.ai/api/v1",
+      model: "anthropic/claude-opus-4.8",
+      defaultModel: "anthropic/claude-opus-4.8",
+      services: [{
+        service: "custom",
+        name: "zenmux",
+        baseUrl: "https://zenmux.ai/api/v1",
+        models: ["anthropic/claude-opus-4.8"],
+      }],
+    });
+    await writeSecrets({ "custom:zenmux": { apiKey: "sk-zenmux" } });
+
+    const result = await resolveEffectiveLLMConfig({
+      consumer: "studio",
+      projectRoot: root,
+      envLayers: { global: {}, project: {}, process: {} },
+      requireApiKey: true,
+    });
+
+    expect(result.llm.service).toBe("custom:zenmux");
+    expect(result.llm.baseUrl).toBe("https://zenmux.ai/api/v1");
+    expect(result.llm.model).toBe("anthropic/claude-opus-4.8");
+    expect(result.llm.apiKey).toBe("sk-zenmux");
+
+    const { resolveServiceModel } = await import("../llm/service-resolver.js");
+    const resolved = await resolveServiceModel(
+      result.llm.service,
+      "anthropic/claude-opus-4.8",
+      root,
+      result.llm.baseUrl,
+    );
+    expect(resolved.model.id).toBe("anthropic/claude-opus-4.8");
+    expect(resolved.model.baseUrl).toBe("https://zenmux.ai/api/v1");
+    await expect(resolveServiceModel("custom", "anthropic/claude-opus-4.8", root)).rejects.toThrow(
+      /no baseUrl available/,
+    );
+  });
+
+  it("bare custom 不能把已选中的 custom:zenmux 裁成无匹配的 family id", async () => {
+    await writeProject({
+      configSource: "studio",
+      service: "custom:zenmux",
+      defaultModel: "anthropic/claude-opus-4.8",
+      services: [{
+        service: "custom",
+        name: "zenmux",
+        baseUrl: "https://zenmux.ai/api/v1",
+        models: ["anthropic/claude-opus-4.8"],
+      }],
+    });
+    await writeSecrets({ "custom:zenmux": { apiKey: "sk-zenmux" } });
+
+    const result = await resolveEffectiveLLMConfig({
+      consumer: "studio",
+      projectRoot: root,
+      envLayers: { global: {}, project: {}, process: {} },
+      requireApiKey: true,
+    });
+
+    expect(result.llm.service).not.toBe("custom");
+    expect(result.llm.service).toBe("custom:zenmux");
+    expect(result.llm.baseUrl).toBe("https://zenmux.ai/api/v1");
+  });
+
   it("从 provider bank 应用 service transport 默认值", async () => {
     await writeProject({
       configSource: "studio",
