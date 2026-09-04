@@ -309,7 +309,10 @@ async function applyLegacyEnvConfig(
 function applyServiceEntry(llm: Record<string, unknown>, entry: ServiceConfigEntry): void {
   const endpoint = getEndpoint(entry.service);
   const transportDefaults = endpoint?.transportDefaults;
-  llm.service = entry.service;
+  // Named custom entries live under `custom:<name>` (e.g. custom:zenmux).
+  // Writing the family id `custom` alone makes resolveConfiguredServiceBaseUrl
+  // miss the services[] row, so model resolve fails with "no baseUrl available".
+  llm.service = serviceEntryKey(entry);
   llm.provider = deriveProviderFromService(entry.service);
   llm.baseUrl = entry.baseUrl ?? resolveServicePreset(entry.service)?.baseUrl ?? "";
 

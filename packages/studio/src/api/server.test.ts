@@ -5666,6 +5666,127 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(agentConfig.model?.id).toBe("meta/muse-spark-1.3");
   });
 
+  it("rebinds a custom:zenmux session without writing bare custom back to disk", async () => {
+    const sessionId = "1788447537029-zenmux";
+    const writeNamedCustom = async (defaultModel: string) => {
+      await writeFile(join(root, "inkos.json"), JSON.stringify({
+        ...projectConfig,
+        llm: {
+          configSource: "studio",
+          service: "custom:zenmux",
+          provider: "custom",
+          baseUrl: "https://zenmux.ai/api/v1",
+          model: defaultModel,
+          defaultModel,
+          services: [{
+            service: "custom",
+            name: "zenmux",
+            baseUrl: "https://zenmux.ai/api/v1",
+            models: ["anthropic/claude-opus-4.8", "meta/muse-spark-1.3"],
+          }],
+        },
+      }, null, 2), "utf-8");
+    };
+    await writeNamedCustom("anthropic/claude-opus-4.8");
+    loadBookSessionMock.mockResolvedValue({
+      sessionId,
+      bookId: "醉词",
+      sessionKind: "book",
+      title: "醉词",
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    loadBookConfigMock.mockResolvedValue({
+      id: "醉词",
+      title: "醉词",
+      language: "zh",
+    });
+    resolveServiceModelMock.mockImplementation(async (service: string, model: string) => ({
+      model: { id: model, provider: "custom", api: "openai-completions" },
+      apiKey: "sk-zenmux",
+    }));
+    runAgentSessionMock.mockResolvedValue({
+      responseText: "好。",
+      messages: [
+        { role: "user", content: "继续" },
+        { role: "assistant", content: "好。" },
+      ],
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const first = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "醉词",
+        sessionKind: "book",
+        service: "custom:zenmux",
+        model: "anthropic/claude-opus-4.8",
+        sessionId,
+      }),
+    });
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toMatchObject({
+      model: {
+        id: "anthropic/claude-opus-4.8",
+        service: "custom:zenmux",
+        source: "studio-default",
+      },
+    });
+    expect(resolveServiceModelMock.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      "custom:zenmux",
+      "anthropic/claude-opus-4.8",
+    ]);
+    expect(resolveServiceModelMock.mock.calls.at(-1)?.[3]).toBe("https://zenmux.ai/api/v1");
+
+    const saveDefault = await app.request("http://localhost/api/v1/project/default-model", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ service: "custom", defaultModel: "meta/muse-spark-1.3" }),
+    });
+    expect(saveDefault.status).toBe(200);
+    await expect(saveDefault.json()).resolves.toMatchObject({
+      service: "custom:zenmux",
+      defaultModel: "meta/muse-spark-1.3",
+    });
+
+    const next = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "再写一句",
+        activeBookId: "醉词",
+        sessionKind: "book",
+        service: "custom",
+        model: "anthropic/claude-opus-4.8",
+        sessionId,
+      }),
+    });
+    expect(next.status).toBe(200);
+    await expect(next.json()).resolves.toMatchObject({
+      model: {
+        id: "meta/muse-spark-1.3",
+        service: "custom:zenmux",
+        source: "studio-default",
+        rebound: true,
+      },
+    });
+    expect(resolveServiceModelMock.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      "custom:zenmux",
+      "meta/muse-spark-1.3",
+    ]);
+    expect(resolveServiceModelMock.mock.calls.at(-1)?.[3]).toBe("https://zenmux.ai/api/v1");
+    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    expect(raw.llm.service).toBe("custom:zenmux");
+    expect(raw.llm.defaultModel).toBe("meta/muse-spark-1.3");
+  });
+
   it("keeps an explicit per-session model override after the Studio default changes", async () => {
     const sessionId = "1788447537029-bs51a7";
     await writeFile(join(root, "inkos.json"), JSON.stringify({
@@ -6699,6 +6820,57 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(raw.llm.service).toBe("kkaiapi");
     expect(raw.llm.defaultModel).toBe("deepseek-v4-flash");
     expect(raw.llm.model).toBe("deepseek-v4-flash");
+  });
+
+  it("default-model 写入不会把磁盘上的 custom:zenmux 裁成 bare custom", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        configSource: "studio",
+        service: "custom:zenmux",
+        provider: "custom",
+        baseUrl: "https://zenmux.ai/api/v1",
+        model: "anthropic/claude-opus-4.8",
+        defaultModel: "anthropic/claude-opus-4.8",
+        services: [{
+          service: "custom",
+          name: "zenmux",
+          baseUrl: "https://zenmux.ai/api/v1",
+          models: ["anthropic/claude-opus-4.8"],
+        }],
+      },
+    }, null, 2), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const keepNamed = await app.request("http://localhost/api/v1/project/default-model", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ service: "custom:zenmux", defaultModel: "anthropic/claude-opus-4.8" }),
+    });
+    expect(keepNamed.status).toBe(200);
+    await expect(keepNamed.json()).resolves.toMatchObject({
+      ok: true,
+      service: "custom:zenmux",
+      defaultModel: "anthropic/claude-opus-4.8",
+    });
+
+    const staleBareCustom = await app.request("http://localhost/api/v1/project/default-model", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ service: "custom", defaultModel: "anthropic/claude-opus-4.8" }),
+    });
+    expect(staleBareCustom.status).toBe(200);
+    await expect(staleBareCustom.json()).resolves.toMatchObject({
+      ok: true,
+      service: "custom:zenmux",
+    });
+
+    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    expect(raw.llm.service).toBe("custom:zenmux");
+    expect(raw.llm.defaultModel).toBe("anthropic/claude-opus-4.8");
+    expect(raw.llm.baseUrl).toBe("https://zenmux.ai/api/v1");
   });
 
   it("project advanced settings expose detection config", async () => {

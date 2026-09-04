@@ -1776,6 +1776,33 @@ function serviceConfigKey(entry: ServiceConfigEntry): string {
   return entry.service === "custom" ? `custom:${entry.name ?? "Custom"}` : entry.service;
 }
 
+/**
+ * Persist the Studio-selected service id without collapsing `custom:zenmux`
+ * (or any named custom key) down to a bare `custom` that no longer matches
+ * the services[] row. A client that still sends the family id after a stale
+ * load / session rebind must not rewrite disk selection.
+ */
+function persistableServiceId(
+  requested: string | undefined,
+  current: unknown,
+  services: readonly ServiceConfigEntry[],
+): string | undefined {
+  const trimmed = requested?.trim();
+  const currentId = typeof current === "string" && current.trim() ? current.trim() : undefined;
+  if (!trimmed) return currentId;
+
+  if (trimmed !== "custom") return trimmed;
+
+  if (currentId && currentId.startsWith("custom:") && currentId !== "custom") {
+    const stillSelected = services.some((entry) => serviceConfigKey(entry) === currentId);
+    if (stillSelected) return currentId;
+  }
+
+  const customEntries = services.filter((entry) => entry.service === "custom");
+  if (customEntries.length === 1) return serviceConfigKey(customEntries[0]);
+  return trimmed;
+}
+
 function normalizeServiceModelIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -4089,7 +4116,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       llm.configSource = normalizeConfigSource(body.configSource);
     }
     if (body.service !== undefined) {
-      llm.service = body.service;
+      const nextService = persistableServiceId(
+        typeof body.service === "string" ? body.service : undefined,
+        llm.service,
+        normalizeServiceConfig(llm.services),
+      );
+      if (nextService) llm.service = nextService;
     }
     syncTopLevelLlmMirror(llm);
     await saveRawConfig(root, config);
@@ -6019,7 +6051,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     const llm = raw.llm as Record<string, unknown>;
     llm.defaultModel = defaultModel;
     if (typeof body.service === "string" && body.service.trim()) {
-      llm.service = body.service.trim();
+      const nextService = persistableServiceId(
+        body.service,
+        llm.service,
+        normalizeServiceConfig(llm.services),
+      );
+      if (nextService) llm.service = nextService;
     }
     syncTopLevelLlmMirror(llm);
     await saveRawConfig(root, raw);

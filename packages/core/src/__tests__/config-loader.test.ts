@@ -180,7 +180,7 @@ describe("loadProjectConfig local provider auth", () => {
 
     const config = await loadProjectConfig(root);
 
-    expect(config.llm.service).toBe("custom");
+    expect(config.llm.service).toBe("custom:内网GPT");
     expect(config.llm.provider).toBe("custom");
     expect(config.llm.baseUrl).toBe("https://llm.internal.corp/v1");
     expect(config.llm.model).toBe("corp-chat");
