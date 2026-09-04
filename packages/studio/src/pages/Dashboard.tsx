@@ -9,6 +9,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { deriveActiveBookIds, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import type { StudioShortSummary } from "../shared/short-works";
 import {
   Plus,
   BookOpen,
@@ -24,6 +25,7 @@ import {
   Settings,
   Download,
   FileInput,
+  ScrollText,
 } from "lucide-react";
 
 interface BookSummary {
@@ -42,6 +44,7 @@ interface Nav {
   toAnalytics: (id: string) => void;
   toBookCreate: () => void;
   toServices: () => void;
+  toShort: (id: string) => void;
 }
 
 function BookMenu({ bookId, bookTitle, nav, t, onDelete, onOpenChange }: {
@@ -137,6 +140,9 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     nav.toBookCreate();
   };
   const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
+  const { data: shortsData, refetch: refetchShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
+  const shorts = shortsData?.shorts ?? [];
+  const bookDataVersion = useChatStore((s) => s.bookDataVersion);
   const writingBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
   const serviceStoreServices = useServiceStore((s) => s.services);
   const fetchServices = useServiceStore((s) => s.fetchServices);
@@ -151,8 +157,13 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     if (!recent) return;
     if (shouldRefetchBookCollections(recent)) {
       refetch();
+      void refetchShorts();
     }
-  }, [refetch, sse.messages]);
+  }, [refetch, refetchShorts, sse.messages]);
+
+  useEffect(() => {
+    void refetchShorts();
+  }, [bookDataVersion, refetchShorts]);
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-32 space-y-4">
@@ -169,7 +180,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     </div>
   );
 
-  if (!data?.books.length) {
+  if (!data?.books.length && shorts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center fade-in">
         <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center mb-8">
@@ -221,7 +232,58 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
       </div>
 
       <div className="grid gap-6">
-        {data.books.map((book, index) => {
+        {shorts.map((short, index) => {
+          const staggerClass = `stagger-${Math.min(index + 1, 5)}`;
+          return (
+            <div
+              key={`short-${short.id}`}
+              data-testid={`dashboard-short-${short.id}`}
+              className={`paper-sheet group relative rounded-2xl fade-in ${staggerClass}`}
+            >
+              <div className="p-8 flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-primary/5 text-primary">
+                      <ScrollText size={20} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => nav.toShort(short.id)}
+                      className="font-serif text-2xl hover:text-primary transition-all text-left truncate block font-medium hover:underline underline-offset-4 decoration-primary/30"
+                    >
+                      {short.title}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-[13px] text-muted-foreground font-medium">
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                      {t("short.badge")}
+                    </span>
+                    {short.chapterCount ? (
+                      <div className="flex items-center gap-1.5">
+                        <Clock size={14} />
+                        <span>{short.chapterCount} {t("dash.chapters")}</span>
+                      </div>
+                    ) : null}
+                    <span>{
+                      short.status === "completed" ? t("book.statusCompleted")
+                        : short.status === "outlining" ? t("book.statusOutlining")
+                          : short.status === "failed" ? t("book.statusDropped")
+                            : t("short.statusDrafting")
+                    }</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => nav.toShort(short.id)}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
+                >
+                  {t("cockpit.manuscript")}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {(data?.books ?? []).map((book, index) => {
           const isWriting = writingBooks.has(book.id);
           const staggerClass = `stagger-${Math.min(index + 1, 5)}`;
           return (

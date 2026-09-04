@@ -24,6 +24,7 @@ import { ImportManager } from "./pages/ImportManager";
 import { RadarView } from "./pages/RadarView";
 import { DoctorView } from "./pages/DoctorView";
 import { CheckUpdate } from "./pages/CheckUpdate";
+import { ShortReader } from "./pages/ShortReader";
 import { StoryPlayer } from "./pages/StoryPlayer";
 import { StoryGraphTree } from "./pages/StoryGraphTree";
 const FlowView = lazy(() => import("./pages/FlowView"));
@@ -124,15 +125,18 @@ export function App() {
     toFlow: (projectId: string) => setRoute({ page: "flow", projectId }),
     toFilmAuthor: (projectId: string) => setRoute({ page: "film-author", projectId }),
     toFilmStudio: (projectId: string) => setRoute({ page: "film-studio", projectId }),
+    toShort: (storyId: string) => setRoute({ page: "short", storyId }),
   };
 
   const activeBookId = deriveActiveBookId(route);
   const activePage =
     activeBookId
       ? `book:${activeBookId}`
-      : route.page === "service-detail"
-        ? "services"
-        : route.page;
+      : route.page === "short"
+        ? `short:${route.storyId}`
+        : route.page === "service-detail"
+          ? "services"
+          : route.page;
 
   const startupGate = deriveStartupGate({ ready, projectError });
 
@@ -241,6 +245,11 @@ export function App() {
           {route.page === "dashboard" && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <Dashboard nav={nav} sse={sse} theme={theme} t={t} />
+            </div>
+          )}
+          {route.page === "short" && (
+            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <ShortReader storyId={route.storyId} nav={nav} theme={theme} t={t} />
             </div>
           )}
           {isBookCreateChatRoute(route) && (

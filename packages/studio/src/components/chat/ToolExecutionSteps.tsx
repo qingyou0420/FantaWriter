@@ -28,7 +28,7 @@ function ExecStatusBadge({ status }: { status: ToolExecution["status"] }) {
   switch (status) {
     case "running":
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-primary">
+        <span className="inline-flex items-center gap-1 text-xs text-primary" data-testid="exec-status-running">
           <Loader2 size={12} className="animate-spin" />
           <span>{tr("执行中", "Running")}</span>
         </span>
@@ -68,6 +68,38 @@ function StageIcon({ status }: { status: PipelineStage["status"] }) {
   }
 }
 
+function currentStageLabel(stages: ToolExecution["stages"]): string | undefined {
+  return stages?.find((stage) => stage.status === "active")?.label
+    ?? stages?.find((stage) => stage.status === "pending")?.label;
+}
+
+function PipelineStageList({ stages }: { stages: NonNullable<ToolExecution["stages"]> }) {
+  return (
+    <ol className="mb-2 space-y-1.5" data-testid="pipeline-stage-list">
+      {stages.map((stage, index) => (
+        <li
+          key={`${index}-${stage.label}`}
+          data-testid={stage.status === "active" ? "pipeline-stage-active" : "pipeline-stage"}
+          className={[
+            "flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs",
+            stage.status === "active" ? "bg-primary/10 text-foreground ring-1 ring-primary/25" : "text-muted-foreground",
+          ].join(" ")}
+        >
+          <StageIcon status={stage.status} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium">{stage.label}</div>
+            {stage.progress && (
+              <div className="mt-0.5 text-[10px] text-muted-foreground/70">
+                {formatProgress(stage.progress)}
+              </div>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function formatProgress(progress: NonNullable<PipelineStage["progress"]>): string {
   const secs = Math.round(progress.elapsedMs / 1000);
   const statusLabel = progress.status === "thinking" ? tr("思考中", "Thinking") : progress.status ?? "";
@@ -94,6 +126,18 @@ function extractResultPath(result: string | undefined, label: string): string | 
   const match = result.match(new RegExp(`^${escaped}:\\s*(.+)$`, "im"));
   const path = match?.[1]?.trim();
   return path || null;
+}
+
+export interface ShortFictionOutlineReadyDetails {
+  readonly kind: "short_fiction_outline_ready";
+  readonly execId: string;
+  readonly storyId: string;
+  readonly title?: string;
+  readonly chapterCount?: number;
+  readonly outlinePath?: string;
+  readonly outlineSummary?: string;
+  readonly outlineMarkdown?: string;
+  readonly draftProposal?: ProposedActionDetails;
 }
 
 export interface GeneratedArtifactDetails {
@@ -482,6 +526,45 @@ function ChapterStateResyncPreview({ exec }: { exec: ToolExecution }) {
   );
 }
 
+export function getShortFictionOutlineDetails(exec: ToolExecution): ShortFictionOutlineReadyDetails | null {
+  if (exec.tool !== "short_fiction_run" || exec.status !== "completed") return null;
+  if (!exec.details || typeof exec.details !== "object") return null;
+  const record = exec.details as Record<string, unknown>;
+  if (record.kind !== "short_fiction_outline_ready") return null;
+  const storyId = stringField(record, "storyId");
+  if (!storyId) return null;
+  const proposalRecord = record.draftProposal && typeof record.draftProposal === "object" && !Array.isArray(record.draftProposal)
+    ? record.draftProposal as Record<string, unknown>
+    : undefined;
+  const action = stringField(proposalRecord ?? {}, "action") as ChatRequestedIntent | undefined;
+  const targetSessionKind = stringField(proposalRecord ?? {}, "targetSessionKind") as ChatSessionKind | undefined;
+  const instruction = stringField(proposalRecord ?? {}, "instruction");
+  return {
+    kind: "short_fiction_outline_ready",
+    execId: exec.id,
+    storyId,
+    title: stringField(record, "title"),
+    chapterCount: numberField(record, "chapterCount"),
+    outlinePath: stringField(record, "outlinePath"),
+    outlineSummary: stringField(record, "outlineSummary"),
+    outlineMarkdown: stringField(record, "outlineMarkdown"),
+    draftProposal: action && targetSessionKind && instruction
+      ? {
+          kind: "proposed_action",
+          execId: exec.id,
+          action,
+          targetSessionKind,
+          sameSession: booleanField(proposalRecord ?? {}, "sameSession") ?? true,
+          title: stringField(proposalRecord ?? {}, "title"),
+          summary: stringField(proposalRecord ?? {}, "summary"),
+          instruction,
+          requestedSkills: stringArrayField(proposalRecord ?? {}, "requestedSkills"),
+          actionPayload: actionPayloadField(proposalRecord ?? {}),
+        }
+      : undefined,
+  };
+}
+
 export function getGeneratedArtifactDetails(exec: ToolExecution): GeneratedArtifactDetails | null {
   if (!["short_fiction_run", "generate_cover", "script_create", "storyboard_create", "interactive_film_create"].includes(exec.tool)) return null;
   if (!exec.details || typeof exec.details !== "object") return null;
@@ -580,35 +663,128 @@ function ScriptStoryboardResultPreview({ exec, onOpenFilmStudio }: { exec: ToolE
   );
 }
 
+function ShortFictionOutlinePreview({
+  exec,
+  onProposedAction,
+  onRejectProposedAction,
+}: {
+  exec: ToolExecution;
+  onProposedAction?: (details: ProposedActionDetails) => void;
+  onRejectProposedAction?: (details: ProposedActionDetails) => void;
+}) {
+  const openProjectArtifact = useChatStore((s) => s.openProjectArtifact);
+  const resolvedProposals = useChatStore((s) => s.resolvedProposals);
+  const isActiveSessionStreaming = useChatStore(chatSelectors.isActiveSessionStreaming);
+  const details = getShortFictionOutlineDetails(exec);
+  if (!details) return null;
+  const resolution = resolvedProposals[details.execId];
+  const streaming = isActiveSessionStreaming;
+  const locked = resolution !== undefined;
+  const preview = details.outlineSummary || details.outlineMarkdown || "";
+  return (
+    <div
+      className="mx-3 mb-3 mt-1 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3.5"
+      data-testid="short-fiction-outline-ready"
+    >
+      <div className="text-[17px] leading-6 font-semibold text-foreground">
+        {tr("大纲已锁定，请确认后写章", "Outline locked — confirm before drafting")}
+      </div>
+      <div className="mt-1.5 text-[15px] leading-7 text-muted-foreground">
+        {details.title ?? details.storyId}
+        {details.chapterCount ? tr(` · ${details.chapterCount} 章`, ` · ${details.chapterCount} chapters`) : ""}
+      </div>
+      {preview && (
+        <pre className="mt-2.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/70 px-3 py-2.5 text-[13px] leading-6 text-muted-foreground">
+          {preview}
+        </pre>
+      )}
+      {details.outlinePath && (
+        <button
+          type="button"
+          onClick={() => openProjectArtifact(details.outlinePath!)}
+          className="mt-2 text-[13px] font-medium text-primary hover:underline"
+        >
+          {tr("查看完整大纲", "Open full outline")}
+        </button>
+      )}
+      {resolution === "confirmed" ? (
+        <div className="mt-3 flex items-center gap-1.5 text-[15px] leading-6 font-medium text-primary">
+          <Check size={15} className="shrink-0" />
+          {tr("已确认写章", "Chapter writing confirmed")}
+        </div>
+      ) : resolution === "rejected" ? (
+        <div className="mt-3 text-[15px] leading-6 font-medium text-muted-foreground">{tr("已取消", "Cancelled")}</div>
+      ) : details.draftProposal ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="confirm-short-outline"
+            onClick={() => onProposedAction?.(details.draftProposal!)}
+            disabled={!onProposedAction || streaming || locked}
+            className="rounded-lg bg-primary px-3.5 py-2 text-[15px] leading-6 font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {streaming ? tr("执行中…", "Running…") : tr("确认按此大纲写章", "Write chapters from this outline")}
+          </button>
+          <button
+            type="button"
+            onClick={() => onRejectProposedAction?.(details.draftProposal!)}
+            disabled={!onRejectProposedAction || streaming || locked}
+            className="rounded-lg border border-border/60 bg-background/80 px-3.5 py-2 text-[15px] leading-6 font-medium text-muted-foreground disabled:opacity-50"
+          >
+            {tr("先不写", "Not now")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ShortFictionResultPreview({ exec }: { exec: ToolExecution }) {
+  const openProjectArtifact = useChatStore((s) => s.openProjectArtifact);
   if (!["short_fiction_run", "generate_cover"].includes(exec.tool) || exec.status !== "completed") return null;
   const details = getGeneratedArtifactDetails(exec);
+  const manuscriptPath = details?.finalMarkdownPath ?? extractResultPath(exec.result, "Final");
   const coverPath = details?.coverImagePath ?? extractResultPath(exec.result, "Cover image");
   const coverError = details?.coverError ?? extractResultPath(exec.result, "Cover image reason");
+  const manuscriptButton = manuscriptPath ? (
+    <button
+      type="button"
+      onClick={() => openProjectArtifact(manuscriptPath)}
+      className="mx-3 mb-3 mt-1 text-[13px] font-medium text-primary hover:underline"
+    >
+      {tr("打开正文", "Open manuscript")}
+    </button>
+  ) : null;
   if (!coverPath || !/\.(png|jpe?g|webp)$/iu.test(coverPath)) {
-    if (!coverError) return null;
+    if (!coverError) return manuscriptButton;
     return (
-      <div className="mx-3 mb-3 mt-1 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-        {tr("封面未生成：", "Cover not generated: ")}{coverError}
+      <div>
+        <div className="mx-3 mb-3 mt-1 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {tr("封面未生成：", "Cover not generated: ")}{coverError}
+        </div>
+        {manuscriptButton}
       </div>
     );
   }
 
   const coverUrl = buildApiUrl(`/project/files/${encodeProjectPath(coverPath)}`);
-  if (!coverUrl) return null;
+  if (!coverUrl) return manuscriptButton;
   const title = details?.title ?? details?.storyId ?? tr("短篇封面", "Short fiction cover");
 
   return (
-    <div className="mx-3 mb-3 mt-1 overflow-hidden rounded-xl border border-border/40 bg-background/70">
-      <img
-        src={coverUrl}
-        alt={title}
-        className="block max-h-[360px] w-full object-contain bg-muted/20"
-        loading="lazy"
-      />
-      <div className="border-t border-border/40 px-3 py-2 text-[11px] text-muted-foreground break-all">
-        {coverPath}
+    <div>
+      <div className="mx-3 mb-3 mt-1 overflow-hidden rounded-xl border border-border/40 bg-background/70">
+        <img
+          src={coverUrl}
+          alt={title}
+          className="block max-h-[360px] w-full object-contain bg-muted/20"
+          loading="lazy"
+        />
+        <div className="border-t border-border/40 px-3 py-2 text-[11px] text-muted-foreground break-all">
+          {coverPath}
+        </div>
       </div>
+      {manuscriptButton}
     </div>
   );
 }
@@ -977,6 +1153,7 @@ function PlayEditPreview({ exec }: { exec: ToolExecution }) {
 
 function hasStructuredResultPreview(exec: ToolExecution): boolean {
   if (getProposedActionDetails(exec)) return true;
+  if (getShortFictionOutlineDetails(exec)) return true;
   if (getProposedTruthDiffDetails(exec)) return true;
   if (getPlayToolDetails(exec)?.sceneText) return true;
   if (getChapterRevisionDetails(exec)) return true;
@@ -1076,6 +1253,7 @@ function PipelineExecution({
 
   const bookId = exec.args?.bookId as string | undefined;
   const forecastDetails = getNarrativeForecastPreviewDetails(exec);
+  const activeStageLabel = currentStageLabel(exec.stages);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="rounded-xl border border-border/40 bg-card/60">
@@ -1092,6 +1270,14 @@ function PipelineExecution({
               ? formatDuration(exec.startedAt, exec.startedAt + elapsedMs)
               : exec.completedAt ? formatDuration(exec.startedAt, exec.completedAt) : ""}
           </span>
+          {isActive && activeStageLabel && (
+            <span
+              data-testid="current-stage-badge"
+              className="max-w-[10rem] truncate rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary"
+            >
+              {activeStageLabel}
+            </span>
+          )}
           <ExecStatusBadge status={exec.status} />
           <ChevronDown size={16} className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
         </div>
@@ -1107,6 +1293,11 @@ function PipelineExecution({
         onRejectTruthDiff={onRejectTruthDiff}
       />
       <SkillUsagePreview exec={exec} />
+      <ShortFictionOutlinePreview
+        exec={exec}
+        onProposedAction={onProposedAction}
+        onRejectProposedAction={onRejectProposedAction}
+      />
       <ShortFictionResultPreview exec={exec} />
       <ScriptStoryboardResultPreview exec={exec} onOpenFilmStudio={onOpenFilmStudio} />
       <PlayResultPreview exec={exec} />
@@ -1122,31 +1313,13 @@ function PipelineExecution({
       {!forecastDetails && !hasStructuredResultPreview(exec) && typeof exec.result === "string" && exec.result.trim() && (
         <PipelineResultDetails result={exec.result} defaultOpen={toolDetailsDefaultOpen} />
       )}
+      {exec.stages && exec.stages.length > 0 && (
+        <div className="px-3 pb-2">
+          <PipelineStageList stages={exec.stages} />
+        </div>
+      )}
       <CollapsibleContent>
         <div className="px-3 pb-3 pt-1">
-          {exec.stages && exec.stages.length > 0 && (
-            <ol className="mb-2 space-y-1.5">
-              {exec.stages.map((stage) => (
-                <li
-                  key={stage.label}
-                  className={[
-                    "flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs",
-                    stage.status === "active" ? "bg-primary/5 text-foreground" : "text-muted-foreground",
-                  ].join(" ")}
-                >
-                  <StageIcon status={stage.status} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate">{stage.label}</div>
-                    {stage.progress && (
-                      <div className="mt-0.5 text-[10px] text-muted-foreground/70">
-                        {formatProgress(stage.progress)}
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
           {/* Real-time execution logs */}
           {exec.logs && exec.logs.length > 0 && (
             <ul className="space-y-0.5">

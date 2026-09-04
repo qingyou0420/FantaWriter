@@ -15,6 +15,8 @@ import {
   buildShortFictionPackageUserPrompt,
   buildShortFictionWriterSystemPrompt,
   buildShortFictionWriterUserPrompt,
+  buildShortFictionChapterWriterSystemPrompt,
+  buildShortFictionChapterWriterUserPrompt,
 } from "../prompts/short-fiction.js";
 
 export const SHORT_FICTION_DEFAULT_CHAPTERS = 12;
@@ -95,6 +97,12 @@ export interface ShortFictionDraftInput {
   readonly language?: ShortFictionLanguage;
 }
 
+export interface ShortFictionChapterDraftInput extends ShortFictionDraftInput {
+  readonly chapterNumber: number;
+  readonly previousChaptersMarkdown?: string;
+  readonly previousChapterTitles?: ReadonlyArray<string>;
+}
+
 export interface ShortFictionDraftReviewInput extends ShortFictionDraftInput {
   readonly draft: ShortFictionBatchDraft;
 }
@@ -173,6 +181,27 @@ export class ShortFictionWriterAgent extends BaseAgent {
       ], {
         temperature: 0.58,
         maxTokens: estimateShortFictionMaxTokens(input.chapterCount, input.charsPerChapter),
+      }), this.name, this.log);
+
+    return parseShortFictionBatchDraft(response.content, { expectedChapters: input.chapterCount, language: input.language });
+  }
+
+  async writeChapter(input: ShortFictionChapterDraftInput): Promise<ShortFictionBatchDraft> {
+    const response = await retryShortFictionCall(() =>
+      this.chat([
+        { role: "system", content: buildShortFictionChapterWriterSystemPrompt(input.language) },
+        { role: "user", content: buildShortFictionChapterWriterUserPrompt({
+          direction: input.direction,
+          outlineMarkdown: input.outlineMarkdown,
+          chapterCount: input.chapterCount,
+          charsPerChapter: input.charsPerChapter,
+          chapterNumber: input.chapterNumber,
+          previousChaptersMarkdown: input.previousChaptersMarkdown,
+          previousChapterTitles: input.previousChapterTitles,
+        }, input.language) },
+      ], {
+        temperature: 0.58,
+        maxTokens: estimateShortFictionMaxTokens(1, input.charsPerChapter),
       }), this.name, this.log);
 
     return parseShortFictionBatchDraft(response.content, { expectedChapters: input.chapterCount, language: input.language });
@@ -346,6 +375,72 @@ export function findEmptyShortFictionChapters(draft: ShortFictionBatchDraft): nu
   return draft.chapters
     .filter((chapter) => !chapter.content.trim())
     .map((chapter) => chapter.number);
+}
+
+export function emptyShortFictionDraft(
+  chapterCount: number,
+  language: ShortFictionLanguage = "zh",
+  storyTitle?: string,
+): ShortFictionBatchDraft {
+  const title = storyTitle?.trim() || untitledShortTitle(language);
+  const chapters = Array.from({ length: chapterCount }, (_, index) => ({
+    number: index + 1,
+    title: fallbackChapterTitle(index + 1, language),
+    content: "",
+    charCount: 0,
+  }));
+  return {
+    storyTitle: title,
+    chapters,
+    rawContent: "",
+  };
+}
+
+export function mergeShortFictionChapter(
+  existing: ShortFictionBatchDraft,
+  incoming: ShortFictionBatchDraft,
+  chapterNumber: number,
+  language: ShortFictionLanguage = "zh",
+): ShortFictionBatchDraft {
+  const incomingChapter = incoming.chapters.find((chapter) => chapter.number === chapterNumber);
+  const chapters = existing.chapters.map((chapter) => (
+    chapter.number === chapterNumber && incomingChapter?.content.trim()
+      ? incomingChapter
+      : chapter
+  ));
+  const storyTitle = normalizeTitle(incoming.storyTitle) && incoming.storyTitle !== untitledShortTitle(language)
+    ? incoming.storyTitle
+    : existing.storyTitle;
+  const openingHook = chapterNumber === 1
+    ? (incoming.openingHook?.trim() || existing.openingHook)
+    : existing.openingHook;
+  const merged: ShortFictionBatchDraft = {
+    storyTitle,
+    openingHook,
+    chapters,
+    rawContent: incoming.rawContent,
+  };
+  return {
+    ...merged,
+    rawContent: renderShortFictionDraftMarkdown(merged, language),
+  };
+}
+
+export function previousShortFictionContext(
+  draft: ShortFictionBatchDraft,
+  chapterNumber: number,
+  language: ShortFictionLanguage = "zh",
+  lookback = 2,
+): { readonly titles: ReadonlyArray<string>; readonly markdown: string } {
+  const written = draft.chapters.filter((chapter) => chapter.number < chapterNumber && chapter.content.trim());
+  const titles = written.map((chapter) => formatShortFictionChapterHeading(chapter.number, chapter.title, language));
+  const recent = written.slice(-lookback);
+  const markdown = recent.map((chapter) => [
+    `## ${formatShortFictionChapterHeading(chapter.number, chapter.title, language)}`,
+    "",
+    chapter.content,
+  ].join("\n")).join("\n\n");
+  return { titles, markdown };
 }
 
 export function renderShortFictionDraftMarkdown(

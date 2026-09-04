@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ToolExecution } from "../../../store/chat/types";
-import { PipelineResultDetails, ToolExecutionSteps, UtilityExecutionRow, buildPlayRunStatusUrl, buildPlaySceneImageUrl, getChapterContextTraceDetails, getChapterRevisionDetails, getChapterStateResyncDetails, getExecutionSkillIds, getGeneratedArtifactDetails, getPlayEditDetails, getPlayToolDetails, getProposedActionContractRows, getProposedActionDetails, groupToolExecutionsChronologically } from "../ToolExecutionSteps";
+import { PipelineResultDetails, ToolExecutionSteps, UtilityExecutionRow, buildPlayRunStatusUrl, buildPlaySceneImageUrl, getChapterContextTraceDetails, getChapterRevisionDetails, getChapterStateResyncDetails, getExecutionSkillIds, getGeneratedArtifactDetails, getPlayEditDetails, getPlayToolDetails, getProposedActionContractRows, getProposedActionDetails, getShortFictionOutlineDetails, groupToolExecutionsChronologically } from "../ToolExecutionSteps";
 import { usePreferencesStore } from "../../../store/preferences";
 import { setAppLanguage } from "../../../lib/app-language";
 
@@ -308,6 +308,36 @@ describe("groupChronologically", () => {
     expect(html).toContain("inkos-play-world");
   });
 
+  it("shows a Chinese stage list and current-step badge while short fiction is running", () => {
+    const exec = makeExec({
+      id: "short-running",
+      tool: "short_fiction_run",
+      label: "短篇生产",
+      status: "running",
+      stages: [
+        { label: "创建大纲", status: "completed" },
+        { label: "审大纲", status: "completed" },
+        { label: "改大纲", status: "completed" },
+        { label: "写第 3 章", status: "active" },
+        { label: "审稿", status: "pending" },
+        { label: "修订", status: "pending" },
+        { label: "封面", status: "pending" },
+      ],
+    });
+
+    const html = renderToStaticMarkup(React.createElement(ToolExecutionSteps, { executions: [exec] }));
+    expect(html).toContain("执行中");
+    expect(html).toContain("写第 3 章");
+    expect(html).toContain("创建大纲");
+    expect(html).toContain("审大纲");
+    expect(html).toContain("改大纲");
+    expect(html).toContain("审稿");
+    expect(html).toContain("修订");
+    expect(html).toContain("封面");
+    expect(html).toContain("pipeline-stage-list");
+    expect(html).toContain("current-stage-badge");
+  });
+
   it("extracts generated cover details from public short fiction tools", () => {
     const exec = makeExec({
       id: "short-1",
@@ -329,6 +359,54 @@ describe("groupChronologically", () => {
       salesPackagePath: "shorts/demo-story/final/sales-package.md",
       coverImagePath: "shorts/demo-story/final/cover.png",
     });
+  });
+
+  it("extracts a locked short-fiction outline and renders the confirm-to-draft card", () => {
+    const exec = makeExec({
+      id: "outline-1",
+      tool: "short_fiction_run",
+      label: "短篇生产",
+      details: {
+        kind: "short_fiction_outline_ready",
+        storyId: "elevator",
+        title: "电梯多一层",
+        chapterCount: 12,
+        outlinePath: "shorts/elevator/outline/v002.md",
+        outlineSummary: "标题：电梯多一层\n章数：12",
+        draftProposal: {
+          kind: "proposed_action",
+          action: "short_run",
+          targetSessionKind: "short",
+          sameSession: true,
+          title: "确认按此大纲写章",
+          instruction: "按已锁定大纲写短篇「电梯多一层」各章，一次一章。",
+          actionPayload: {
+            shortRun: {
+              title: "电梯多一层",
+              direction: "恐怖短篇",
+              storyId: "elevator",
+              phase: "draft",
+            },
+          },
+        },
+      },
+    });
+
+    expect(getShortFictionOutlineDetails(exec)).toMatchObject({
+      kind: "short_fiction_outline_ready",
+      execId: "outline-1",
+      storyId: "elevator",
+      title: "电梯多一层",
+      draftProposal: {
+        action: "short_run",
+        actionPayload: { shortRun: { phase: "draft", storyId: "elevator" } },
+      },
+    });
+    expect(getGeneratedArtifactDetails(exec)).toBeNull();
+    const html = renderToStaticMarkup(React.createElement(ToolExecutionSteps, { executions: [exec] }));
+    expect(html).toContain("大纲已锁定");
+    expect(html).toContain("确认按此大纲写章");
+    expect(html).toContain("电梯多一层");
   });
 
   it("extracts and renders interactive-film creation artifacts", () => {

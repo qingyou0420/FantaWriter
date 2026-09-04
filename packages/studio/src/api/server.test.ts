@@ -2518,6 +2518,122 @@ describe("createStudioServer daemon lifecycle", () => {
     expect([400, 404]).toContain(traversal.status);
   });
 
+  it("lists shorts from shorts/ and opens the finished manuscript", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+    await mkdir(join(root, "shorts", "明日来信", "final"), { recursive: true });
+    await writeFile(join(root, "shorts", "明日来信", "brief.json"), JSON.stringify({
+      storyId: "明日来信",
+      title: "明日来信",
+      chapterCount: 12,
+    }), "utf-8");
+    await writeFile(join(root, "shorts", "明日来信", "status.json"), JSON.stringify({
+      status: "complete",
+      stage: "complete",
+    }), "utf-8");
+    await writeFile(join(root, "shorts", "明日来信", "final", "full.md"), "# 明日来信\n\n终稿。", "utf-8");
+
+    const listed = await app.request("http://localhost/api/v1/shorts");
+    expect(listed.status).toBe(200);
+    await expect(listed.json()).resolves.toMatchObject({
+      shorts: [
+        expect.objectContaining({
+          id: "明日来信",
+          title: "明日来信",
+          kind: "short",
+          status: "completed",
+          manuscriptPath: "shorts/明日来信/final/full.md",
+        }),
+      ],
+    });
+
+    const detail = await app.request("http://localhost/api/v1/shorts/明日来信");
+    expect(detail.status).toBe(200);
+    await expect(detail.json()).resolves.toMatchObject({
+      title: "明日来信",
+      contentKind: "manuscript",
+      content: expect.stringContaining("终稿"),
+    });
+
+    const encoded = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}`);
+    expect(encoded.status).toBe(200);
+    await expect(encoded.json()).resolves.toMatchObject({
+      id: "明日来信",
+      contentKind: "manuscript",
+      content: expect.stringContaining("终稿"),
+    });
+  });
+
+  it("seeds Chinese short-fiction stages and advances them from live progress", async () => {
+    let sendProgress: ((message: string) => void) | undefined;
+    let resolveShort!: () => void;
+    createShortFictionRunToolMock.mockImplementationOnce(() => ({
+      name: "short_fiction_run",
+      execute: vi.fn(async (_id: string, _params: unknown, _signal: AbortSignal, onUpdate?: (result: unknown) => void) => {
+        sendProgress = (message) => onUpdate?.({ content: [{ type: "text", text: message }] });
+        await new Promise<void>((resolve) => {
+          resolveShort = resolve;
+        });
+        return { content: [{ type: "text", text: "大纲已锁定" }] };
+      }),
+    }));
+    loadBookSessionMock.mockResolvedValue({
+      sessionId: "short-stage-session",
+      bookId: null,
+      sessionKind: "short",
+      title: null,
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const pending = app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "写一篇电梯短篇。",
+        sessionId: "short-stage-session",
+        sessionKind: "short",
+        actionSource: "button",
+        requestedIntent: "short_run",
+        actionPayload: { shortRun: { direction: "电梯多一层", chapters: 12, cover: false } },
+      }),
+    });
+
+    await vi.waitFor(async () => {
+      const task = await loadStudioTaskSnapshot(root, "short-stage-session");
+      expect(task?.execution.stages?.map((stage) => stage.label)).toEqual([
+        "创建大纲", "审大纲", "改大纲",
+      ]);
+      expect(task?.execution.stages?.[0]?.status).toBe("active");
+    });
+
+    sendProgress?.("正在审阅大纲…");
+    await vi.waitFor(async () => {
+      const task = await loadStudioTaskSnapshot(root, "short-stage-session");
+      expect(task?.execution.stages?.map((stage) => stage.status)).toEqual([
+        "completed", "active", "pending",
+      ]);
+      expect(task?.execution.logs?.at(-1)).toBe("正在审阅大纲…");
+    });
+
+    sendProgress?.("正在修订大纲…");
+    await vi.waitFor(async () => {
+      const task = await loadStudioTaskSnapshot(root, "short-stage-session");
+      expect(task?.execution.stages?.map((stage) => [stage.label, stage.status])).toEqual([
+        ["创建大纲", "completed"],
+        ["审大纲", "completed"],
+        ["改大纲", "active"],
+      ]);
+    });
+
+    resolveShort();
+    await pending;
+  });
+
   it("reads and writes generated text artifacts without exposing arbitrary files", async () => {
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);

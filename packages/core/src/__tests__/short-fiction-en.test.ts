@@ -16,6 +16,8 @@ import {
   buildShortFictionPackageUserPrompt,
   buildShortFictionWriterSystemPrompt,
   buildShortFictionWriterUserPrompt,
+  buildShortFictionChapterWriterSystemPrompt,
+  buildShortFictionChapterWriterUserPrompt,
 } from "../prompts/short-fiction.js";
 import {
   ShortFictionDraftReviewerAgent,
@@ -63,6 +65,13 @@ describe("short-fiction English prompt branch", () => {
       }, "en"),
       writerSystem: buildShortFictionWriterSystemPrompt("en"),
       writerUser: buildShortFictionWriterUserPrompt(DRAFT_INPUT, "en"),
+      chapterWriterSystem: buildShortFictionChapterWriterSystemPrompt("en"),
+      chapterWriterUser: buildShortFictionChapterWriterUserPrompt({
+        ...DRAFT_INPUT,
+        chapterNumber: 3,
+        previousChapterTitles: ["The Setup"],
+        previousChaptersMarkdown: "## Chapter 2\nShe kept the ledger.",
+      }, "en"),
       continuationUser: buildShortFictionDraftContinuationUserPrompt({
         ...DRAFT_INPUT,
         existingDraftMarkdown: "# Existing Draft",
@@ -204,7 +213,14 @@ describe("short-fiction runner English branch", () => {
     ].join("\n");
     const draft = parseShortFictionBatchDraft(draftMd, { expectedChapters: CH, language: "en" });
 
-    const writeDraft = vi.spyOn(ShortFictionWriterAgent.prototype, "writeDraft").mockResolvedValue(draft);
+    const writeChapter = vi.spyOn(ShortFictionWriterAgent.prototype, "writeChapter").mockImplementation(async (input) => ({
+      storyTitle: draft.storyTitle,
+      openingHook: input.chapterNumber === 1 ? draft.openingHook : undefined,
+      chapters: draft.chapters.map((chapter) => (
+        chapter.number === input.chapterNumber ? chapter : { ...chapter, content: "", charCount: 0 }
+      )),
+      rawContent: draft.chapters.find((chapter) => chapter.number === input.chapterNumber)?.content ?? "",
+    }));
     vi.spyOn(ShortFictionDraftReviewerAgent.prototype, "reviewDraft").mockResolvedValue("reads fine");
     vi.spyOn(ShortFictionDraftReviserAgent.prototype, "reviseDraft").mockResolvedValue(draft);
     vi.spyOn(ShortFictionPackagingAgent.prototype, "generatePackage").mockResolvedValue({
@@ -221,7 +237,12 @@ describe("short-fiction runner English branch", () => {
       runtimes: runtimes(root),
     });
 
-    expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ language: "en", charsPerChapter: 650 }));
+    expect(writeChapter).toHaveBeenCalledWith(expect.objectContaining({
+      language: "en",
+      charsPerChapter: 650,
+      chapterNumber: 1,
+    }));
+    expect(writeChapter).toHaveBeenCalledTimes(CH);
     const final = await readFile(join(root, "shorts", "extra-floor", "final", "full.md"), "utf-8");
     expect(final).toContain("## Chapter 12: Room 12");
     expect(CJK.test(final)).toBe(false);

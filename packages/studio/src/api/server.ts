@@ -159,7 +159,12 @@ import {
   chapterRuntimeSlug,
 } from "@actalk/inkos-core";
 import { isConfirmedProductionAction } from "../shared/confirmed-production.js";
+import {
+  advanceShortFictionStages,
+  shortFictionToolStages,
+} from "../shared/short-fiction-stages.js";
 import { summarizeToolResult } from "../shared/tool-result.js";
+import { listStudioShorts, loadStudioShort } from "./short-library.js";
 import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isSafeBookId } from "./safety.js";
@@ -1159,7 +1164,7 @@ interface CollectedToolExec {
   result?: string;
   details?: unknown;
   error?: string;
-  stages?: Array<{ label: string; status: "pending" | "completed" }>;
+  stages?: Array<{ label: string; status: "pending" | "active" | "completed" }>;
   logs?: string[];
   startedAt: number;
   completedAt?: number;
@@ -1317,12 +1322,20 @@ async function executeConfirmedProductionAction(args: {
     const direction = payload?.direction?.trim() || args.instruction.trim();
     if (!direction) throw new ApiError(400, "CONFIRMED_ACTION_PAYLOAD_INCOMPLETE", pick(lang, "确认短篇缺少方向，请重新生成确认卡。", "The short fiction confirmation is missing a direction. Regenerate the confirmation card."));
     tool = createShortFictionRunTool(args.pipeline, args.root, {
-      actionPayload,
+      actionPayload: {
+        ...actionPayload,
+        shortRun: {
+          ...payload,
+          direction,
+          phase: payload?.phase ?? "outline",
+        },
+      },
       language: lang,
       defaultSkills: productionSkills("shortWriting"),
     });
     params = {
       direction,
+      phase: payload?.phase ?? "outline",
       ...(payload?.reference ? { reference: payload.reference } : {}),
       ...(payload?.storyId ? { storyId: payload.storyId } : {}),
       ...(payload?.chapters ? { chapters: payload.chapters } : {}),
@@ -1590,7 +1603,13 @@ async function executeConfirmedProductionAction(args: {
     label: resolveToolLabel(tool.name, agent, lang),
     status: "running",
     args: params,
-    stages: agent ? pipelineStages(agent, lang)?.map(label => ({ label, status: "pending" as const })) : undefined,
+    stages: tool.name === "short_fiction_run"
+      ? shortFictionToolStages(
+          typeof params.phase === "string" ? params.phase as "outline" | "draft" | "full" : undefined,
+          typeof params.chapters === "number" ? params.chapters : (actionPayload?.shortRun?.chapters ?? 12),
+          lang,
+        )
+      : agent ? pipelineStages(agent, lang)?.map(label => ({ label, status: "pending" as const })) : undefined,
     startedAt: Date.now(),
   };
 
@@ -1604,7 +1623,7 @@ async function executeConfirmedProductionAction(args: {
     id,
     tool: tool.name,
     args: params,
-    stages: exec.stages?.map(stage => stage.label),
+    stages: exec.stages,
     background: true,
     ...(args.sourceRequestId ? { sourceRequestId: args.sourceRequestId } : {}),
   });
@@ -1616,7 +1635,29 @@ async function executeConfirmedProductionAction(args: {
       args.signal,
       (partialResult: unknown) => {
         const progress = toolResultText(partialResult, lang);
-        if (progress) exec.logs = [...(exec.logs ?? []), progress].slice(-80);
+        if (progress) {
+          exec.logs = [...(exec.logs ?? []), progress].slice(-80);
+          broadcast("log", {
+            sessionId: args.streamSessionId,
+            executionId: id,
+            level: "info",
+            tag: "studio",
+            message: progress,
+          });
+          if (exec.tool === "short_fiction_run") {
+            const previous = exec.stages?.find((stage) => stage.status === "active")?.label;
+            exec.stages = advanceShortFictionStages(exec.stages, progress, lang);
+            const current = exec.stages?.find((stage) => stage.status === "active")?.label;
+            if (current && current !== previous) {
+              broadcast("log:stage", {
+                sessionId: args.streamSessionId,
+                executionId: id,
+                id,
+                stageName: current,
+              });
+            }
+          }
+        }
         void args.onTaskChange(exec).catch(() => undefined);
       },
     );
@@ -2671,6 +2712,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       },
     };
     await saveStudioTaskSnapshot(root, snapshot);
+    broadcast("task:snapshot", snapshot);
   };
 
   const loadReconciledTaskSnapshot = async (sessionId: string): Promise<StudioTaskSnapshot | null> => {
@@ -6864,6 +6906,23 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
     films.sort((a, b) => a.title.localeCompare(b.title, "zh"));
     return c.json({ films });
+  });
+
+  app.get("/api/v1/shorts", async (c) => {
+    const shorts = await listStudioShorts(root);
+    return c.json({ shorts });
+  });
+
+  app.get("/api/v1/shorts/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!isSafeBookId(id)) {
+      throw new ApiError(400, "INVALID_ID", `Invalid short id: "${id}"`);
+    }
+    const short = await loadStudioShort(root, id);
+    if (!short) {
+      throw new ApiError(404, "NOT_FOUND", `Short "${id}" not found`);
+    }
+    return c.json(short);
   });
 
   app.get("/api/v1/translations", async (c) => {

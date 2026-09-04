@@ -204,14 +204,14 @@ function buildShortPrompt(isZh: boolean, confirmedIntent?: "short_run" | "genera
     return isZh
       ? `你是 InkOS Short 助手。用户已经点击确认生成独立短篇。
 
-唯一动作：立即调用 short_fiction_run，生成故事方案、完整正文、审稿记录、简介卖点、封面提示词和可选封面图，输出到 shorts/。
+唯一动作：立即调用 short_fiction_run。默认先做大纲（撰写→审阅→修订）并停下来等作者确认；只有确认卡带 phase=draft 或用户已确认大纲时才写章。写章必须一章一次，并持续报进度，不要一次写完整篇。
 不要先输出正文、方案或解释；不要创建长篇 books/ 项目，不要启动互动世界。
 封面失败时，只说明正文/简介/卖点/封面提示词是否已完成，并建议重试或切换封面服务/模型。
 
 ${commonOutputRules(true)}`
       : `You are the InkOS Short assistant. The user has confirmed standalone short-fiction generation.
 
-Only action: immediately call short_fiction_run to generate outline, complete draft, review artifacts, synopsis/selling points, cover prompt, and optional cover image under shorts/.
+Only action: immediately call short_fiction_run. Default: produce the outline (write → review → revise) and stop for author confirm. Only write chapters when the confirmation payload has phase=draft or the outline is already confirmed. Write one chapter at a time with visible progress; do not gulp the whole short in one call.
 Do not write the draft, outline, or explanation first; do not create books/ projects or start play worlds.
 If cover generation fails, say whether draft/synopsis/selling points/cover prompt completed and suggest retrying or switching the Studio cover provider/model.
 

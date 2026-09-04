@@ -19,8 +19,12 @@ import {
   ShortFictionOutlineReviserAgent,
   ShortFictionPackagingAgent,
   ShortFictionWriterAgent,
+  emptyShortFictionDraft,
   findEmptyShortFictionChapters,
   formatShortFictionChapterHeading,
+  mergeShortFictionChapter,
+  parseShortFictionOutline,
+  previousShortFictionContext,
   renderShortFictionDraftMarkdown,
   validateShortFictionDraftForFinal,
   type ShortFictionBatchDraft,
@@ -57,6 +61,9 @@ export interface ShortFictionRunRuntimes {
   readonly package: AgentContext;
 }
 
+export type ShortFictionRunPhase = "outline" | "draft" | "full";
+export type ShortFictionRunStatus = "complete" | "outline-ready" | "already-complete";
+
 export interface ShortFictionRunOptions {
   readonly projectRoot: string;
   readonly title?: string;
@@ -77,10 +84,22 @@ export interface ShortFictionRunOptions {
   readonly coverApiKeyEnv?: string;
   readonly signal?: AbortSignal;
   readonly onProgress?: (message: string) => void;
+  /**
+   * `full` (default) is the non-interactive CLI path: outline then chapters.
+   * `outline` locks the plan and returns for author review.
+   * `draft` writes chapters from an already-locked outline.
+   */
+  readonly phase?: ShortFictionRunPhase;
 }
 
 export interface ShortFictionRunResult {
   readonly storyId: string;
+  readonly status: ShortFictionRunStatus;
+  readonly phase: ShortFictionRunPhase;
+  readonly title?: string;
+  readonly chapterCount?: number;
+  readonly outlineSummary?: string;
+  readonly outlineMarkdown?: string;
   readonly outlinePath: string;
   readonly outlineReviewPath: string;
   readonly draftReviewPath: string;
@@ -137,7 +156,11 @@ export async function runShortFictionProduction(
     && await projectFileExists(root, join(outDir, providedStoryId, "final", "full.md"))
     && !await isFailedShortRun(root, join(outDir, providedStoryId, "status.json"))
   ) {
-    return buildShortRunResult(providedStoryId, join(outDir, providedStoryId), { coverError: "already-complete" });
+    return buildShortRunResult(providedStoryId, join(outDir, providedStoryId), {
+      coverError: "already-complete",
+      status: "already-complete",
+      phase: options.phase ?? "full",
+    });
   }
 
   try {
@@ -165,6 +188,7 @@ async function produceShort(
   providedStoryId: string | undefined,
 ): Promise<ShortFictionRunResult> {
   const language = options.language ?? "zh";
+  const phase = options.phase ?? "full";
   const chapterCount = boundedInteger(
     options.chapterCount,
     SHORT_FICTION_DEFAULT_CHAPTERS,
@@ -188,106 +212,94 @@ async function produceShort(
         SHORT_FICTION_MIN_CHARS_PER_CHAPTER,
         SHORT_FICTION_MAX_CHARS_PER_CHAPTER,
       );
+  const say = (key: ShortFictionProgressKey, vars?: ShortFictionProgressVars) => {
+    options.onProgress?.(shortFictionProgress(language, key, vars));
+  };
 
-  // Resume the (3-stage) outline from disk if v002 already exists for this id —
-  // the writer + everything downstream only need the outline markdown.
-  const resumedOutline = providedStoryId
-    ? await tryReadProjectText(root, join(outDir, providedStoryId, "outline", "v002.md"))
-    : undefined;
+  const outlineWork = await produceShortOutline({
+    options,
+    root,
+    outDir,
+    providedStoryId,
+    language,
+    chapterCount,
+    charsPerChapter,
+    say,
+  });
+  const { storyId, baseDir, outlineMarkdown, outlineRevisionWarning } = outlineWork;
+  await writeShortRunBrief(root, baseDir, {
+    storyId,
+    title: options.title ?? parseShortFictionOutline(outlineMarkdown, language).storyTitle,
+    direction: options.direction,
+    chapterCount,
+    charsPerChapter,
+    language,
+    cover: options.cover !== false,
+    phase,
+  });
 
-  let outlineMarkdown: string;
-  let outlineRevisionWarning: string | undefined;
-  let storyId: string;
-  let baseDir: string;
-  if (providedStoryId && resumedOutline?.trim()) {
-    storyId = providedStoryId;
-    baseDir = join(outDir, storyId);
-    outlineMarkdown = resumedOutline;
-    options.onProgress?.("Resuming from existing outline (skipping outline stages)...");
-  } else {
-    options.onProgress?.("Creating short fiction outline...");
-    const outlineAgent = new ShortFictionOutlineAgent(options.runtimes.planner);
-    const outlineV1 = await outlineAgent.createOutline({
-      direction: options.direction,
+  if (phase === "outline") {
+    const outline = parseShortFictionOutline(outlineMarkdown, language);
+    const outlineSummary = summarizeShortFictionOutline(outlineMarkdown, language, chapterCount);
+    say("outlineLocked");
+    await writeShortRunSnapshot(root, baseDir, {
+      storyId,
+      status: "needs-review",
+      stage: "awaiting-outline-confirm",
+      artifacts: [
+        join(baseDir, "outline", "v002.md"),
+        join(baseDir, "reviews", "outline-v001.md"),
+      ].map(projectPath),
+      observations: outlineRevisionWarning
+        ? [{
+            metric: "optional-revision",
+            expected: "completed cleanly",
+            actual: `outline revision skipped: ${outlineRevisionWarning}`,
+            severity: "warning",
+            evidence: outlineRevisionWarning,
+            repairable: true,
+          }]
+        : [],
+    });
+    return buildShortRunResult(storyId, baseDir, {
+      status: "outline-ready",
+      phase,
+      title: outline.storyTitle,
       chapterCount,
-      charsPerChapter,
-      reference: options.reference,
-      language,
+      outlineSummary,
+      outlineMarkdown,
     });
-
-    storyId = providedStoryId ?? safeSegment(slugify(outlineV1.storyTitle || options.direction));
-    baseDir = join(outDir, storyId);
-    await writeText(root, join(baseDir, "outline", "v001.md"), outlineV1.rawContent);
-
-    options.onProgress?.("Reviewing outline...");
-    const outlineReviewer = new ShortFictionOutlineReviewerAgent(options.runtimes.outlineReview);
-    const outlineReview = await outlineReviewer.reviewOutline({
-      direction: options.direction,
-      outline: outlineV1,
-      reference: options.reference,
-      language,
-    });
-    await writeText(root, join(baseDir, "reviews", "outline-v001.md"), outlineReview);
-
-    options.onProgress?.("Revising outline once...");
-    const outlineReviser = new ShortFictionOutlineReviserAgent(options.runtimes.planner);
-    try {
-      const outlineV2 = await outlineReviser.reviseOutline({
-        direction: options.direction,
-        outline: outlineV1,
-        review: outlineReview,
-        reference: options.reference,
-        chapterCount,
-        charsPerChapter,
-        language,
-      });
-      await writeText(root, join(baseDir, "outline", "v002.md"), outlineV2.rawContent);
-      outlineMarkdown = outlineV2.rawContent;
-    } catch (error) {
-      outlineRevisionWarning = error instanceof Error ? error.message : String(error);
-      outlineMarkdown = outlineV1.rawContent;
-      await writeText(root, join(baseDir, "outline", "v002.md"), outlineMarkdown);
-      await writeText(root, join(baseDir, "reviews", "outline-v002-warning.md"), language === "en"
-        ? [
-            "# Outline revision not adopted",
-            "",
-            "The complete first outline remains authoritative because the optional revision did not finish cleanly.",
-            "",
-            "## Reason",
-            "",
-            outlineRevisionWarning,
-          ].join("\n")
-        : [
-            "# 第二版大纲未采用",
-            "",
-            "可用的第一版大纲继续生效；可选修订没有完整结束，系统没有用残缺输出覆盖它。",
-            "",
-            "## 原因",
-            "",
-            outlineRevisionWarning,
-          ].join("\n"));
-    }
   }
 
   let finalDraft: ShortFictionBatchDraft;
   let revisionWarning: string | undefined;
   let salesPackage: ShortFictionSalesPackage;
   try {
-    options.onProgress?.("Writing full short fiction draft...");
     const writer = new ShortFictionWriterAgent(options.runtimes.writer);
-    let draftV1 = await writer.writeDraft({
-      direction: options.direction,
-      outlineMarkdown,
-      chapterCount,
-      charsPerChapter,
-      language,
-    });
-    let missingFromDraft = findEmptyShortFictionChapters(draftV1);
-    if (missingFromDraft.length > 0) {
-      await writeDraftArtifacts(root, baseDir, "v001-partial", draftV1, language);
-      for (let attempt = 1; missingFromDraft.length > 0 && attempt <= SHORT_FICTION_DRAFT_COMPLETION_ATTEMPTS; attempt += 1) {
-        options.onProgress?.(`Completing missing short fiction chapters: ${missingFromDraft.join(", ")}...`);
-        draftV1 = await writer.continueDraft({
+    let draftV1 = await tryLoadPartialDraft(root, baseDir, chapterCount, language)
+      ?? emptyShortFictionDraft(chapterCount, language, parseShortFictionOutline(outlineMarkdown, language).storyTitle);
+    const pendingChapters = findEmptyShortFictionChapters(draftV1);
+    if (pendingChapters.length === 0) {
+      say("resumeChapters");
+    }
+    for (const chapterNumber of pendingChapters) {
+      options.signal?.throwIfAborted();
+      say("writingChapter", { chapter: chapterNumber, total: chapterCount });
+      const previous = previousShortFictionContext(draftV1, chapterNumber, language);
+      let written = await writer.writeChapter({
+        direction: options.direction,
+        outlineMarkdown,
+        chapterCount,
+        charsPerChapter,
+        language,
+        chapterNumber,
+        previousChaptersMarkdown: previous.markdown || undefined,
+        previousChapterTitles: previous.titles,
+      });
+      draftV1 = mergeShortFictionChapter(draftV1, written, chapterNumber, language);
+      if (!draftV1.chapters.find((chapter) => chapter.number === chapterNumber)?.content.trim()) {
+        say("completingChapter", { chapter: chapterNumber, total: chapterCount });
+        written = await writer.continueDraft({
           direction: options.direction,
           outlineMarkdown,
           chapterCount,
@@ -295,16 +307,23 @@ async function produceShort(
           language,
           draft: draftV1,
         });
-        missingFromDraft = findEmptyShortFictionChapters(draftV1);
-        if (missingFromDraft.length > 0) {
-          await writeDraftArtifacts(root, baseDir, "v001-partial", draftV1, language);
-        }
+        draftV1 = mergeShortFictionChapter(draftV1, written, chapterNumber, language);
       }
+      if (!draftV1.chapters.find((chapter) => chapter.number === chapterNumber)?.content.trim()) {
+        await writeDraftArtifacts(root, baseDir, "v001-partial", draftV1, language);
+        throw new Error(
+          language === "en"
+            ? `Chapter ${chapterNumber} came back empty after a retry.`
+            : `第${chapterNumber}章重试后仍是空章。`,
+        );
+      }
+      say("chapterWritten", { chapter: chapterNumber, total: chapterCount });
+      await writeDraftArtifacts(root, baseDir, "v001-partial", draftV1, language);
     }
     validateShortFictionDraftForFinal(draftV1, { expectedChapters: chapterCount });
     await writeDraftArtifacts(root, baseDir, "v001", draftV1, language);
 
-    options.onProgress?.("Reviewing full draft...");
+    say("reviewingDraft");
     const draftReviewer = new ShortFictionDraftReviewerAgent(options.runtimes.draftReview);
     const draftReview = await draftReviewer.reviewDraft({
       direction: options.direction,
@@ -317,7 +336,7 @@ async function produceShort(
     await writeText(root, join(baseDir, "reviews", "draft-v001.md"), draftReview);
 
     finalDraft = draftV1;
-    options.onProgress?.("Revising full draft once...");
+    say("revisingDraft");
     const reviser = new ShortFictionDraftReviserAgent(options.runtimes.revise);
     try {
       const draftV2 = await reviser.reviseDraft({
@@ -357,7 +376,7 @@ async function produceShort(
 
     await writeFinalArtifacts(root, baseDir, finalDraft, language);
 
-    options.onProgress?.("Generating synopsis and cover prompt...");
+    say("packaging");
     const packager = new ShortFictionPackagingAgent(options.runtimes.package);
     salesPackage = await packager.generatePackage({
       direction: options.direction,
@@ -440,16 +459,38 @@ async function produceShort(
     observations,
   });
 
-  return buildShortRunResult(storyId, baseDir, coverArtifacts);
+  return buildShortRunResult(storyId, baseDir, {
+    ...coverArtifacts,
+    status: "complete",
+    phase,
+    title: finalDraft.storyTitle,
+    chapterCount,
+    outlineSummary: summarizeShortFictionOutline(outlineMarkdown, language, chapterCount),
+  });
 }
 
 function buildShortRunResult(
   storyId: string,
   baseDir: string,
-  coverArtifacts: { readonly coverImagePath?: string; readonly coverError?: string },
+  extras: {
+    readonly coverImagePath?: string;
+    readonly coverError?: string;
+    readonly status?: ShortFictionRunStatus;
+    readonly phase?: ShortFictionRunPhase;
+    readonly title?: string;
+    readonly chapterCount?: number;
+    readonly outlineSummary?: string;
+    readonly outlineMarkdown?: string;
+  } = {},
 ): ShortFictionRunResult {
   return {
     storyId,
+    status: extras.status ?? "complete",
+    phase: extras.phase ?? "full",
+    title: extras.title,
+    chapterCount: extras.chapterCount,
+    outlineSummary: extras.outlineSummary,
+    outlineMarkdown: extras.outlineMarkdown,
     outlinePath: projectPath(join(baseDir, "outline", "v002.md")),
     outlineReviewPath: projectPath(join(baseDir, "reviews", "outline-v001.md")),
     draftReviewPath: projectPath(join(baseDir, "reviews", "draft-v001.md")),
@@ -457,9 +498,248 @@ function buildShortRunResult(
     finalJsonPath: projectPath(join(baseDir, "final", "short-story.json")),
     salesPackagePath: projectPath(join(baseDir, "final", "sales-package.md")),
     coverPromptPath: projectPath(join(baseDir, "final", "cover-prompt.md")),
-    coverImagePath: coverArtifacts.coverImagePath,
-    coverError: coverArtifacts.coverError,
+    coverImagePath: extras.coverImagePath,
+    coverError: extras.coverError,
   };
+}
+
+type ShortFictionProgressKey =
+  | "creatingOutline"
+  | "reviewingOutline"
+  | "revisingOutline"
+  | "resumeOutline"
+  | "outlineLocked"
+  | "writingChapter"
+  | "chapterWritten"
+  | "completingChapter"
+  | "resumeChapters"
+  | "reviewingDraft"
+  | "revisingDraft"
+  | "packaging";
+
+interface ShortFictionProgressVars {
+  readonly chapter?: number;
+  readonly total?: number;
+}
+
+export function shortFictionProgress(
+  language: ShortFictionLanguage,
+  key: ShortFictionProgressKey,
+  vars: ShortFictionProgressVars = {},
+): string {
+  const chapter = vars.chapter ?? 0;
+  const total = vars.total ?? 0;
+  const zh: Record<ShortFictionProgressKey, string> = {
+    creatingOutline: "正在撰写短篇大纲…",
+    reviewingOutline: "正在审阅大纲…",
+    revisingOutline: "正在修订大纲…",
+    resumeOutline: "已从磁盘恢复大纲，跳过大纲阶段。",
+    outlineLocked: "大纲已锁定，等待作者确认后再写章。",
+    writingChapter: `正在撰写第${chapter}章（${chapter}/${total}）…`,
+    chapterWritten: `第${chapter}章已写完（${chapter}/${total}）`,
+    completingChapter: `第${chapter}章为空，正在补写…`,
+    resumeChapters: "已从磁盘恢复各章正文，跳过已完成章节。",
+    reviewingDraft: "正在审阅全文…",
+    revisingDraft: "正在修订全文…",
+    packaging: "正在生成简介与封面提示词…",
+  };
+  const en: Record<ShortFictionProgressKey, string> = {
+    creatingOutline: "Writing the short-fiction outline…",
+    reviewingOutline: "Reviewing the outline…",
+    revisingOutline: "Revising the outline…",
+    resumeOutline: "Resuming from the locked outline on disk.",
+    outlineLocked: "Outline locked. Waiting for author confirm before drafting chapters.",
+    writingChapter: `Writing chapter ${chapter} (${chapter}/${total})…`,
+    chapterWritten: `Chapter ${chapter} written (${chapter}/${total}).`,
+    completingChapter: `Chapter ${chapter} came back empty; rewriting…`,
+    resumeChapters: "Resuming from chapters already on disk.",
+    reviewingDraft: "Reviewing the full draft…",
+    revisingDraft: "Revising the full draft…",
+    packaging: "Generating synopsis and cover prompt…",
+  };
+  return language === "en" ? en[key] : zh[key];
+}
+
+export function summarizeShortFictionOutline(
+  outlineMarkdown: string,
+  language: ShortFictionLanguage,
+  chapterCount: number,
+): string {
+  const outline = parseShortFictionOutline(outlineMarkdown, language);
+  const headings = Array.from(outlineMarkdown.matchAll(/^#{2,3}\s+(.+)$/gm))
+    .map((match) => match[1]?.trim())
+    .filter((line): line is string => Boolean(line))
+    .slice(0, chapterCount + 8);
+  const excerpt = outlineMarkdown
+    .replace(/^===\s*[A-Z0-9_ ]+\s*===\s*$/gm, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 16)
+    .join("\n");
+  const titleLine = language === "en"
+    ? `Title: ${outline.storyTitle}`
+    : `标题：${outline.storyTitle}`;
+  const countLine = language === "en"
+    ? `Chapters: ${chapterCount}`
+    : `章数：${chapterCount}`;
+  const headingBlock = headings.length > 0
+    ? (language === "en" ? `Beats:\n- ${headings.join("\n- ")}` : `节拍：\n- ${headings.join("\n- ")}`)
+    : excerpt;
+  return [titleLine, countLine, "", headingBlock].join("\n").trim();
+}
+
+async function produceShortOutline(input: {
+  readonly options: ShortFictionRunOptions;
+  readonly root: string;
+  readonly outDir: string;
+  readonly providedStoryId: string | undefined;
+  readonly language: ShortFictionLanguage;
+  readonly chapterCount: number;
+  readonly charsPerChapter: number;
+  readonly say: (key: ShortFictionProgressKey, vars?: ShortFictionProgressVars) => void;
+}): Promise<{
+  readonly storyId: string;
+  readonly baseDir: string;
+  readonly outlineMarkdown: string;
+  readonly outlineRevisionWarning?: string;
+}> {
+  const { options, root, outDir, providedStoryId, language, chapterCount, charsPerChapter, say } = input;
+  const resumedOutline = providedStoryId
+    ? await tryReadProjectText(root, join(outDir, providedStoryId, "outline", "v002.md"))
+    : undefined;
+
+  if (providedStoryId && resumedOutline?.trim()) {
+    say("resumeOutline");
+    return {
+      storyId: providedStoryId,
+      baseDir: join(outDir, providedStoryId),
+      outlineMarkdown: resumedOutline,
+    };
+  }
+
+  if (options.phase === "draft") {
+    throw new Error(
+      language === "en"
+        ? "Draft phase needs a locked outline under shorts/<id>/outline/v002.md. Run the outline phase first."
+        : "写章阶段需要已锁定的大纲 shorts/<id>/outline/v002.md。请先跑完大纲阶段。",
+    );
+  }
+
+  say("creatingOutline");
+  const outlineAgent = new ShortFictionOutlineAgent(options.runtimes.planner);
+  const outlineV1 = await outlineAgent.createOutline({
+    direction: options.direction,
+    chapterCount,
+    charsPerChapter,
+    reference: options.reference,
+    language,
+  });
+
+  const storyId = providedStoryId ?? safeSegment(slugify(options.title?.trim() || outlineV1.storyTitle || options.direction));
+  const baseDir = join(outDir, storyId);
+  await writeText(root, join(baseDir, "outline", "v001.md"), outlineV1.rawContent);
+
+  say("reviewingOutline");
+  const outlineReviewer = new ShortFictionOutlineReviewerAgent(options.runtimes.outlineReview);
+  const outlineReview = await outlineReviewer.reviewOutline({
+    direction: options.direction,
+    outline: outlineV1,
+    reference: options.reference,
+    language,
+  });
+  await writeText(root, join(baseDir, "reviews", "outline-v001.md"), outlineReview);
+
+  say("revisingOutline");
+  const outlineReviser = new ShortFictionOutlineReviserAgent(options.runtimes.planner);
+  try {
+    const outlineV2 = await outlineReviser.reviseOutline({
+      direction: options.direction,
+      outline: outlineV1,
+      review: outlineReview,
+      reference: options.reference,
+      chapterCount,
+      charsPerChapter,
+      language,
+    });
+    await writeText(root, join(baseDir, "outline", "v002.md"), outlineV2.rawContent);
+    return { storyId, baseDir, outlineMarkdown: outlineV2.rawContent };
+  } catch (error) {
+    const outlineRevisionWarning = error instanceof Error ? error.message : String(error);
+    await writeText(root, join(baseDir, "outline", "v002.md"), outlineV1.rawContent);
+    await writeText(root, join(baseDir, "reviews", "outline-v002-warning.md"), language === "en"
+      ? [
+          "# Outline revision not adopted",
+          "",
+          "The complete first outline remains authoritative because the optional revision did not finish cleanly.",
+          "",
+          "## Reason",
+          "",
+          outlineRevisionWarning,
+        ].join("\n")
+      : [
+          "# 第二版大纲未采用",
+          "",
+          "可用的第一版大纲继续生效；可选修订没有完整结束，系统没有用残缺输出覆盖它。",
+          "",
+          "## 原因",
+          "",
+          outlineRevisionWarning,
+        ].join("\n"));
+    return { storyId, baseDir, outlineMarkdown: outlineV1.rawContent, outlineRevisionWarning };
+  }
+}
+
+async function tryLoadPartialDraft(
+  root: string,
+  baseDir: string,
+  chapterCount: number,
+  language: ShortFictionLanguage,
+): Promise<ShortFictionBatchDraft | undefined> {
+  for (const version of ["v001", "v001-partial"]) {
+    const raw = await tryReadProjectText(root, join(baseDir, "drafts", version, "draft.json"));
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as ShortFictionBatchDraft;
+      if (!Array.isArray(parsed.chapters) || parsed.chapters.length === 0) continue;
+      const base = emptyShortFictionDraft(chapterCount, language, parsed.storyTitle);
+      let merged: ShortFictionBatchDraft = {
+        ...base,
+        openingHook: parsed.openingHook,
+        storyTitle: parsed.storyTitle || base.storyTitle,
+      };
+      for (const chapter of parsed.chapters) {
+        if (!chapter || typeof chapter.number !== "number" || !chapter.content?.trim()) continue;
+        merged = mergeShortFictionChapter(merged, {
+          storyTitle: parsed.storyTitle || merged.storyTitle,
+          openingHook: parsed.openingHook,
+          chapters: [chapter],
+          rawContent: chapter.content,
+        }, chapter.number, language);
+      }
+      return merged;
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
+async function writeShortRunBrief(
+  root: string,
+  baseDir: string,
+  brief: {
+    readonly storyId: string;
+    readonly title: string;
+    readonly direction: string;
+    readonly chapterCount: number;
+    readonly charsPerChapter: number;
+    readonly language: ShortFictionLanguage;
+    readonly cover: boolean;
+    readonly phase: ShortFictionRunPhase;
+  },
+): Promise<void> {
+  await writeText(root, join(baseDir, "brief.json"), JSON.stringify(brief, null, 2));
 }
 
 async function projectFileExists(root: string, path: string): Promise<boolean> {
