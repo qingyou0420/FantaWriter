@@ -27,6 +27,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { SIDEBAR_CREATE_ITEM_KEYS } from "../lib/sidebar-create-items";
+import { continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
+import { fetchJson } from "../hooks/use-api";
 import {
   Settings,
   Terminal,
@@ -35,9 +38,7 @@ import {
   Gamepad2,
   ScrollText,
   BookPlus,
-  BookCopy,
   Boxes,
-  Feather,
   Wand2,
   FileInput,
   TrendingUp,
@@ -50,11 +51,12 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
-  GitBranch,
   Clapperboard,
   Rows3,
   Film,
   Languages,
+  Download,
+  BarChart2,
 } from "lucide-react";
 
 // 历史记录里的会话混装多种类型（chat / short / play / book-create），用图标区分。
@@ -98,6 +100,8 @@ interface Nav {
   toCheckUpdate: () => void;
   toFilmStudio: (id: string) => void;
   toShort: (id: string) => void;
+  toShortSettings: (id: string) => void;
+  toShortAnalytics: (id: string) => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -124,6 +128,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const [renameTarget, setRenameTarget] = useState<{ sessionId: string; currentTitle: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
+  const [deleteShortTarget, setDeleteShortTarget] = useState<{ id: string; title: string } | null>(null);
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
   const [projectChatExpanded, setProjectChatExpanded] = useState(true);
   const [myBooksExpanded, setMyBooksExpanded] = useState(true);
@@ -305,6 +310,22 @@ export function Sidebar({ nav, activePage, sse, t }: {
     setDeleteTarget(null);
   };
 
+  const handleContinueShort = (short: StudioShortSummary) => {
+    const prompt = continueShortPrompt(short.title, short.id);
+    setProjectChatExpanded(true);
+    const sessionId = createDraftSession(null, "short");
+    setProjectChatSessionId(sessionId);
+    setInput(tr(prompt.zh, prompt.en));
+    nav.toChat();
+  };
+
+  const handleDeleteShortConfirm = async () => {
+    if (!deleteShortTarget) return;
+    await fetchJson(`/shorts/${encodeURIComponent(deleteShortTarget.id)}`, { method: "DELETE" });
+    setDeleteShortTarget(null);
+    void refetchShorts();
+  };
+
   return (
     <aside className="w-[260px] shrink-0 border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
       {/* Main Navigation — create section is the first item (no brand tile). */}
@@ -316,19 +337,27 @@ export function Sidebar({ nav, activePage, sse, t }: {
               {t("nav.createSection")}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-1">
-            <CreateItem icon={<BookPlus size={16} />} label={t("nav.createNovel")} active={activePage === "book-create"} onClick={handleOpenBookCreate} />
-            <CreateItem icon={<ScrollText size={16} />} label={t("nav.createShort")} onClick={() => launchProjectMode("short")} />
-            <CreateItem icon={<Clapperboard size={16} />} label={t("nav.createScript")} onClick={() => launchProjectMode("script")} />
-            <CreateItem icon={<Rows3 size={16} />} label={t("nav.createStoryboard")} onClick={() => launchProjectMode("storyboard")} />
-            <CreateItem icon={<Film size={16} />} label={t("nav.createInteractiveFilm")} onClick={() => launchProjectMode("interactive-film")} />
-            <CreateItem icon={<Feather size={16} />} label={t("nav.createFanfic")} onClick={handleCreateProjectChatSession} />
-            <CreateItem icon={<BookCopy size={16} />} label={t("nav.createSpinoff")} onClick={handleCreateProjectChatSession} />
-            <CreateItem icon={<Wand2 size={16} />} label={t("nav.createImitation")} onClick={handleCreateProjectChatSession} />
-            <CreateItem icon={<FileInput size={16} />} label={t("nav.createContinuation")} onClick={handleCreateProjectChatSession} />
-            <CreateItem icon={<Languages size={16} />} label={t("nav.createTranslation")} onClick={handleCreateProjectChatSession} />
-            <CreateItem icon={<GitBranch size={16} />} label={t("nav.createBranching")} onClick={() => launchProjectMode("play", "guided")} />
-            <CreateItem icon={<Gamepad2 size={16} />} label={t("nav.createFree")} onClick={() => launchProjectMode("play", "open")} />
+          <div className="grid grid-cols-2 gap-1" data-testid="sidebar-create-list">
+            {SIDEBAR_CREATE_ITEM_KEYS.map((key) => (
+              key === "nav.createNovel" ? (
+                <CreateItem
+                  key={key}
+                  testId="sidebar-create-novel"
+                  icon={<BookPlus size={16} />}
+                  label={t(key)}
+                  active={activePage === "book-create"}
+                  onClick={handleOpenBookCreate}
+                />
+              ) : (
+                <CreateItem
+                  key={key}
+                  testId="sidebar-create-short"
+                  icon={<ScrollText size={16} />}
+                  label={t(key)}
+                  onClick={() => launchProjectMode("short")}
+                />
+              )
+            ))}
           </div>
         </div>
 
@@ -365,6 +394,9 @@ export function Sidebar({ nav, activePage, sse, t }: {
                     >
                       <FolderOpen size={14} className="shrink-0 text-muted-foreground/60" />
                       <span className="truncate flex-1 text-left">{book.title}</span>
+                      <span className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground" data-testid={`sidebar-book-badge-${book.id}`}>
+                        {t("book.badgeLong")}
+                      </span>
                     </button>
                   </div>
 
@@ -440,21 +472,68 @@ export function Sidebar({ nav, activePage, sse, t }: {
             {shorts.map((short) => {
               const isActiveShort = activePage === `short:${short.id}`;
               return (
-                <button
+                <div
                   key={`short-${short.id}`}
-                  type="button"
                   data-testid={`sidebar-short-${short.id}`}
-                  onClick={() => nav.toShort(short.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-left transition-colors ${
-                    isActiveShort ? "bg-secondary/50 text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
-                  }`}
+                  className={`group/short flex items-center rounded-md ${isActiveShort ? "bg-secondary/50" : "hover:bg-secondary/30"}`}
                 >
-                  <ScrollText size={14} className="shrink-0 text-muted-foreground/60" />
-                  <span className="truncate flex-1 text-[15px] leading-6">{short.title}</span>
-                  <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                    {t("short.badge")}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => nav.toShort(short.id)}
+                    className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors ${
+                      isActiveShort ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <ScrollText size={14} className="shrink-0 text-muted-foreground/60" />
+                    <span className="truncate flex-1 text-[15px] leading-6">{short.title}</span>
+                    <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                      {t("short.badge")}
+                    </span>
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      data-testid={`sidebar-short-menu-${short.id}`}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/short:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                    >
+                      <MoreHorizontal size={14} />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-40">
+                      <DropdownMenuItem onClick={() => (
+                        short.status === "completed" ? nav.toShort(short.id) : handleContinueShort(short)
+                      )}>
+                        <Zap size={14} />
+                        <span>{short.status === "completed" ? t("short.finished") : t("short.continue")}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => nav.toShortAnalytics(short.id)}>
+                        <BarChart2 size={14} />
+                        <span>{t("dash.stats")}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => nav.toShortSettings(short.id)}>
+                        <Settings size={14} />
+                        <span>{t("short.settings")}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          const link = document.createElement("a");
+                          link.href = shortManuscriptExportPath(short.id);
+                          link.download = "";
+                          link.click();
+                        }}
+                      >
+                        <Download size={14} />
+                        <span>{t("book.export")}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setDeleteShortTarget({ id: short.id, title: short.title })}
+                      >
+                        <Trash2 size={14} />
+                        <span>{t("short.delete")}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               );
             })}
 
@@ -753,6 +832,16 @@ export function Sidebar({ nav, activePage, sse, t }: {
         onConfirm={() => void handleDeleteConfirm()}
         onCancel={() => setDeleteTarget(null)}
       />
+      <ConfirmDialog
+        open={deleteShortTarget !== null}
+        title={t("short.delete")}
+        message={`${t("short.confirmDelete")}\n\n"${deleteShortTarget?.title ?? ""}"`}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onConfirm={() => void handleDeleteShortConfirm()}
+        onCancel={() => setDeleteShortTarget(null)}
+      />
     </aside>
   );
 }
@@ -815,15 +904,17 @@ function SectionHeader({ label, expanded, onToggle }: {
   );
 }
 
-function CreateItem({ icon, label, active, onClick }: {
+function CreateItem({ icon, label, active, onClick, testId }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
+  testId?: string;
 }) {
   return (
     <button
       type="button"
+      data-testid={testId}
       onClick={onClick}
       className={`flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-[16px] leading-6 transition-all ${
         active

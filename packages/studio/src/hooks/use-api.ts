@@ -56,6 +56,11 @@ export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
     return ["/api/v1/books"];
   }
 
+  const shortMutation = normalized.match(/^\/api\/v1\/shorts\/([^/]+)$/);
+  if (shortMutation) {
+    return ["/api/v1/shorts", normalized];
+  }
+
   if (normalized === "/api/v1/project") {
     return ["/api/v1/project"];
   }

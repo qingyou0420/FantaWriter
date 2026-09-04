@@ -91,6 +91,8 @@ describe("shouldRefetchBookCollections", () => {
   it("refreshes book lists for create/delete and chapter-changing terminal events", () => {
     expect(shouldRefetchBookCollections(msg("book:created", { bookId: "alpha" }, 1))).toBe(true);
     expect(shouldRefetchBookCollections(msg("book:deleted", { bookId: "alpha" }, 1))).toBe(true);
+    expect(shouldRefetchBookCollections(msg("short:deleted", { shortId: "elevator" }, 1))).toBe(true);
+    expect(shouldRefetchBookCollections(msg("short:updated", { shortId: "elevator" }, 1))).toBe(true);
     expect(shouldRefetchBookCollections(msg("write:complete", { bookId: "alpha" }, 1))).toBe(true);
     expect(shouldRefetchBookCollections(msg("draft:error", { bookId: "alpha" }, 1))).toBe(true);
     expect(shouldRefetchBookCollections(msg("rewrite:complete", { bookId: "alpha" }, 1))).toBe(true);

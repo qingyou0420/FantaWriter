@@ -1,6 +1,6 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState, useRef } from "react";
-import { startFreshBookCreateSession } from "./chat-page-state";
+import { setProjectChatSessionId, startFreshBookCreateSession } from "./chat-page-state";
 import { useChatStore } from "../store/chat";
 import { useServiceStore } from "../store/service";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -10,21 +10,20 @@ import { useColors } from "../hooks/use-colors";
 import { deriveActiveBookIds, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { StudioShortSummary } from "../shared/short-works";
+import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
+import { tr } from "../lib/app-language";
 import {
   Plus,
   BookOpen,
   BarChart2,
   Zap,
   Clock,
-  CheckCircle2,
   AlertCircle,
   MoreVertical,
-  ChevronRight,
   Flame,
   Trash2,
   Settings,
   Download,
-  FileInput,
   ScrollText,
 } from "lucide-react";
 
@@ -44,7 +43,10 @@ interface Nav {
   toAnalytics: (id: string) => void;
   toBookCreate: () => void;
   toServices: () => void;
+  toChat: () => void;
   toShort: (id: string) => void;
+  toShortSettings: (id: string) => void;
+  toShortAnalytics: (id: string) => void;
 }
 
 function BookMenu({ bookId, bookTitle, nav, t, onDelete, onOpenChange }: {
@@ -97,8 +99,9 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete, onOpenChange }: {
             {t("book.settings")}
           </button>
           <a
-            href={`/api/v1/books/${bookId}/export?format=txt`}
+            href={bookManuscriptExportPath(bookId)}
             download
+            data-testid={`book-export-manuscript-${bookId}`}
             onClick={() => setOpen(false)}
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
           >
@@ -129,11 +132,107 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete, onOpenChange }: {
   );
 }
 
+function ShortMenu({ short, nav, t, onDelete, onOpenChange }: {
+  readonly short: StudioShortSummary;
+  readonly nav: Nav;
+  readonly t: TFunction;
+  readonly onDelete: () => void;
+  readonly onOpenChange?: (open: boolean) => void;
+}) {
+  const [open, setOpenRaw] = useState(false);
+  const setOpen = (next: boolean) => {
+    setOpenRaw(next);
+    onOpenChange?.(next);
+  };
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const handleDelete = async () => {
+    setConfirmDelete(false);
+    setOpen(false);
+    await fetchJson(`/shorts/${encodeURIComponent(short.id)}`, { method: "DELETE" });
+    onDelete();
+  };
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        data-testid={`short-menu-${short.id}`}
+        onClick={() => setOpen(!open)}
+        className="p-3 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+      >
+        <MoreVertical size={18} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-44 bg-card border border-border rounded-xl shadow-lg shadow-primary/5 py-1 z-50 fade-in">
+          <button
+            type="button"
+            data-testid={`short-settings-${short.id}`}
+            onClick={() => { setOpen(false); nav.toShortSettings(short.id); }}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+          >
+            <Settings size={14} className="text-muted-foreground" />
+            {t("short.settings")}
+          </button>
+          <a
+            href={shortManuscriptExportPath(short.id)}
+            download
+            data-testid={`short-export-manuscript-${short.id}`}
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+          >
+            <Download size={14} className="text-muted-foreground" />
+            {t("book.export")}
+          </a>
+          <div className="border-t border-border/50 my-1" />
+          <button
+            type="button"
+            data-testid={`short-delete-${short.id}`}
+            onClick={() => { setOpen(false); setConfirmDelete(true); }}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+          >
+            <Trash2 size={14} />
+            {t("short.delete")}
+          </button>
+        </div>
+      )}
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t("short.delete")}
+        message={`${t("short.confirmDelete")}\n\n"${short.title}"`}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </div>
+  );
+}
+
 export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: ReadonlyArray<SSEMessage> }; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
   const [menuOpenBookId, setMenuOpenBookId] = useState<string | null>(null);
+  const [menuOpenShortId, setMenuOpenShortId] = useState<string | null>(null);
   const createDraftSession = useChatStore((s) => s.createDraftSession);
   const setInput = useChatStore((s) => s.setInput);
+  const openShortContinue = (short: StudioShortSummary) => {
+    const prompt = continueShortPrompt(short.title, short.id);
+    const sessionId = createDraftSession(null, "short");
+    setProjectChatSessionId(sessionId);
+    setInput(tr(prompt.zh, prompt.en));
+    nav.toChat();
+  };
   const openFreshBookCreate = () => {
     startFreshBookCreateSession(createDraftSession);
     setInput("");
@@ -238,7 +337,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
             <div
               key={`short-${short.id}`}
               data-testid={`dashboard-short-${short.id}`}
-              className={`paper-sheet group relative rounded-2xl fade-in ${staggerClass}`}
+              className={`paper-sheet group relative rounded-2xl fade-in ${staggerClass} ${menuOpenShortId === short.id ? "z-50" : ""}`}
             >
               <div className="p-8 flex items-start justify-between">
                 <div className="flex-1 min-w-0">
@@ -255,7 +354,10 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     </button>
                   </div>
                   <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-[13px] text-muted-foreground font-medium">
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                    <span
+                      data-testid={`dashboard-short-badge-${short.id}`}
+                      className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary"
+                    >
                       {t("short.badge")}
                     </span>
                     {short.chapterCount ? (
@@ -272,13 +374,35 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     }</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => nav.toShort(short.id)}
-                  className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
-                >
-                  {t("cockpit.manuscript")}
-                </button>
+                <div className="flex items-center gap-3 shrink-0 ml-6">
+                  <button
+                    type="button"
+                    data-testid={`short-continue-${short.id}`}
+                    onClick={() => (
+                      short.status === "completed" ? nav.toShort(short.id) : openShortContinue(short)
+                    )}
+                    className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:scale-105 active:scale-95 transition-all shadow-sm"
+                  >
+                    <Zap size={16} />
+                    {short.status === "completed" ? t("short.finished") : t("short.continue")}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`short-stats-${short.id}`}
+                    onClick={() => nav.toShortAnalytics(short.id)}
+                    className="p-3 rounded-xl bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/30 hover:shadow-md hover:scale-105 active:scale-95 transition-all border border-border/50 shadow-sm"
+                    title={t("dash.stats")}
+                  >
+                    <BarChart2 size={18} />
+                  </button>
+                  <ShortMenu
+                    short={short}
+                    nav={nav}
+                    t={t}
+                    onDelete={() => void refetchShorts()}
+                    onOpenChange={(isOpen) => setMenuOpenShortId(isOpen ? short.id : null)}
+                  />
+                </div>
               </div>
             </div>
           );
@@ -306,6 +430,12 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                   </div>
 
                   <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-[13px] text-muted-foreground font-medium">
+                    <span
+                      data-testid={`dashboard-book-badge-${book.id}`}
+                      className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                    >
+                      {t("book.badgeLong")}
+                    </span>
                     <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-secondary/50">
                       <span className="uppercase tracking-wider">{book.genre}</span>
                     </div>

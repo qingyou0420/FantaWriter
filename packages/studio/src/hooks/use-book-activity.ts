@@ -18,6 +18,8 @@ const BOOK_REFRESH_EVENTS = new Set([
 const BOOK_COLLECTION_REFRESH_EVENTS = new Set([
   "book:created",
   "book:deleted",
+  "short:deleted",
+  "short:updated",
   "book:error",
   "write:complete",
   "write:error",

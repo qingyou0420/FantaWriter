@@ -115,4 +115,11 @@ describe("deriveInvalidationPaths", () => {
     expect(deriveInvalidationPaths("/project")).toEqual(["/api/v1/project"]);
     expect(deriveInvalidationPaths("/project/language")).toEqual(["/api/v1/project", "/api/v1/project/language"]);
   });
+
+  it("refreshes shorts after short metadata mutations", () => {
+    expect(deriveInvalidationPaths("/shorts/明日来信")).toEqual([
+      "/api/v1/shorts",
+      "/api/v1/shorts/明日来信",
+    ]);
+  });
 });

@@ -72,6 +72,11 @@ describe("hash route", () => {
       expect(parseHash("#/short/明日来信")).toEqual({ page: "short", storyId: "明日来信" });
     });
 
+    it("parses short settings and analytics routes", () => {
+      expect(parseHash("#/short/明日来信/settings")).toEqual({ page: "short-settings", storyId: "明日来信" });
+      expect(parseHash("#/short/明日来信/analytics")).toEqual({ page: "short-analytics", storyId: "明日来信" });
+    });
+
     it("falls back to dashboard for unknown hash", () => {
       expect(parseHash("#/unknown/route")).toEqual({ page: "dashboard" });
     });
@@ -135,6 +140,11 @@ describe("hash route", () => {
 
     it("short -> #/short/{id}", () => {
       expect(routeToHash({ page: "short", storyId: "明日来信" })).toBe(`#/short/${encodeURIComponent("明日来信")}`);
+    });
+
+    it("short settings and analytics have stable hashes", () => {
+      expect(routeToHash({ page: "short-settings", storyId: "明日来信" })).toBe(`#/short/${encodeURIComponent("明日来信")}/settings`);
+      expect(routeToHash({ page: "short-analytics", storyId: "明日来信" })).toBe(`#/short/${encodeURIComponent("明日来信")}/analytics`);
     });
 
     it("encodes Chinese serviceId", () => {

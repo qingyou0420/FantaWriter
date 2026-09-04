@@ -7,6 +7,7 @@ export interface StudioShortSummary {
   readonly status: StudioShortStatus;
   readonly stage?: string;
   readonly chapterCount?: number;
+  readonly direction?: string;
   readonly manuscriptPath: string;
   readonly coverImagePath?: string;
   readonly kind: "short";
