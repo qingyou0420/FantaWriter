@@ -4,6 +4,18 @@
 
 ## [未发布]
 
+## [2.0.13] - 2026-09-04
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.13.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
+### 变更
+
+- 侧栏创建只留长篇/短篇。
+- 作品列表长短篇标记与短篇操作对齐。
+- 增加导出原文。
+- 精简检查更新说明。
+- 暂时隐藏翻译译介与市场雷达入口。
+
 ## [2.0.12] - 2026-09-04
 
 Windows 补丁安装包：`FantaWriter-Setup-2.0.12.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
@@ -351,6 +363,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.13]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.13
 [2.0.12]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.12
 [2.0.11]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.11
 [2.0.10]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.10
