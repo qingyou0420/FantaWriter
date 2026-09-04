@@ -25,16 +25,14 @@ test.beforeAll(async () => {
   await saveStoryGraph(E2E_ROOT, FILM_B_ID, makeGraph(FILM_B_ID, "Beta 测试剧"));
 });
 
-test("sidebar lists film projects and clicking a project opens the wizard", async ({ page }) => {
+test("sidebar hides the interactive film section while film routes stay reachable", async ({ page }) => {
   await page.goto("/#/");
 
-  const section = page.getByTestId("film-projects-section");
-  await expect(section).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("sidebar-create-list")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("film-projects-section")).toHaveCount(0);
+  await expect(page.getByTestId(`film-project-${FILM_A_ID}`)).toHaveCount(0);
+  await expect(page.getByTestId(`film-project-${FILM_B_ID}`)).toHaveCount(0);
 
-  await expect(page.getByTestId(`film-project-${FILM_A_ID}`)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId(`film-project-${FILM_B_ID}`)).toBeVisible({ timeout: 10_000 });
-
-  await page.getByTestId(`film-project-${FILM_A_ID}`).click();
+  await page.goto(`/#/studio/film/${FILM_A_ID}`);
   await expect(page.getByTestId("film-wizard")).toBeVisible({ timeout: 20_000 });
-  expect(page.url()).toContain(`#/studio/film/${FILM_A_ID}`);
 });

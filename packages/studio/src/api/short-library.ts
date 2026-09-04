@@ -94,6 +94,7 @@ async function loadShortSummary(root: string, storyId: string): Promise<StudioSh
   };
 }
 
+/** Disk-only: shorts/<id>/ directories. Session/task artifacts are not a source. */
 export async function listStudioShorts(root: string): Promise<StudioShortSummary[]> {
   let entries: string[] = [];
   try {
@@ -137,10 +138,27 @@ function resolveShortDir(root: string, storyId: string): string {
   return target;
 }
 
+/** Decode a shorts/:id path segment once (or twice if a client double-encoded Chinese ids). */
+export function decodeStoryId(raw: string | undefined): string {
+  const value = String(raw ?? "");
+  try {
+    const once = decodeURIComponent(value);
+    if (once !== value && /%[0-9A-Fa-f]{2}/.test(once)) {
+      try {
+        return decodeURIComponent(once);
+      } catch {
+        return once;
+      }
+    }
+    return once;
+  } catch {
+    return value;
+  }
+}
+
 export async function deleteStudioShort(root: string, storyId: string): Promise<boolean> {
   if (!isSafeBookId(storyId)) return false;
-  const summary = await loadShortSummary(root, storyId);
-  if (!summary) return false;
+  // Idempotent: a second delete (or a ghost whose folder is already gone) still succeeds.
   await rm(resolveShortDir(root, storyId), { recursive: true, force: true });
   return true;
 }

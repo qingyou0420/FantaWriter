@@ -318,11 +318,11 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
         <span className="text-border">/</span>
-        <span>{t("create.genre")}</span>
+        <span>{t("nav.genreTemplates")}</span>
       </div>
 
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-3xl">{t("create.genre")}</h1>
+        <h1 className="font-serif text-3xl">{t("nav.genreTemplates")}</h1>
         <button
           onClick={openCreateForm}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md ${c.btnPrimary}`}

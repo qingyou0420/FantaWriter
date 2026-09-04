@@ -7,9 +7,10 @@ import type { SSEMessage } from "../hooks/use-sse";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
-import { deriveActiveBookIds, shouldRefetchBookCollections } from "../hooks/use-book-activity";
+import { deriveActiveBookIds, removeBookFromCollection, removeShortFromCollection, shouldRefetchBookCollections } from "../hooks/use-book-activity";
+import { deleteStudioShortWork } from "../lib/short-api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import type { StudioShortSummary } from "../shared/short-works";
+import { selectWorksListShorts, type StudioShortSummary } from "../shared/short-works";
 import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import { tr } from "../lib/app-language";
 import {
@@ -159,7 +160,7 @@ function ShortMenu({ short, nav, t, onDelete, onOpenChange }: {
   const handleDelete = async () => {
     setConfirmDelete(false);
     setOpen(false);
-    await fetchJson(`/shorts/${encodeURIComponent(short.id)}`, { method: "DELETE" });
+    await deleteStudioShortWork(short.id);
     onDelete();
   };
 
@@ -238,10 +239,11 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
     setInput("");
     nav.toBookCreate();
   };
-  const { data, loading, error, refetch } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
-  const { data: shortsData, refetch: refetchShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
-  const shorts = shortsData?.shorts ?? [];
+  const { data, loading, error, refetch, mutate } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
+  const { data: shortsData, refetch: refetchShorts, mutate: mutateShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
+  const shorts = selectWorksListShorts(shortsData);
   const bookDataVersion = useChatStore((s) => s.bookDataVersion);
+  const bumpBookDataVersion = useChatStore((s) => s.bumpBookDataVersion);
   const writingBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
   const serviceStoreServices = useServiceStore((s) => s.services);
   const fetchServices = useServiceStore((s) => s.fetchServices);
@@ -261,10 +263,11 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   }, [refetch, refetchShorts, sse.messages]);
 
   useEffect(() => {
+    void refetch();
     void refetchShorts();
-  }, [bookDataVersion, refetchShorts]);
+  }, [bookDataVersion, refetch, refetchShorts]);
 
-  if (loading) return (
+  if (loading && !data && shorts.length === 0) return (
     <div className="flex flex-col items-center justify-center py-32 space-y-4">
       <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
       <span className="text-sm text-muted-foreground animate-pulse">Gathering manuscripts...</span>
@@ -399,7 +402,12 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     short={short}
                     nav={nav}
                     t={t}
-                    onDelete={() => void refetchShorts()}
+                    onDelete={() => {
+                      mutateShorts((current) => current
+                        ? { shorts: removeShortFromCollection(current.shorts, short.id) }
+                        : current);
+                      bumpBookDataVersion();
+                    }}
                     onOpenChange={(isOpen) => setMenuOpenShortId(isOpen ? short.id : null)}
                   />
                 </div>
@@ -507,7 +515,12 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     bookTitle={book.title}
                     nav={nav}
                     t={t}
-                    onDelete={() => refetch()}
+                    onDelete={() => {
+                      mutate((current) => current
+                        ? { books: removeBookFromCollection(current.books, book.id) }
+                        : current);
+                      bumpBookDataVersion();
+                    }}
                     onOpenChange={(isOpen) => setMenuOpenBookId(isOpen ? book.id : null)}
                   />
                 </div>

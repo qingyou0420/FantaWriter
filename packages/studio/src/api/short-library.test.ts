@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   computeStudioShortAnalytics,
+  decodeStoryId,
   deleteStudioShort,
   exportStudioShortManuscript,
   listStudioShorts,
@@ -120,9 +121,18 @@ describe("short library", () => {
     expect(analytics?.totalWords).toBeGreaterThan(0);
 
     expect(await deleteStudioShort(root, "../books/keep-me")).toBe(false);
-    expect(await deleteStudioShort(root, "missing")).toBe(false);
     expect(await deleteStudioShort(root, "明日来信")).toBe(true);
+    expect(await deleteStudioShort(root, "明日来信")).toBe(true);
+    expect(await deleteStudioShort(root, "missing")).toBe(true);
     await expect(access(join(root, "shorts", "明日来信"))).rejects.toThrow();
     await expect(access(join(root, "books", "keep-me", "book.json"))).resolves.toBeUndefined();
+    const afterDelete = await listStudioShorts(root);
+    expect(afterDelete.find((item) => item.id === "明日来信")).toBeUndefined();
+  });
+
+  it("decodes Chinese short ids the same way as reader routes", () => {
+    expect(decodeStoryId("明日来信")).toBe("明日来信");
+    expect(decodeStoryId(encodeURIComponent("明日来信"))).toBe("明日来信");
+    expect(decodeStoryId(encodeURIComponent(encodeURIComponent("明日来信")))).toBe("明日来信");
   });
 });

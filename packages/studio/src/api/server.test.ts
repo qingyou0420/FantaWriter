@@ -2598,6 +2598,12 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(removed.status).toBe(200);
     await expect(removed.json()).resolves.toEqual({ ok: true, shortId: "明日来信" });
     await expect(access(join(root, "shorts", "明日来信"))).rejects.toThrow();
+
+    const removedAgain = await app.request(`http://localhost/api/v1/shorts/${encodeURIComponent("明日来信")}`, { method: "DELETE" });
+    expect(removedAgain.status).toBe(200);
+    await expect(removedAgain.json()).resolves.toEqual({ ok: true, shortId: "明日来信" });
+    const listedAfter = await app.request("http://localhost/api/v1/shorts");
+    await expect(listedAfter.json()).resolves.toEqual({ shorts: [] });
   });
 
   it("seeds Chinese short-fiction stages and advances them from live progress", async () => {

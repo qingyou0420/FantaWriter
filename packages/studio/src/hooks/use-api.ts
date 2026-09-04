@@ -79,6 +79,11 @@ export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
     return ["/api/v1/books", `/api/v1/books/${chapterAction[1]}`];
   }
 
+  const bookResource = normalized.match(/^\/api\/v1\/books\/([^/]+)$/);
+  if (bookResource && bookResource[1] !== "create") {
+    return ["/api/v1/books", normalized];
+  }
+
   if (/^\/api\/v1\/daemon\/(start|stop)$/.test(normalized)) {
     return ["/api/v1/daemon"];
   }
@@ -145,27 +150,41 @@ export async function fetchJson<T>(
 
   const fetchImpl = deps?.fetchImpl ?? fetch;
   const res = await fetchImpl(url, init);
+  const method = String(init.method ?? "GET").toUpperCase();
 
   if (!res.ok) {
     const error = await readError(res);
     if (error.code === "BOOK_BUSY") emitBookBusy(error);
+    if (method === "DELETE" && (res.status === 404 || error.code === "NOT_FOUND")) {
+      invalidateApiPaths(deriveInvalidationPaths(path));
+    }
     throw error;
   }
 
   if (res.status === 204) {
+    if (method === "DELETE") {
+      invalidateApiPaths(deriveInvalidationPaths(path));
+    }
     return undefined as T;
   }
 
   const contentType = res.headers.get("content-type") ?? "";
+  let result: T;
   if (!contentType.includes("application/json")) {
     const text = await res.text();
     if (!text.trim()) {
-      return undefined as T;
+      result = undefined as T;
+    } else {
+      result = JSON.parse(text) as T;
     }
-    return JSON.parse(text) as T;
+  } else {
+    result = await res.json() as T;
   }
 
-  return await res.json() as T;
+  if (method === "DELETE") {
+    invalidateApiPaths(deriveInvalidationPaths(path));
+  }
+  return result;
 }
 
 export function useApi<T>(path: string) {
