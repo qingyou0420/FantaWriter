@@ -608,9 +608,25 @@ export function attachSessionStreamListeners({
         sessions: updateSession(state.sessions, sessionId, (runtime) => {
           const applyStage = (execution: ToolExecution): ToolExecution => {
             if (!execution.stages || execution.stages.length === 0) return execution;
+            if (execution.tool === "short_fiction_run") {
+              return {
+                ...execution,
+                stages: advanceShortFictionStages(execution.stages, stageName) ?? execution.stages,
+              };
+            }
+            let found = false;
             return {
               ...execution,
-              stages: advanceShortFictionStages(execution.stages, stageName) ?? execution.stages,
+              stages: execution.stages.map((stage) => {
+                if (stage.label === stageName) {
+                  found = true;
+                  return { ...stage, status: "active" as const };
+                }
+                if (!found && stage.status === "active") {
+                  return { ...stage, status: "completed" as const, progress: undefined };
+                }
+                return stage;
+              }),
             };
           };
           const messages = executionId

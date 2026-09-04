@@ -2,10 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ShortFictionRunResult } from "../pipeline/short-fiction-runner.js";
 
 const { runShortFictionProductionMock } = vi.hoisted(() => ({
-  runShortFictionProductionMock: vi.fn(async (_options: Record<string, unknown>) => ({
+  runShortFictionProductionMock: vi.fn(async (_options: Record<string, unknown>): Promise<ShortFictionRunResult> => ({
     storyId: "length-check",
+    status: "complete",
+    phase: "full",
     outlinePath: "shorts/length-check/outline/v002.md",
     outlineReviewPath: "shorts/length-check/reviews/outline-v001.md",
     draftReviewPath: "shorts/length-check/reviews/draft-v001.md",

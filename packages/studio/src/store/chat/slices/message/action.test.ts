@@ -1248,6 +1248,22 @@ describe("chat message actions", () => {
     expect(findTaskExecution(store, sessionId)?.stages?.find((stage) => stage.status === "active")).toMatchObject({
       label: "写第 2 章",
     });
+
+    fakeEventSources[0]?.emit("log:stage", {
+      sessionId,
+      executionId: "direct-short_run-1",
+      id: "direct-short_run-1",
+      stageName: "审稿",
+    });
+    expect(findTaskExecution(store, sessionId)?.stages?.map((stage) => [stage.label, stage.status])).toEqual([
+      ["创建大纲", "completed"],
+      ["审大纲", "completed"],
+      ["改大纲", "completed"],
+      ["写第 2 章", "completed"],
+      ["审稿", "active"],
+      ["修订", "pending"],
+      ["封面", "pending"],
+    ]);
   });
 
   it("drops id-less logs and progress instead of attaching them to a background task card", async () => {
