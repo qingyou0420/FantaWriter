@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.13
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.13.exe`（#86 侧栏创建只留长篇/短篇；作品列表长短篇标记与短篇操作对齐；增加导出原文；精简检查更新说明；暂时隐藏翻译译介与市场雷达入口）。
+
 ## 2.0.12
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.12.exe`（#84 短篇分阶段：先大纲确认再按章写；工具卡中文阶段可见；短篇进作品列表可打开阅读）。
