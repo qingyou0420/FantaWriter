@@ -5,7 +5,12 @@ import {
   manuscriptToPlainText,
   shortManuscriptExportPath,
 } from "./work-export";
-import { SIDEBAR_CREATE_ITEM_KEYS } from "./sidebar-create-items";
+import {
+  SIDEBAR_CREATE_ITEM_KEYS,
+  SIDEBAR_SECTION_ORDER,
+  SIDEBAR_SYSTEM_ITEM_KEYS,
+  SIDEBAR_TOOL_ITEM_KEYS,
+} from "./sidebar-create-items";
 
 describe("manuscript export helpers", () => {
   it("builds book and short 原文 download paths", () => {
@@ -32,5 +37,17 @@ describe("manuscript export helpers", () => {
 describe("sidebar create items", () => {
   it("only exposes long novel and short story", () => {
     expect([...SIDEBAR_CREATE_ITEM_KEYS]).toEqual(["nav.createNovel", "nav.createShort"]);
+  });
+
+  it("binds tools and system items in 清游 order", () => {
+    expect([...SIDEBAR_SECTION_ORDER]).toEqual(["create", "works", "sessions", "tools", "system"]);
+    expect([...SIDEBAR_TOOL_ITEM_KEYS]).toEqual(["nav.style", "nav.genreTemplates"]);
+    expect([...SIDEBAR_SYSTEM_ITEM_KEYS]).toEqual([
+      "nav.config",
+      "nav.projectSettings",
+      "nav.checkUpdate",
+      "nav.daemon",
+      "nav.logs",
+    ]);
   });
 });

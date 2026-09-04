@@ -1,5 +1,6 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
+import { useChatStore } from "../store/chat";
 import { SerialCockpitStrip, startDraft, startWriteNext } from "../components/SerialCockpitStrip";
 import { BookWorkspaceNav } from "../components/BookWorkspaceNav";
 import type { Theme } from "../hooks/use-theme";
@@ -103,6 +104,7 @@ export function BookDetail({
   sse: { messages: ReadonlyArray<SSEMessage> };
 }) {
   const c = useColors(theme);
+  const bumpBookDataVersion = useChatStore((s) => s.bumpBookDataVersion);
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
   const [writeRequestPending, setWriteRequestPending] = useState(false);
   const [draftRequestPending, setDraftRequestPending] = useState(false);
@@ -212,11 +214,8 @@ export function BookDetail({
     setConfirmDeleteOpen(false);
     setDeleting(true);
     try {
-      const res = await fetch(`/api/v1/books/${bookId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error((json as { error?: string }).error ?? `${res.status}`);
-      }
+      await fetchJson(`/books/${encodeURIComponent(bookId)}`, { method: "DELETE" });
+      bumpBookDataVersion();
       nav.toDashboard();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");

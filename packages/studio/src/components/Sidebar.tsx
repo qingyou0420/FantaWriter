@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useApi } from "../hooks/use-api";
+import { fetchJson, useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
-import { applyBookCollectionEvent, shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
+import {
+  applyBookCollectionEvent,
+  removeBookFromCollection,
+  shouldRefetchBookCollections,
+  shouldRefetchDaemonStatus,
+} from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
 import type { StudioShortSummary } from "../shared/short-works";
 import { tr } from "../lib/app-language";
@@ -28,8 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { SIDEBAR_CREATE_ITEM_KEYS } from "../lib/sidebar-create-items";
-import { continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
-import { fetchJson } from "../hooks/use-api";
+import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import {
   Settings,
   Terminal,
@@ -40,8 +44,6 @@ import {
   BookPlus,
   Boxes,
   Wand2,
-  FileInput,
-  Stethoscope,
   RefreshCw,
   Zap,
   FolderOpen,
@@ -82,6 +84,7 @@ interface Nav {
   toDashboard: () => void;
   toChat: () => void;
   toBook: (id: string) => void;
+  toBookSettings: (id: string) => void;
   toBookChat: (id: string) => void;
   toOutline: (id: string) => void;
   toBookCreate: () => void;
@@ -109,13 +112,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
   t: TFunction;
 }) {
   const { data, refetch: refetchBooks, mutate: mutateBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
-  const { data: shortsData, refetch: refetchShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
-  const { data: filmsData, refetch: refetchFilms } = useApi<{ films: ReadonlyArray<{ projectId: string; title: string }> }>("/interactive-films");
+  const { data: shortsData, refetch: refetchShorts, mutate: mutateShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
   const sessions = useChatStore((s) => s.sessions);
   const sessionIdsByBook = useChatStore((s) => s.sessionIdsByBook);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const bookDataVersion = useChatStore((s) => s.bookDataVersion);
+  const bumpBookDataVersion = useChatStore((s) => s.bumpBookDataVersion);
   const loadSessionList = useChatStore((s) => s.loadSessionList);
   const loadSessionDetail = useChatStore((s) => s.loadSessionDetail);
   const activateSession = useChatStore((s) => s.activateSession);
@@ -127,14 +130,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
   const [deleteShortTarget, setDeleteShortTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleteBookTarget, setDeleteBookTarget] = useState<{ id: string; title: string } | null>(null);
   const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
   const [projectChatExpanded, setProjectChatExpanded] = useState(true);
   const [myBooksExpanded, setMyBooksExpanded] = useState(true);
-  const [filmsExpanded, setFilmsExpanded] = useState(true);
 
   const books = data?.books ?? [];
   const shorts = shortsData?.shorts ?? [];
-  const films = filmsData?.films ?? [];
   const projectChatKey = "__null__";
   const projectChatSessions = useMemo(
     () =>
@@ -184,9 +186,9 @@ export function Sidebar({ nav, activePage, sse, t }: {
   }, [bookDataVersion, loadSessionList, projectChatExpanded]);
 
   useEffect(() => {
-    void refetchFilms();
+    void refetchBooks();
     void refetchShorts();
-  }, [bookDataVersion, refetchFilms, refetchShorts]);
+  }, [bookDataVersion, refetchBooks, refetchShorts]);
 
   useEffect(() => {
     if (activePage === "chat") {
@@ -221,7 +223,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
     if (sessionIdsByBook[bookId] === undefined) {
       void loadSessionList(bookId);
     }
-    nav.toBook(bookId);
+    nav.toBookSettings(bookId);
   };
 
   const sessionsByBook = useMemo(
@@ -319,9 +321,40 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   const handleDeleteShortConfirm = async () => {
     if (!deleteShortTarget) return;
-    await fetchJson(`/shorts/${encodeURIComponent(deleteShortTarget.id)}`, { method: "DELETE" });
+    const shortId = deleteShortTarget.id;
+    mutateShorts((current) => current
+      ? { shorts: current.shorts.filter((short) => short.id !== shortId) }
+      : current);
     setDeleteShortTarget(null);
-    void refetchShorts();
+    try {
+      await fetchJson(`/shorts/${encodeURIComponent(shortId)}`, { method: "DELETE" });
+      bumpBookDataVersion();
+    } catch {
+      void refetchShorts();
+    }
+  };
+
+  const handleDeleteBookConfirm = async () => {
+    if (!deleteBookTarget) return;
+    const bookId = deleteBookTarget.id;
+    mutateBooks((current) => current
+      ? { books: removeBookFromCollection(current.books, bookId) }
+      : current);
+    setExpandedBooks((prev) => {
+      const next = new Set(prev);
+      next.delete(bookId);
+      return next;
+    });
+    setDeleteBookTarget(null);
+    if (activePage === `book:${bookId}`) {
+      nav.toDashboard();
+    }
+    try {
+      await fetchJson(`/books/${encodeURIComponent(bookId)}`, { method: "DELETE" });
+      bumpBookDataVersion();
+    } catch {
+      void refetchBooks();
+    }
   };
 
   return (
@@ -363,7 +396,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
         <div>
           <SectionHeader label={t("nav.myBooks")} expanded={myBooksExpanded} onToggle={() => setMyBooksExpanded((v) => !v)} />
           <Collapse open={myBooksExpanded}>
-          <div className="space-y-0.5 pt-1">
+          <div className="space-y-0.5 pt-1" data-testid="sidebar-works-list">
             {books.map((book) => {
               const bookSessions = sessionsByBook[book.id] ?? [];
               const isActiveBook = activePage === `book:${book.id}`;
@@ -385,6 +418,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                     </button>
                     <button
                       type="button"
+                      data-testid={`sidebar-book-${book.id}`}
                       onClick={() => openBook(book.id)}
                       className={`flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pr-2 rounded-md text-[15px] leading-6 transition-colors ${
                         isActiveBook ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
@@ -396,6 +430,40 @@ export function Sidebar({ nav, activePage, sse, t }: {
                         {t("book.badgeLong")}
                       </span>
                     </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        data-testid={`sidebar-book-menu-${book.id}`}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/book:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                      >
+                        <MoreHorizontal size={14} />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start" className="w-40">
+                        <DropdownMenuItem onClick={() => openBook(book.id)}>
+                          <FolderOpen size={14} />
+                          <span>{t("cockpit.manuscript")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            const link = document.createElement("a");
+                            link.href = bookManuscriptExportPath(book.id);
+                            link.download = "";
+                            link.click();
+                          }}
+                        >
+                          <Download size={14} />
+                          <span>{t("book.export")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          data-testid={`sidebar-book-delete-${book.id}`}
+                          onClick={() => setDeleteBookTarget({ id: book.id, title: book.title })}
+                        >
+                          <Trash2 size={14} />
+                          <span>{t("book.deleteBook")}</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   {/* 展开后才显示 session 列表 + 新建按钮 */}
@@ -544,34 +612,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </Collapse>
         </div>
 
-        {/* 互动影游 Section */}
-        <div data-testid="film-projects-section">
-          <SectionHeader label={t("nav.createInteractiveFilm")} expanded={filmsExpanded} onToggle={() => setFilmsExpanded((v) => !v)} />
-          <Collapse open={filmsExpanded}>
-            <div className="space-y-0.5 pt-1">
-              {films.map((film) => (
-                <button
-                  key={film.projectId}
-                  type="button"
-                  data-testid={`film-project-${film.projectId}`}
-                  onClick={() => nav.toFilmStudio(film.projectId)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left hover:bg-secondary/30 transition-colors"
-                >
-                  <Film size={14} className="shrink-0 text-muted-foreground" />
-                  <span className="truncate text-[15px] text-foreground">{film.title}</span>
-                </button>
-              ))}
-              {films.length === 0 && (
-                <div className="px-3 py-6 text-xs text-muted-foreground/50 italic text-center">
-                  {tr("还没有互动影游项目", "No interactive film projects yet")}
-                </div>
-              )}
-            </div>
-          </Collapse>
-        </div>
-
         {/* Sessions Section */}
-        <div>
+        <div data-testid="sidebar-sessions">
           <SectionHeader
             label={t("nav.history")}
             expanded={projectChatExpanded}
@@ -660,6 +702,31 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </div>
         </div>
 
+        {/* Tools Section — 文风学习 / 题材模板 */}
+        <div>
+          <div className="px-3 mb-3">
+            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
+              {t("nav.tools")}
+            </span>
+          </div>
+          <div className="space-y-1" data-testid="sidebar-tools-list">
+            <SidebarItem
+              label={t("nav.style")}
+              icon={<Wand2 size={16} />}
+              active={activePage === "style"}
+              onClick={nav.toStyle}
+              testId="sidebar-tool-style"
+            />
+            <SidebarItem
+              label={t("nav.genreTemplates")}
+              icon={<Boxes size={16} />}
+              active={activePage === "genres"}
+              onClick={nav.toGenres}
+              testId="sidebar-tool-genres"
+            />
+          </div>
+        </div>
+
         {/* System Section */}
         <div>
           <div className="px-3 mb-3">
@@ -667,24 +734,20 @@ export function Sidebar({ nav, activePage, sse, t }: {
               {t("nav.system")}
             </span>
           </div>
-          <div className="space-y-1">
-            <SidebarItem
-              label={t("create.genre")}
-              icon={<Boxes size={16} />}
-              active={activePage === "genres"}
-              onClick={nav.toGenres}
-            />
+          <div className="space-y-1" data-testid="sidebar-system-list">
             <SidebarItem
               label={t("nav.config")}
               icon={<Settings size={16} />}
               active={activePage === "services"}
               onClick={nav.toServices}
+              testId="sidebar-system-config"
             />
             <SidebarItem
               label={t("nav.projectSettings")}
               icon={<Settings size={16} />}
               active={activePage === "project-settings"}
               onClick={nav.toProjectSettings}
+              testId="sidebar-system-project"
             />
             <SidebarItem
               label={t("nav.checkUpdate")}
@@ -700,41 +763,14 @@ export function Sidebar({ nav, activePage, sse, t }: {
               onClick={nav.toDaemon}
               badge={daemon?.running ? t("nav.running") : undefined}
               badgeColor={daemon?.running ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}
+              testId="sidebar-system-daemon"
             />
             <SidebarItem
               label={t("nav.logs")}
               icon={<Terminal size={16} />}
               active={activePage === "logs"}
               onClick={nav.toLogs}
-            />
-          </div>
-        </div>
-
-        {/* Tools Section */}
-        <div>
-          <div className="px-3 mb-3">
-            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
-              {t("nav.tools")}
-            </span>
-          </div>
-          <div className="space-y-1" data-testid="sidebar-tools-list">
-            <SidebarItem
-              label={t("nav.style")}
-              icon={<Wand2 size={16} />}
-              active={activePage === "style"}
-              onClick={nav.toStyle}
-            />
-            <SidebarItem
-              label={t("nav.import")}
-              icon={<FileInput size={16} />}
-              active={activePage === "import"}
-              onClick={() => nav.toImport()}
-            />
-            <SidebarItem
-              label={t("nav.doctor")}
-              icon={<Stethoscope size={16} />}
-              active={activePage === "doctor"}
-              onClick={nav.toDoctor}
+              testId="sidebar-system-logs"
             />
           </div>
         </div>
@@ -827,6 +863,16 @@ export function Sidebar({ nav, activePage, sse, t }: {
         variant="danger"
         onConfirm={() => void handleDeleteShortConfirm()}
         onCancel={() => setDeleteShortTarget(null)}
+      />
+      <ConfirmDialog
+        open={deleteBookTarget !== null}
+        title={t("book.deleteBook")}
+        message={`${t("book.confirmDelete")}\n\n"${deleteBookTarget?.title ?? ""}"`}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onConfirm={() => void handleDeleteBookConfirm()}
+        onCancel={() => setDeleteBookTarget(null)}
       />
     </aside>
   );

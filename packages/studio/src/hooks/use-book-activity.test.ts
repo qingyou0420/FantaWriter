@@ -4,6 +4,7 @@ import {
   applyBookCollectionEvent,
   deriveActiveBookIds,
   deriveBookActivity,
+  removeBookFromCollection,
   shouldRefetchBookCollections,
   shouldRefetchBookView,
   shouldRefetchDaemonStatus,
@@ -127,5 +128,21 @@ describe("applyBookCollectionEvent", () => {
 
   it("returns null when a collection event lacks enough data for incremental update", () => {
     expect(applyBookCollectionEvent([], msg("book:created", { bookId: "beta" }, 1))).toBeNull();
+  });
+
+  it("removes a deleted book from the collection immediately and permanently", () => {
+    const books = [
+      { id: "alpha", title: "Alpha", genre: "urban", status: "active", chaptersWritten: 3 },
+      { id: "ghost", title: "Ghost", genre: "xuanhuan", status: "paused", chaptersWritten: 1 },
+    ];
+
+    expect(removeBookFromCollection(books, "ghost")).toEqual([
+      { id: "alpha", title: "Alpha", genre: "urban", status: "active", chaptersWritten: 3 },
+    ]);
+    expect(applyBookCollectionEvent(books, msg("book:deleted", { bookId: "ghost" }, 1))).toEqual([
+      { id: "alpha", title: "Alpha", genre: "urban", status: "active", chaptersWritten: 3 },
+    ]);
+    expect(applyBookCollectionEvent(books, msg("book:deleted", { bookId: "missing" }, 2))).toEqual(books);
+    expect(applyBookCollectionEvent(books, msg("book:deleted", {}, 3))).toBeNull();
   });
 });

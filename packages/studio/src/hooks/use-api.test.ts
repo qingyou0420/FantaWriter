@@ -122,4 +122,39 @@ describe("deriveInvalidationPaths", () => {
       "/api/v1/shorts/明日来信",
     ]);
   });
+
+  it("refreshes the works list after deleting a book", () => {
+    expect(deriveInvalidationPaths("/books/ghost")).toEqual([
+      "/api/v1/books",
+      "/api/v1/books/ghost",
+    ]);
+    expect(deriveInvalidationPaths("/api/v1/books/ghost")).toEqual([
+      "/api/v1/books",
+      "/api/v1/books/ghost",
+    ]);
+  });
+});
+
+describe("fetchJson delete invalidation", () => {
+  it("broadcasts book-collection invalidation after a successful book delete", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent });
+
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, bookId: "ghost" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    try {
+      await fetchJson("/books/ghost", { method: "DELETE" }, { fetchImpl });
+      expect(dispatchEvent).toHaveBeenCalledTimes(1);
+      const event = dispatchEvent.mock.calls[0]?.[0] as CustomEvent<{ paths: ReadonlyArray<string> }>;
+      expect(event.type).toBe("inkos:api-invalidate");
+      expect(event.detail.paths).toEqual(["/api/v1/books", "/api/v1/books/ghost"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

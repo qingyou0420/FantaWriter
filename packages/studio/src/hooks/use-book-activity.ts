@@ -156,6 +156,13 @@ export function shouldRefetchDaemonStatus(message: SSEMessage | undefined): bool
   return Boolean(message && DAEMON_STATUS_REFRESH_EVENTS.has(message.event));
 }
 
+export function removeBookFromCollection<T extends { readonly id: string }>(
+  books: ReadonlyArray<T>,
+  bookId: string,
+): ReadonlyArray<T> {
+  return books.filter((book) => book.id !== bookId);
+}
+
 export function applyBookCollectionEvent(
   books: ReadonlyArray<SidebarBookSummary>,
   message: SSEMessage | undefined,
@@ -175,7 +182,7 @@ export function applyBookCollectionEvent(
   if (message.event === "book:deleted") {
     const bookId = getBookId(message);
     if (!bookId) return null;
-    return books.filter((book) => book.id !== bookId);
+    return removeBookFromCollection(books, bookId);
   }
 
   return null;
