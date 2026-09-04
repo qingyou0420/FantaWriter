@@ -161,5 +161,39 @@ describe("short_run charsPerChapter validation (tool layer, before pipeline star
     const runnerOptions = runShortFictionProductionMock.mock.calls[0]![0] as Record<string, unknown>;
     expect(runnerOptions.language).toBe("en");
     expect(runnerOptions.charsPerChapter).toBeUndefined();
+    expect(runnerOptions.phase).toBe("outline");
+  });
+
+  it("returns an outline-ready card instead of writing chapters", async () => {
+    runShortFictionProductionMock.mockResolvedValueOnce({
+      storyId: "elevator",
+      status: "outline-ready",
+      phase: "outline",
+      title: "电梯多一层",
+      chapterCount: 12,
+      outlineSummary: "标题：电梯多一层\n章数：12",
+      outlinePath: "shorts/elevator/outline/v002.md",
+      outlineReviewPath: "shorts/elevator/reviews/outline-v001.md",
+      draftReviewPath: "shorts/elevator/reviews/draft-v001.md",
+      finalMarkdownPath: "shorts/elevator/final/full.md",
+      finalJsonPath: "shorts/elevator/final/short-story.json",
+      salesPackagePath: "shorts/elevator/final/sales-package.md",
+      coverPromptPath: "shorts/elevator/final/cover-prompt.md",
+    });
+    const pipeline = createPipelineStub();
+    const tool = createShortFictionRunTool(pipeline as never, root, { language: "zh" });
+
+    const result = await tool.execute("short-outline-ready", { direction: "恐怖短篇" } as never);
+
+    expect(runShortFictionProductionMock.mock.calls[0]![0]).toMatchObject({ phase: "outline" });
+    expect(result.details).toMatchObject({
+      kind: "short_fiction_outline_ready",
+      storyId: "elevator",
+      draftProposal: {
+        action: "short_run",
+        actionPayload: { shortRun: { storyId: "elevator", phase: "draft" } },
+      },
+    });
+    expect(JSON.stringify(result.content)).toContain("大纲已锁定");
   });
 });

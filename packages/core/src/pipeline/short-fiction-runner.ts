@@ -703,7 +703,7 @@ async function tryLoadPartialDraft(
       const parsed = JSON.parse(raw) as ShortFictionBatchDraft;
       if (!Array.isArray(parsed.chapters) || parsed.chapters.length === 0) continue;
       const base = emptyShortFictionDraft(chapterCount, language, parsed.storyTitle);
-      let merged = {
+      let merged: ShortFictionBatchDraft = {
         ...base,
         openingHook: parsed.openingHook,
         storyTitle: parsed.storyTitle || base.storyTitle,

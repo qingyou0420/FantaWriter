@@ -1222,7 +1222,7 @@ interface CollectedToolExec {
   result?: string;
   details?: unknown;
   error?: string;
-  stages?: Array<{ label: string; status: "pending" | "completed" }>;
+  stages?: Array<{ label: string; status: "pending" | "active" | "completed" }>;
   logs?: string[];
   startedAt: number;
   completedAt?: number;
