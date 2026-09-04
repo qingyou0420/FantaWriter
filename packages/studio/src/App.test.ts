@@ -18,6 +18,8 @@ describe("deriveActiveBookId", () => {
     expect(deriveActiveBookId({ page: "style" })).toBeUndefined();
     expect(deriveActiveBookId({ page: "update" })).toBeUndefined();
     expect(deriveActiveBookId({ page: "short", storyId: "明日来信" })).toBeUndefined();
+    expect(deriveActiveBookId({ page: "short-settings", storyId: "明日来信" })).toBeUndefined();
+    expect(deriveActiveBookId({ page: "short-analytics", storyId: "明日来信" })).toBeUndefined();
   });
 });
 

@@ -48,6 +48,8 @@ describe("desktop update chrome", () => {
     expect(panel).toMatch(/<h1>检查更新<\/h1>/);
     expect(panel).toMatch(/>下载</);
     expect(panel).toMatch(/>安装并重启</);
+    expect(panel).not.toMatch(/更新源/);
+    expect(panel).not.toMatch(/从 GitHub 检查/);
     expect(panel).toMatch(/window\.fantaWriter/);
     expect(panel).toMatch(/api\.checkUpdate\(\)/);
     expect(panel).toMatch(/api\.downloadUpdate/);

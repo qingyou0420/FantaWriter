@@ -12,13 +12,23 @@ interface AnalyticsData {
 }
 
 interface Nav {
-  toBook: (id: string) => void;
+  toBook?: (id: string) => void;
+  toShort?: (id: string) => void;
   toDashboard: () => void;
 }
 
-export function Analytics({ bookId, nav, theme, t }: { bookId: string; nav: Nav; theme: Theme; t: TFunction }) {
+export function Analytics({ bookId, kind = "book", nav, theme, t }: {
+  bookId: string;
+  kind?: "book" | "short";
+  nav: Nav;
+  theme: Theme;
+  t: TFunction;
+}) {
   const c = useColors(theme);
-  const { data, loading, error } = useApi<AnalyticsData>(`/books/${bookId}/analytics`);
+  const path = kind === "short"
+    ? `/shorts/${encodeURIComponent(bookId)}/analytics`
+    : `/books/${bookId}/analytics`;
+  const { data, loading, error } = useApi<AnalyticsData>(path);
 
   if (loading) return <div className={c.muted}>{t("common.loading")}</div>;
   if (error) return <div className="text-red-400">{t("common.error")}: {error}</div>;
@@ -32,7 +42,12 @@ export function Analytics({ bookId, nav, theme, t }: { bookId: string; nav: Nav;
       <div className={`flex items-center gap-2 text-sm ${c.muted}`}>
         <button onClick={nav.toDashboard} className={c.link}>{t("bread.books")}</button>
         <span>/</span>
-        <button onClick={() => nav.toBook(bookId)} className={c.link}>{bookId}</button>
+        <button
+          onClick={() => (kind === "short" ? nav.toShort?.(bookId) : nav.toBook?.(bookId))}
+          className={c.link}
+        >
+          {bookId}
+        </button>
         <span>/</span>
         <span className={c.subtle}>{t("analytics.title")}</span>
       </div>

@@ -59,17 +59,15 @@
   <body>
     <main>
       <h1>检查更新</h1>
-      <p class="lead">从 GitHub 检查幻想作家新版本。发现新版本后可下载安装包，再安装并重启。</p>
       <div class="row"><span class="muted">当前版本</span><span id="current" class="mono">—</span></div>
       <div class="row"><span class="muted">最新版本</span><span id="latest" class="mono">—</span></div>
-      <div class="row"><span class="muted">更新源</span><span id="repo" class="mono">qingyou0420/FantaWriter</span></div>
       <div class="actions">
         <button class="primary" id="check" type="button">检查更新</button>
         <button class="secondary" id="download" type="button" disabled>下载</button>
         <button class="success" id="install" type="button" disabled>安装并重启</button>
       </div>
       <button class="linkish" id="pick" type="button">手动选择安装包</button>
-      <p id="msg" class="note">公开仓库无需填写令牌。启动时不会自动访问 GitHub。</p>
+      <p id="msg" class="note"></p>
     </main>
     <script>
       const $ = (id) => document.getElementById(id);
@@ -98,8 +96,6 @@
         try {
           const info = await api.getAppInfo();
           $("current").textContent = info.version || "—";
-          const settings = await api.getUpdateSettings();
-          if (settings && settings.repo) $("repo").textContent = settings.repo;
         } catch (err) {
           show(String(err), "err");
         }

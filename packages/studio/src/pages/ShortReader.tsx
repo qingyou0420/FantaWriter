@@ -1,10 +1,11 @@
 import { cjk } from "@streamdown/cjk";
-import { AlertCircle, ChevronLeft, Loader2, ScrollText } from "lucide-react";
+import { AlertCircle, ChevronLeft, Download, Loader2, ScrollText } from "lucide-react";
 import { Streamdown } from "streamdown";
 import { useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
 import { tr } from "../lib/app-language";
+import { shortManuscriptExportPath } from "../lib/work-export";
 import type { StudioShortDetail } from "../shared/short-works";
 
 const streamdownPlugins = { cjk };
@@ -70,7 +71,18 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
                 </span>
               ) : null}
             </div>
-            <h1 className="font-serif text-4xl">{data.title}</h1>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h1 className="font-serif text-4xl">{data.title}</h1>
+              <a
+                href={shortManuscriptExportPath(storyId)}
+                download
+                data-testid="short-reader-export"
+                className="inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-foreground"
+              >
+                <Download size={14} />
+                {t("book.export")}
+              </a>
+            </div>
             <p className="text-[13px] text-muted-foreground">
               {data.contentKind === "outline"
                 ? tr("当前可打开的是已锁定大纲。", "Showing the locked outline.")

@@ -34,6 +34,9 @@ describe("studio in-app update chrome", () => {
     expect(page).toMatch(/update\.download/);
     expect(page).toMatch(/update\.install/);
     expect(page).toMatch(/getDesktopBridge/);
+    expect(page).not.toMatch(/update\.subtitle/);
+    expect(page).not.toMatch(/update\.repo/);
+    expect(page).not.toMatch(/更新源/);
     expect(page).not.toMatch(/window\.fw\b/);
     expect(page).not.toMatch(/IndexedDB|fantawriter/);
 

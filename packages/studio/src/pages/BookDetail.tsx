@@ -8,6 +8,7 @@ import type { SSEMessage } from "../hooks/use-sse";
 import { useColors } from "../hooks/use-colors";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { bookManuscriptExportPath } from "../lib/work-export";
 import {
   ChevronLeft,
   Zap,
@@ -480,7 +481,7 @@ export function BookDetail({
   const currentTargetChapters = settingsTargetChapters ?? book.targetChapters ?? 0;
   const currentStatus = settingsStatus ?? (book.status as BookStatus);
 
-  const exportHref = `/api/v1/books/${bookId}/export?format=${exportFormat}${exportApprovedOnly ? "&approvedOnly=true" : ""}`;
+  const exportHref = bookManuscriptExportPath(bookId, exportFormat, exportApprovedOnly);
 
   return (
     <div className="space-y-8 fade-in">
@@ -701,6 +702,15 @@ export function BookDetail({
               />
               {t("book.approvedOnly")}
             </label>
+            <a
+              href={exportHref}
+              download
+              data-testid="book-export-manuscript"
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
+            >
+              <Download size={14} />
+              {t("book.export")}
+            </a>
             <button
               onClick={async () => {
                 try {
@@ -717,7 +727,7 @@ export function BookDetail({
               className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
             >
               <Download size={14} />
-              {t("book.export")}
+              {t("book.exportSave")}
             </button>
           </div>
       </div>
