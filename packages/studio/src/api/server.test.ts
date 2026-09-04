@@ -343,6 +343,8 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     resolveSessionActiveBook: resolveSessionActiveBookMock,
     runAgentSession: runAgentSessionMock,
     abortAgentSession: abortAgentSessionMock,
+    detectPseudoToolText: actual.detectPseudoToolText,
+    formatPseudoToolFailureMessage: actual.formatPseudoToolFailureMessage,
     bindCachedAgentBookId: vi.fn(() => false),
     createSubAgentTool: actual.createSubAgentTool,
     createShortFictionRunTool: createShortFictionRunToolMock,
@@ -3194,6 +3196,37 @@ describe("createStudioServer daemon lifecycle", () => {
       }),
       "检查当前状态",
     );
+  });
+
+  it("rejects a kimi-style （tool_write_truth_file: …） prose reply as an unexecuted tool", async () => {
+    runAgentSessionMock.mockResolvedValueOnce({
+      responseText: "（tool_write_truth_file: outline/story_frame.md）",
+      messages: [
+        { role: "assistant", content: "（tool_write_truth_file: outline/story_frame.md）" },
+      ],
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续未完成任务",
+        activeBookId: "demo-book",
+        sessionId: "agent-session-1",
+      }),
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "AGENT_ACTION_NOT_EXECUTED",
+        message: expect.stringContaining("没有发起真正的 write_truth_file 工具调用"),
+      },
+      response: expect.stringContaining("设定文件尚未写入"),
+    });
   });
 
   it("stores uploaded attachments and forwards them to the agent session", async () => {

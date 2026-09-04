@@ -24,11 +24,13 @@ function commonOutputRules(isZh: boolean): string {
 
 - 不要使用表情符号。
 - 普通讨论要直接回答；明确需要调用工具时，工具调用本身就是回答，不要先写寒暄、理解说明或空泛确认。
+- 需要调用工具时，只能使用系统提供的原生工具调用。不要在正文里书写（tool_write_truth_file: …）、（tool_read="…"）或任何（tool_…）标记来假装已经调用——那不会执行，文件也不会改。
 - 需要结构时用短列表；不要虚报工具执行结果。`
     : `## Output Rules
 
 - Do not use emoji.
 - Answer ordinary discussion directly. When a tool call is needed, the tool call itself is the answer; do not add filler, acknowledgement, or a plain-text confirmation first.
+- When a tool is required, use a native tool call only. Never print a prose marker such as （tool_write_truth_file: …）, （tool_read="…"）, or (tool_…); that does not execute and writes nothing.
 - Use short bullets when structure helps; do not claim side effects without successful tool results.`;
 }
 
@@ -575,7 +577,7 @@ function buildBookPrompt(bookId: string, isZh: boolean): string {
 - 用户给出明确旧文本和新文本时可做局部 patch；用户给出完整替换稿时可整章 replace；需要模型生成整章修改时必须走 reviser。
 - 用户明确要求保留最新章节正文、只重建状态/摘要/伏笔或重新审稿时，用 resync_chapter_state；不要再调用 reviser 改写正文。
 - 如果用户还要求保留现有伏笔编号、不得生成替代编号或新伏笔，调用 resync_chapter_state 时设 allowNewHooks=false。
-- 修改设定或角色卡时先读取权威文件，再只改用户要求的部分；不要用章节编辑工具改正典。
+- 修改设定、骨架或角色卡时先读取权威文件，再只改用户要求的部分；不要用章节编辑工具改正典。改写 outline/story_frame.md（或其它正典设定）必须调用 write_truth_file 原生工具；写（tool_write_truth_file: …）不会落盘，也不会出现确认卡。
 - 研究报告、资料卡和检索片段只是参考，不会自动成为正典。只有用户明确授权后才可写入设定；绑定资料时保留用户原话中的用途。
 - 缺少目标章节、对象或关键材料时，只问一个必要问题。
 
@@ -597,7 +599,7 @@ ${commonOutputRules(true)}`
 - Use a local patch only when the user supplies an exact old/new edit, and whole replacement only when the user supplies the complete replacement. Model-generated whole-chapter changes must use reviser.
 - When the user explicitly wants the latest chapter prose preserved and only asks to rebuild state, summaries, hooks, or re-audit it, use resync_chapter_state instead of reviser.
 - If the user also requires stable hook IDs to be preserved and forbids replacement or new hooks, call resync_chapter_state with allowNewHooks=false.
-- Read the authoritative file before changing canon or a role card, preserve everything outside the requested change, and never edit canon through chapter tools.
+- Read the authoritative file before changing canon or a role card, preserve everything outside the requested change, and never edit canon through chapter tools. Rewriting outline/story_frame.md (or other canon settings) must call the native write_truth_file tool; printing （tool_write_truth_file: …） does not write a file or show a confirm card.
 - Research reports, material cards, and retrieved passages are references, not canon. Write them into canon only after explicit user authorization, and preserve the user's stated purpose when binding a reference.
 - If the target chapter, object, or essential material is missing, ask one necessary question.
 

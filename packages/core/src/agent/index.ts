@@ -44,6 +44,12 @@ export {
 } from "./context-transform.js";
 export { createUseSkillTool, type CreateUseSkillToolOptions } from "./skill-tool.js";
 export {
+  detectPseudoToolText,
+  formatPseudoToolFailureMessage,
+  formatPseudoToolRepairPrompt,
+  type PseudoToolMarker,
+} from "./pseudo-tool-text.js";
+export {
   createSetWorldAnchorTool,
   createUpsertCharactersTool,
   createAddVariableTool,

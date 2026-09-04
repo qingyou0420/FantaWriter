@@ -169,6 +169,19 @@ vi.mock("@mariozechner/pi-ai", async () => {
                 text: "## 第2章 修改指令\n\n目标：把这一章从润色改成重写，先删掉原来的寒暄，再让主角主动发现账页异常。\n\n执行：保留冷库线索，重写对话，补足动机。".repeat(30),
               },
             ], timestamp)
+        : allUserText.includes("fake truth tool persist")
+          ? assistant([{ type: "text", text: "（tool_write_truth_file: outline/story_frame.md）" }], timestamp)
+        : prompt === "fake truth tool"
+          ? assistant([{ type: "text", text: "（tool_write_truth_file: outline/story_frame.md）" }], timestamp)
+        : prompt.includes("原生工具调用 write_truth_file") || prompt.includes("Call the native write_truth_file")
+          ? assistant([
+              {
+                type: "toolCall",
+                id: "truth-1",
+                name: "write_truth_file",
+                arguments: { fileName: "outline/story_frame.md", content: "# 骨架\n" },
+              },
+            ], timestamp)
         : prompt === "write next" || allUserText.includes("write next")
           ? assistant([
               {
@@ -296,6 +309,8 @@ describe("runAgentSession cache — bookId switch", () => {
     evictAgentCache("play-confirmed-session");
     evictAgentCache("skill-history-session");
     evictAgentCache("abort-session");
+    evictAgentCache("fake-truth-retry-session");
+    evictAgentCache("fake-truth-persist-session");
     await rm(projectRoot, { recursive: true, force: true });
     if (otherProjectRoot) await rm(otherProjectRoot, { recursive: true, force: true });
   });
@@ -1172,6 +1187,49 @@ describe("runAgentSession cache — bookId switch", () => {
     expect(result.responseText).toContain("第2章 修改指令");
     expect(result.responseText).toContain("把这一章从润色改成重写");
     expect(result.responseText).not.toContain("没有调用落盘工具");
+  });
+
+  it("retries a kimi-style （tool_write_truth_file: …） prose marker into a real tool call", async () => {
+    const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
+    const pipeline = {} as any;
+    await mkdir(join(projectRoot, "books", "book-a", "story", "outline"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "books", "book-a", "story", "outline", "story_frame.md"),
+      "# 旧骨架\n",
+      "utf-8",
+    );
+
+    const result = await runAgentSession(
+      { sessionId: "fake-truth-retry-session", bookId: "book-a", sessionKind: "book", language: "zh", pipeline, projectRoot, model },
+      "fake truth tool",
+    );
+
+    expect(streamCalls.length).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(streamCalls.slice(1))).toContain("这不是工具调用");
+    expect(result.errorMessage).toBeUndefined();
+    expect(result.responseText).not.toContain("（tool_write_truth_file");
+    expect(result.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "toolResult", toolName: "write_truth_file" }),
+      ]),
+    );
+  });
+
+  it("surfaces a clear Chinese error when the prose marker persists after retry", async () => {
+    const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
+    const pipeline = {} as any;
+
+    const result = await runAgentSession(
+      { sessionId: "fake-truth-persist-session", bookId: "book-a", sessionKind: "book", language: "zh", pipeline, projectRoot, model },
+      "fake truth tool persist",
+    );
+
+    expect(streamCalls).toHaveLength(2);
+    expect(result.responseText).toBe("");
+    expect(result.errorMessage).toContain("（tool_write_truth_file: outline/story_frame.md）");
+    expect(result.errorMessage).toContain("没有发起真正的 write_truth_file 工具调用");
+    expect(result.errorMessage).toContain("设定文件尚未写入");
+    expect(result.errorMessage).toContain("请重试");
   });
 
   it("exposes play_edit, play_revise, and play_step after the play world exists for this session", async () => {

@@ -3436,7 +3436,7 @@ export function createWriteTruthFileTool(
   const tools = createDeterministicInteractionTools(pipeline, projectRoot);
   return {
     name: "write_truth_file",
-    description: "Replace a truth/control file under story/ using deterministic project tools. Direction, foundation, and rules files are staged as a diff for the author to confirm — they are not written until the confirm button is pressed.",
+    description: "Replace a truth/control file under story/ using a native tool call (never print a prose marker such as （tool_write_truth_file: outline/story_frame.md）). Direction, foundation, and rules files are staged as a diff for the author to confirm — they are not written until the confirm button is pressed.",
     label: "Write Truth File",
     parameters: WriteTruthFileParams,
     async execute(_toolCallId, params): Promise<AgentToolResult<unknown>> {

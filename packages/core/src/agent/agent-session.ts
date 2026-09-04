@@ -88,6 +88,11 @@ import {
 } from "./skill-tool.js";
 import { opaqueConversationId, runWithAgentTrajectory } from "../llm/agent-trajectory.js";
 import { guardedPiStream, resolveGuardedPiStreamDeadline } from "./pi-stream.js";
+import {
+  detectPseudoToolText,
+  formatPseudoToolFailureMessage,
+  formatPseudoToolRepairPrompt,
+} from "./pseudo-tool-text.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -561,6 +566,15 @@ function assistantErrorMessage(message: AssistantMessage | undefined): string | 
     message.errorMessage
       ? message.errorMessage
       : undefined;
+}
+
+function assistantHasToolCall(message: AssistantMessage | undefined): boolean {
+  return Boolean(message?.content.some((block) => block.type === "toolCall"));
+}
+
+function unresolvedPseudoToolMarker(message: AssistantMessage | undefined) {
+  if (!message || assistantHasToolCall(message) || assistantErrorMessage(message)) return undefined;
+  return detectPseudoToolText(extractTextFromAssistant(message));
 }
 
 function convertAgentMessagesForModel(messages: AgentMessage[], model: Model<Api>): Message[] {
@@ -1358,6 +1372,11 @@ async function runAgentSessionUnlocked(
       } else {
         await agent.prompt(promptMessage);
       }
+      const firstAssistant = lastAssistantMessage(agent.state.messages);
+      const fakeTool = unresolvedPseudoToolMarker(firstAssistant);
+      if (fakeTool) {
+        await agent.prompt(formatPseudoToolRepairPrompt(fakeTool, language));
+      }
     });
 
     finalAssistant = lastAssistantMessage(agent.state.messages);
@@ -1412,9 +1431,13 @@ async function runAgentSessionUnlocked(
   finalAssistant ??= lastAssistantMessage(allMessages);
   const responseText = finalAssistant ? extractTextFromAssistant(finalAssistant) : "";
   errorMessage ??= assistantErrorMessage(finalAssistant);
+  const fakeTool = unresolvedPseudoToolMarker(finalAssistant);
+  if (fakeTool) {
+    errorMessage = formatPseudoToolFailureMessage(fakeTool, language);
+  }
 
   return {
-    responseText,
+    responseText: fakeTool ? "" : responseText,
     messages: allMessages.slice(),
     ...(errorMessage ? { errorMessage } : {}),
   };
