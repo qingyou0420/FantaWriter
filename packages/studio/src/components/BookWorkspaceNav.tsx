@@ -33,17 +33,14 @@ export type BookWorkspaceTab =
 export interface BookWorkspaceNavTarget {
   readonly toBook: (bookId: string) => void;
   readonly toOutline: (bookId: string) => void;
-  readonly toBookChat: (bookId: string) => void;
   readonly toBookSettings: (bookId: string) => void;
-  readonly toAsk?: (bookId: string) => void;
+  readonly toAsk: (bookId: string) => void;
   readonly toGround?: (bookId: string) => void;
   readonly toWeave?: (bookId: string) => void;
   readonly toWrite?: (bookId: string) => void;
   readonly toTruth?: (bookId: string) => void;
   readonly toAnalytics?: (bookId: string) => void;
   readonly toDashboard?: () => void;
-  readonly onToggleChat?: (bookId: string) => void;
-  readonly chatOpen?: boolean;
 }
 
 const STEPS: ReadonlyArray<{ id: BookStageId; zh: string; en: string }> = [
@@ -54,18 +51,25 @@ const STEPS: ReadonlyArray<{ id: BookStageId; zh: string; en: string }> = [
 ];
 
 export function normalizeBookWorkspaceTab(active: BookWorkspaceTab): BookStageId | "study" {
-  if (active === "cockpit" || active === "chat" || active === "study") return "study";
+  if (active === "cockpit" || active === "study") return "study";
+  if (active === "chat") return "ask";
   if (active === "outline") return "weave";
   if (active === "manuscript") return "write";
   return active;
 }
 
-function stepDotClass(state: BookStepState, highlighted: boolean): string {
-  if (highlighted || state === "current") {
+function stepDotClass(state: BookStepState): string {
+  if (state === "current") {
     return "border-accent bg-background shadow-[0_0_0_2px_oklch(0.70_0.09_82)]";
   }
   if (state === "done") return "border-primary bg-primary";
   return "border-border bg-background";
+}
+
+function currentPageClass(active: boolean): string {
+  return active
+    ? "bg-primary text-primary-foreground"
+    : "bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary";
 }
 
 export function BookWorkspaceNav({
@@ -73,7 +77,6 @@ export function BookWorkspaceNav({
   active,
   nav,
   isZh,
-  chatOpen,
   stage,
   t,
 }: {
@@ -81,12 +84,10 @@ export function BookWorkspaceNav({
   readonly active: BookWorkspaceTab;
   readonly nav: BookWorkspaceNavTarget;
   readonly isZh: boolean;
-  readonly chatOpen?: boolean;
   readonly stage?: BookStageSnapshot;
   readonly t?: TFunction;
 }) {
   const current = normalizeBookWorkspaceTab(active);
-  const talkOpen = chatOpen ?? Boolean(nav.chatOpen);
   const [loaded, setLoaded] = useState<BookStageSnapshot | null>(stage ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -111,7 +112,7 @@ export function BookWorkspaceNav({
     };
   }, [bookId, stage]);
 
-  const goAsk = () => (nav.onToggleChat ?? nav.toBookChat ?? nav.toAsk ?? nav.toBook)(bookId);
+  const goAsk = () => nav.toAsk(bookId);
   const goGround = () => (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId);
   const goWeave = () => (nav.toWeave ?? nav.toOutline)(bookId);
   const goWrite = () => (nav.toWrite ?? nav.toBookSettings)(bookId);
@@ -123,69 +124,65 @@ export function BookWorkspaceNav({
   };
 
   return (
-    <nav className="flex flex-wrap items-center gap-2" data-testid="book-workspace-nav">
+    <nav className="flex w-full items-center justify-between gap-3" data-testid="book-workspace-nav">
       <button
         type="button"
         data-testid="book-tab-study"
         onClick={() => nav.toBook(bookId)}
-        className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
-          current === "study"
-            ? "bg-primary text-primary-foreground"
-            : "bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        }`}
+        className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${currentPageClass(current === "study")}`}
       >
         {isZh ? "书房" : "Study"}
       </button>
 
-      <ol className="flex items-center gap-1" data-testid="book-stage-strip">
-        {STEPS.map((step, index) => {
-          const state = loaded?.steps[step.id] ?? (current === step.id ? "current" : "todo");
-          const highlighted = step.id === "ask" ? talkOpen || current === "ask" : current === step.id;
-          return (
-            <li key={step.id} className="flex items-center gap-1">
-              {index > 0 && <span className="h-px w-3 bg-border" aria-hidden="true" />}
-              <button
-                type="button"
-                data-testid={`book-step-${step.id}`}
-                data-state={state}
-                onClick={() => goStep(step.id)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors ${
-                  highlighted ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <span
-                  className={`inline-block h-2.5 w-2.5 rounded-full border ${stepDotClass(state, highlighted)}`}
-                  aria-hidden="true"
-                />
-                {isZh ? step.zh : step.en}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+      <div className="flex items-center gap-1">
+        <ol className="flex items-center gap-1" data-testid="book-stage-strip">
+          {STEPS.map((step, index) => {
+            const state = loaded?.steps[step.id] ?? (current === step.id ? "current" : "todo");
+            const highlighted = current === step.id;
+            return (
+              <li key={step.id} className="flex items-center gap-1">
+                {index > 0 && <span className="h-px w-3 bg-border" aria-hidden="true" />}
+                <button
+                  type="button"
+                  data-testid={`book-step-${step.id}`}
+                  data-state={state}
+                  onClick={() => goStep(step.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold transition-colors ${currentPageClass(highlighted)}`}
+                >
+                  <span
+                    className={`inline-block h-2.5 w-2.5 rounded-full border ${stepDotClass(state)}`}
+                    aria-hidden="true"
+                  />
+                  {isZh ? step.zh : step.en}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          data-testid="book-tab-more"
-          className="inline-flex items-center rounded-lg bg-secondary/50 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <MoreHorizontal size={14} />
-          <span className="sr-only">{isZh ? "更多" : "More"}</span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-            {isZh ? "书籍设置" : "Book settings"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setToolsOpen(true)}>
-            {isZh ? "更多工具" : "More tools"}
-          </DropdownMenuItem>
-          {nav.toTruth && (
-            <DropdownMenuItem onClick={() => nav.toTruth?.(bookId)}>
-              {isZh ? "真相文件" : "Truth files"}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            data-testid="book-tab-more"
+            className="inline-flex items-center rounded-lg bg-secondary/50 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary"
+          >
+            <MoreHorizontal size={14} />
+            <span className="sr-only">{isZh ? "更多" : "More"}</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+              {isZh ? "书籍设置" : "Book settings"}
             </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuItem onClick={() => setToolsOpen(true)}>
+              {isZh ? "更多工具" : "More tools"}
+            </DropdownMenuItem>
+            {nav.toTruth && (
+              <DropdownMenuItem onClick={() => nav.toTruth?.(bookId)}>
+                {isZh ? "真相文件" : "Truth files"}
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <BookSettingsDrawer
         bookId={bookId}
         open={settingsOpen}

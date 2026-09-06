@@ -24,13 +24,14 @@ describe("hash route", () => {
     });
 
     it("parses four-step aliases and redirects old hashes", () => {
-      expect(parseHash("#/book/my-novel/ask")).toEqual({ page: "book", bookId: "my-novel", chatOpen: true });
+      expect(parseHash("#/book/my-novel/ask")).toEqual({ page: "book-ask", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/ground")).toEqual({ page: "book-ground", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/weave")).toEqual({ page: "book-weave", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/write")).toEqual({ page: "book-write", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/outline")).toEqual({ page: "book-weave", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/settings")).toEqual({ page: "book-write", bookId: "my-novel" });
-      expect(parseHash("#/book/my-novel/chat")).toEqual({ page: "book", bookId: "my-novel", chatOpen: true });
+      expect(parseHash("#/book/my-novel/chat")).toEqual({ page: "book-ask", bookId: "my-novel" });
+      expect(routeToHash(parseHash("#/book/my-novel/chat"))).toBe("#/book/my-novel/ask");
     });
 
     it("decodes encoded bookId", () => {
@@ -108,7 +109,7 @@ describe("hash route", () => {
       expect(routeToHash({ page: "book", bookId: "novel-1" })).toBe("#/book/novel-1");
     });
 
-    it("book without chatOpen does not write /chat", () => {
+    it("book study hash does not write /chat", () => {
       expect(routeToHash({ page: "book", bookId: "novel-1" })).not.toContain("/chat");
     });
 
@@ -119,8 +120,6 @@ describe("hash route", () => {
       expect(routeToHash({ page: "book-write", bookId: "novel-1" })).toBe("#/book/novel-1/write");
       expect(routeToHash({ page: "book-outline", bookId: "novel-1" })).toBe("#/book/novel-1/weave");
       expect(routeToHash({ page: "book-settings", bookId: "novel-1" })).toBe("#/book/novel-1/write");
-      expect(routeToHash({ page: "book-chat", bookId: "novel-1" })).toBe("#/book/novel-1/chat");
-      expect(routeToHash({ page: "book", bookId: "novel-1", chatOpen: true })).toBe("#/book/novel-1/chat");
     });
 
     it("encodes Chinese bookId", () => {

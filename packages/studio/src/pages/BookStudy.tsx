@@ -25,7 +25,6 @@ import {
 import { formatStartedOn, studyGuideCopy } from "../lib/stage-copy";
 import { lockedNamedVolumeCount } from "../lib/volume-map-tree";
 import {
-  ChevronLeft,
   AlertTriangle,
   CheckCircle2,
   Feather,
@@ -77,7 +76,7 @@ function goStage(
   bookId: string,
   target: "ask" | "ground" | "weave" | "write",
 ): void {
-  if (target === "ask") (nav.onToggleChat ?? nav.toBookChat ?? nav.toAsk ?? nav.toBook)(bookId);
+  if (target === "ask") nav.toAsk(bookId);
   else if (target === "ground") (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId);
   else if (target === "weave") (nav.toWeave ?? nav.toOutline)(bookId);
   else (nav.toWrite ?? nav.toBookSettings)(bookId);
@@ -235,17 +234,7 @@ export function BookStudy({
 
   return (
     <div className="space-y-8 fade-in" data-testid="serial-cockpit-home">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-          <button type="button" onClick={nav.toDashboard} className="hover:text-primary flex items-center gap-1">
-            <ChevronLeft size={14} />
-            {t("bread.books")}
-          </button>
-          <span className="text-border">/</span>
-          <span className="text-foreground">{book.title}</span>
-        </nav>
-        <BookWorkspaceNav bookId={bookId} active="study" nav={nav} isZh={isZh} t={t} />
-      </div>
+      <BookWorkspaceNav bookId={bookId} active="study" nav={nav} isZh={isZh} t={t} />
 
       <header className="space-y-2">
         <h1 className="font-serif text-4xl font-medium">{book.title}</h1>
