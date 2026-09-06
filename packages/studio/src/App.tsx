@@ -2,12 +2,13 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { useHashRoute } from "./hooks/use-hash-route";
 import type { HashRoute } from "./hooks/use-hash-route";
 import { Sidebar } from "./components/Sidebar";
-import { FantaWriterLogo } from "./components/FantaWriterLogo";
+import { BrandMark } from "./components/BrandMark";
 import { Dashboard } from "./pages/Dashboard";
 import { ChatPage } from "./pages/ChatPage";
 import { BookDetail } from "./pages/BookDetail";
 import { SerialCockpit } from "./pages/SerialCockpit";
 import { OutlineWorkspace } from "./pages/OutlineWorkspace";
+import { BookAskPage } from "./pages/BookAskPage";
 import { BookWorkspaceNav } from "./components/BookWorkspaceNav";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
@@ -69,6 +70,7 @@ export function App() {
   const { data: project, error: projectError, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>("/project");
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [ready, setReady] = useState(false);
+  const [bookChatOpen, setBookChatOpen] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -97,13 +99,28 @@ export function App() {
 
   useSessionEvents(sse, route, setRoute);
 
+  useEffect(() => {
+    if ((route.page === "book" && route.chatOpen) || route.page === "book-chat") {
+      setBookChatOpen(true);
+    }
+  }, [route]);
+
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
     toChat: () => setRoute({ page: "chat" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
-    toOutline: (bookId: string) => setRoute({ page: "book-outline", bookId }),
-    toBookChat: (bookId: string) => setRoute({ page: "book-chat", bookId }),
-    toBookSettings: (bookId: string) => setRoute({ page: "book-settings", bookId }),
+    toAsk: (bookId: string) => setRoute({ page: "book-ask", bookId }),
+    toGround: (bookId: string) => setRoute({ page: "book-ground", bookId }),
+    toWeave: (bookId: string) => setRoute({ page: "book-weave", bookId }),
+    toWrite: (bookId: string) => setRoute({ page: "book-write", bookId }),
+    toOutline: (bookId: string) => setRoute({ page: "book-weave", bookId }),
+    toBookChat: (bookId: string) => {
+      setBookChatOpen(true);
+      setRoute({ page: "book", bookId, chatOpen: true });
+    },
+    toBookSettings: (bookId: string) => setRoute({ page: "book-write", bookId }),
+    onToggleChat: () => setBookChatOpen((open) => !open),
+    chatOpen: bookChatOpen,
     toBookCreate: () => setRoute({ page: "book-create" }),
     toChapter: (bookId: string, chapterNumber: number) =>
       setRoute({ page: "chapter", bookId, chapterNumber }),
@@ -172,8 +189,8 @@ export function App() {
   if (startupGate === "loading") {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-5">
-        <FantaWriterLogo className="w-16 h-16 rounded-[22%]" />
-        <div className="font-serif text-2xl text-foreground">幻想作家</div>
+        <BrandMark className="w-16 h-16 rounded-full" />
+        <div className="font-serif text-2xl text-foreground">墨生万象</div>
         <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
       </div>
     );
@@ -207,8 +224,6 @@ export function App() {
              >
                <House size={18} />
                <span>{t("bread.home")}</span>
-               <span className="text-muted-foreground/70">/</span>
-               <span className="font-serif">幻想作家</span>
              </button>
           </div>
 
@@ -287,36 +302,30 @@ export function App() {
               />
             </div>
           )}
-          {route.page === "book" && (
+          {(route.page === "book" || route.page === "book-chat") && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <SerialCockpit bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
-          {route.page === "book-outline" && (
+          {route.page === "book-ask" && (
+            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <BookAskPage bookId={route.bookId} nav={nav} t={t} isZh={currentLang !== "en"} />
+            </div>
+          )}
+          {route.page === "book-ground" && (
+            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <div className="mb-4 flex justify-end">
+                <BookWorkspaceNav bookId={route.bookId} active="ground" nav={nav} isZh={currentLang !== "en"} />
+              </div>
+              <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />
+            </div>
+          )}
+          {(route.page === "book-outline" || route.page === "book-weave") && (
             <div className="mx-auto w-full max-w-[1400px] px-4 py-12 sm:px-6 lg:px-10 lg:py-16 fade-in">
               <OutlineWorkspace bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
-          {route.page === "book-chat" && (
-            <div className="absolute inset-0 flex min-w-0 flex-col">
-              <div className="shrink-0 border-b border-border/40 px-4 py-2">
-                <BookWorkspaceNav bookId={route.bookId} active="chat" nav={nav} isZh={currentLang !== "en"} />
-              </div>
-              <div className="flex min-h-0 flex-1">
-                <ChatPage
-                  activeBookId={route.bookId}
-                  mode="book"
-                  nav={nav}
-                  theme={theme}
-                  t={t}
-                  sse={sse}
-                />
-                <BookSidebar bookId={route.bookId} theme={theme} t={t} sse={sse} />
-                <BookSidebarToggle bookId={route.bookId} theme={theme} t={t} sse={sse} />
-              </div>
-            </div>
-          )}
-          {route.page === "book-settings" && (
+          {(route.page === "book-settings" || route.page === "book-write") && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
@@ -430,6 +439,35 @@ export function App() {
           )}
         </main>
       </div>
+      {activeBookId && bookChatOpen && (
+        <aside
+          className="flex h-full w-[min(420px,100vw)] shrink-0 flex-col border-l border-border bg-background"
+          data-testid="book-talk-drawer"
+        >
+          <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
+            <span className="text-sm font-medium">{currentLang === "en" ? "Talk" : "对谈"}</span>
+            <button
+              type="button"
+              onClick={() => setBookChatOpen(false)}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              {currentLang === "en" ? "Close" : "关闭"}
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1">
+            <ChatPage
+              activeBookId={activeBookId}
+              mode="book"
+              nav={nav}
+              theme={theme}
+              t={t}
+              sse={sse}
+            />
+            <BookSidebar bookId={activeBookId} theme={theme} t={t} sse={sse} />
+            <BookSidebarToggle bookId={activeBookId} theme={theme} t={t} sse={sse} />
+          </div>
+        </aside>
+      )}
       <BookBusyCard />
     </div>
   );

@@ -23,7 +23,6 @@ import {
   CheckCircle2,
   Clock,
   Feather,
-  ListTree,
 } from "lucide-react";
 
 interface ChapterMeta {
@@ -179,12 +178,12 @@ export function SerialCockpit({
           <span className="text-border">/</span>
           <span className="text-foreground">{book.title}</span>
         </nav>
-        <BookWorkspaceNav bookId={bookId} active="cockpit" nav={nav} isZh={isZh} />
+        <BookWorkspaceNav bookId={bookId} active="study" nav={nav} isZh={isZh} />
       </div>
 
       <header className="space-y-1 border-b border-border/40 pb-6">
         <h1 className="font-serif text-4xl font-medium">{book.title}</h1>
-        <p className="text-sm text-muted-foreground">{isZh ? "连载驾驶舱 · 今天写哪一章" : "Serialization cockpit"}</p>
+        <p className="text-sm text-muted-foreground">{isZh ? "连载书房" : "Serialization study"}</p>
       </header>
 
       {snapshot && (
@@ -371,24 +370,6 @@ export function SerialCockpit({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 pt-2">
-        <button
-          type="button"
-          onClick={() => nav.toOutline(bookId)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground"
-        >
-          <ListTree size={14} />
-          {isZh ? "打开大纲" : "Open outline"}
-        </button>
-        <button
-          type="button"
-          onClick={() => nav.toOutline(bookId)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground"
-        >
-          <Feather size={14} />
-          {isZh ? "织卷" : "织卷"}
-        </button>
-      </div>
     </div>
   );
 }

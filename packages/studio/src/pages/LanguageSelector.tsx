@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FantaWriterLogo } from "../components/FantaWriterLogo";
+import { BrandMark } from "../components/BrandMark";
 
 export function LanguageSelector({ onSelect }: { onSelect: (lang: "zh" | "en") => void }) {
   const [hovering, setHovering] = useState<"zh" | "en" | null>(null);
@@ -14,9 +14,9 @@ export function LanguageSelector({ onSelect }: { onSelect: (lang: "zh" | "en") =
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-8">
       <div className="mb-16 text-center">
-        <FantaWriterLogo className="w-24 h-24 mx-auto mb-5 rounded-[22%]" />
-        <div className="font-serif text-5xl font-medium text-foreground">幻想作家</div>
-        <div className="mt-2 text-base text-muted-foreground tracking-[0.18em]">FantaWriter</div>
+        <BrandMark className="w-24 h-24 mx-auto mb-5 rounded-full" />
+        <div className="font-serif text-5xl font-medium text-foreground">墨生万象</div>
+        <div className="mt-2 text-base text-muted-foreground tracking-[0.18em]">Inkborne</div>
       </div>
 
       {/* Language cards — generous, distinct, immersive */}

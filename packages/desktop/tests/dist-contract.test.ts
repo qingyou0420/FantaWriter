@@ -47,15 +47,15 @@ describe("2.0.15 Windows installer contract", () => {
     expect(yml).toMatch(/^\s*- icon\.png$/m);
   });
 
-  it("brands first-run and the Electron window as 幻想作家, not InkOS", () => {
+  it("brands first-run and the Electron window as 墨生万象, not InkOS", () => {
     const firstRun = readFileSync(join(desktopDir, "first-run.html"), "utf8");
     const main = readFileSync(join(desktopDir, "main.cjs"), "utf8");
-    expect(firstRun).toMatch(/<h1>幻想作家<\/h1>/);
+    expect(firstRun).toMatch(/<h1>墨生万象<\/h1>/);
     expect(firstRun).toMatch(/src="icon\.png"/);
     expect(firstRun).toMatch(/id="serviceName"/);
     expect(firstRun).toMatch(/name: \$\("serviceName"\)\.value/);
     expect(firstRun).not.toMatch(/InkOS Studio|InkosLogo|>InkOS</);
-    expect(main).toMatch(/title: "幻想作家 \/ FantaWriter"/);
+    expect(main).toMatch(/title: "墨生万象 \/ Inkborne"/);
     expect(main).toMatch(/icon: path\.join\(__dirname, "icon\.png"\)/);
     expect(main).not.toMatch(/title: "InkOS/);
   });

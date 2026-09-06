@@ -1,6 +1,7 @@
 /*
-  幻想作家 / FantaWriter — Atmospheric Literary Workbench
+  墨生万象 / Inkborne — Atmospheric Literary Workbench
   Fonts: Instrument Serif (Headings/Literary), DM Sans (UI), JetBrains Mono (Data)
+  Chinese serif choice for P2-3 local packaging: 霞鹜文楷 LXGW WenKai (OFL). This P0 PR does not bundle font files.
 */
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 

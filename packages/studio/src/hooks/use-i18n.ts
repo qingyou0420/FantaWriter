@@ -49,9 +49,9 @@ const strings = {
   "dash.chapters": { zh: "章", en: "chapters" },
   "dash.recentEvents": { zh: "最近事件", en: "Recent Events" },
   "dash.writingProgress": { zh: "写作进度", en: "Writing Progress" },
-  "dash.subtitle": { zh: "打开一本书进入连载驾驶舱", en: "Open a book to enter the serialization cockpit" },
+  "dash.subtitle": { zh: "打开一本书进入连载书房", en: "Open a book to enter the serialization study" },
 
-  "cockpit.title": { zh: "连载驾驶舱", en: "Serialization cockpit" },
+  "cockpit.title": { zh: "连载书房", en: "Serialization study" },
   "cockpit.nextChapter": { zh: "下一章", en: "Next chapter" },
   "cockpit.writeNext": { zh: "落墨 · 写下一章", en: "落墨 · Write next" },
   "cockpit.outline": { zh: "大纲", en: "Outline" },
@@ -411,7 +411,7 @@ const strings = {
 
   // In-app update (desktop shell IPC)
   "update.title": { zh: "检查更新", en: "Check for Updates" },
-  "update.subtitle": { zh: "从 GitHub 检查幻想作家新版本。发现新版本后可下载安装包，再安装并重启。启动时不会自动访问 GitHub。", en: "Check GitHub for a newer FantaWriter. Download the installer, then install and restart. Startup never hits GitHub by itself." },
+  "update.subtitle": { zh: "从 GitHub 检查墨生万象新版本。发现新版本后可下载安装包，再安装并重启。启动时不会自动访问 GitHub。", en: "Check GitHub for a newer Inkborne. Download the installer, then install and restart. Startup never hits GitHub by itself." },
   "update.current": { zh: "当前版本", en: "Current version" },
   "update.latestLabel": { zh: "最新版本", en: "Latest version" },
   "update.repo": { zh: "更新源", en: "Update source" },

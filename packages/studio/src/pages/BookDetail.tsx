@@ -498,9 +498,9 @@ export function BookDetail({
           {book.title}
         </button>
         <span className="text-border">/</span>
-        <span className="text-foreground">{t("book.settings")}</span>
+        <span className="text-foreground">{book.language === "en" ? "Write" : "落笔"}</span>
       </nav>
-      <BookWorkspaceNav bookId={bookId} active="manuscript" nav={nav} isZh={book.language !== "en"} />
+      <BookWorkspaceNav bookId={bookId} active="write" nav={nav} isZh={book.language !== "en"} />
       </div>
 
       {/* Header Section */}

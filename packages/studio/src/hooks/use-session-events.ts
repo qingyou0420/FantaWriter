@@ -17,7 +17,7 @@ export function bookCreatedRoute(
   page: HashRoute["page"],
   bookId: string,
 ): HashRoute | null {
-  if (page === "book-create") return { page: "book-outline", bookId };
+  if (page === "book-create") return { page: "book", bookId };
   return null;
 }
 

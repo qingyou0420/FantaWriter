@@ -6,6 +6,10 @@ describe("deriveActiveBookId", () => {
     expect(deriveActiveBookId({ page: "book", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "book-outline", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "book-chat", bookId: "alpha" })).toBe("alpha");
+    expect(deriveActiveBookId({ page: "book-ask", bookId: "alpha" })).toBe("alpha");
+    expect(deriveActiveBookId({ page: "book-ground", bookId: "alpha" })).toBe("alpha");
+    expect(deriveActiveBookId({ page: "book-weave", bookId: "alpha" })).toBe("alpha");
+    expect(deriveActiveBookId({ page: "book-write", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "chapter", bookId: "beta", chapterNumber: 3 })).toBe("beta");
     expect(deriveActiveBookId({ page: "truth", bookId: "gamma" })).toBe("gamma");
     expect(deriveActiveBookId({ page: "analytics", bookId: "delta" })).toBe("delta");
