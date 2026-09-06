@@ -4,6 +4,16 @@
 
 ## [未发布]
 
+## [2.1.3] - 2026-09-06
+
+Windows 补丁安装包：`Inkborne-Setup-2.1.3.exe`（同时上传 `FantaWriter-Setup-2.1.3.exe` 与 `Fantasy-Writer-Setup-2.1.3.exe` 别名）。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。`appId` 仍为 `com.fantawriter.app`。
+
+### 变更
+
+- 问心改为独立整页，不再用右侧抽屉；书内五页平铺：书房 / 问心 / 研墨 / 织卷 / 落笔。
+- 书内 chrome 左【书房】，右问心·研墨·织卷·落笔；侧栏问心记录直接进问心页。
+- 删除 talk-drawer（`book-talk-drawer` / `bookChatOpen` / `closeAskDrawer` 等）。
+
 ## [2.1.2] - 2026-09-06
 
 Windows 补丁安装包：`Inkborne-Setup-2.1.2.exe`（同时上传 `FantaWriter-Setup-2.1.2.exe` 与 `Fantasy-Writer-Setup-2.1.2.exe` 别名）。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。`appId` 仍为 `com.fantawriter.app`。
@@ -436,6 +446,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.1.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.3
 [2.1.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.2
 [2.1.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.1
 [2.1.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.0
