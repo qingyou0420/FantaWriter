@@ -21,6 +21,7 @@ import {
 import { useChatStore } from "../store/chat";
 import { BrandMark } from "./BrandMark";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { DefaultCover } from "./DefaultCover";
 import { PRODUCT_VERSION } from "../lib/product-version";
 import {
   Dialog,
@@ -37,6 +38,8 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { SIDEBAR_CREATE_ITEM_KEYS } from "../lib/sidebar-create-items";
+import type { AuthorPublic } from "../lib/author-profile";
+import { isInProgressBookStatus, isInProgressShortStatus } from "../lib/stage-copy";
 import { deleteStudioShortWork } from "../lib/short-api";
 import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import {
@@ -83,10 +86,15 @@ interface BookSummary {
   readonly genre: string;
   readonly status: string;
   readonly chaptersWritten: number;
+  readonly targetChapters?: number;
+  readonly createdAt?: string;
+  readonly coverImagePath?: string;
+  readonly stage?: string;
 }
 
 interface Nav {
   toDashboard: () => void;
+  toAuthor: () => void;
   toChat: () => void;
   toBook: (id: string) => void;
   toBookSettings: (id: string) => void;
@@ -116,6 +124,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   sse: { messages: ReadonlyArray<SSEMessage> };
   t: TFunction;
 }) {
+  const { data: author } = useApi<AuthorPublic>("/author");
   const { data, refetch: refetchBooks, mutate: mutateBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: shortsData, refetch: refetchShorts, mutate: mutateShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
@@ -136,9 +145,10 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
   const [deleteShortTarget, setDeleteShortTarget] = useState<{ id: string; title: string } | null>(null);
   const [deleteBookTarget, setDeleteBookTarget] = useState<{ id: string; title: string } | null>(null);
-  const [expandedBooks, setExpandedBooks] = useState<Set<string>>(new Set());
-  const [projectChatExpanded, setProjectChatExpanded] = useState(true);
-  const [myBooksExpanded, setMyBooksExpanded] = useState(true);
+  const [expandedTalkBooks, setExpandedTalkBooks] = useState<Set<string>>(new Set());
+  const [projectChatExpanded, setProjectChatExpanded] = useState(false);
+  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [activeWorksExpanded, setActiveWorksExpanded] = useState(true);
 
   const books = data?.books ?? [];
   const shorts = selectWorksListShorts(shortsData);
@@ -187,17 +197,14 @@ export function Sidebar({ nav, activePage, sse, t }: {
     }
   }, [mutateBooks, mutateShorts, refetchBooks, refetchDaemon, refetchShorts, sse.messages]);
 
-  // bookDataVersion 变化（外部数据信号）时才重拉当前已展开书的 session 列表；
-  // 展开/折叠本身不触发请求（展开由 toggleBook 驱动，已带"首次加载"判断）。
   useEffect(() => {
-    for (const bookId of expandedBooks) {
-      void loadSessionList(bookId);
-    }
-    if (projectChatExpanded) {
-      void loadSessionList(null);
+    if (!sessionsExpanded) return;
+    void loadSessionList(null);
+    for (const book of books) {
+      void loadSessionList(book.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookDataVersion, loadSessionList, projectChatExpanded]);
+  }, [bookDataVersion, loadSessionList, sessionsExpanded, books]);
 
   useEffect(() => {
     void refetchBooks();
@@ -206,20 +213,17 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   useEffect(() => {
     if (activePage === "chat") {
+      setSessionsExpanded(true);
       setProjectChatExpanded(true);
       void loadSessionList(null);
     }
   }, [activePage, loadSessionList]);
 
-  const toggleBook = (bookId: string) => {
-    setExpandedBooks((prev) => {
+  const toggleTalkBook = (bookId: string) => {
+    setExpandedTalkBooks((prev) => {
       const next = new Set(prev);
-      if (next.has(bookId)) {
-        next.delete(bookId);
-        return next;
-      }
-      next.add(bookId);
-      // 首次展开才拉：已有 sessionIdsByBook 数据就直接用缓存
+      if (next.has(bookId)) next.delete(bookId);
+      else next.add(bookId);
       if (sessionIdsByBook[bookId] === undefined) {
         void loadSessionList(bookId);
       }
@@ -229,14 +233,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   const openBook = (bookId: string) => {
     setInput("");
-    setExpandedBooks((prev) => {
-      const next = new Set(prev);
-      next.add(bookId);
-      return next;
-    });
-    if (sessionIdsByBook[bookId] === undefined) {
-      void loadSessionList(bookId);
-    }
     nav.toBook(bookId);
   };
 
@@ -263,7 +259,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const handleCreateSession = (bookId: string) => {
     // 前端创建草稿会话：对话区立即变空，但 session 文件不落盘；
     // 发第一条消息时 sendMessage 会调 POST /sessions 真正创建。
-    setExpandedBooks((prev) => new Set(prev).add(bookId));
+    setExpandedTalkBooks((prev) => new Set(prev).add(bookId));
+    setSessionsExpanded(true);
     setInput("");
     createDraftSession(bookId, "book");
     nav.toBookChat(bookId);
@@ -351,13 +348,34 @@ export function Sidebar({ nav, activePage, sse, t }: {
     }
   };
 
+  const activeBooks = books.filter((book) => isInProgressBookStatus(book.status));
+  const activeShorts = shorts.filter((short) => isInProgressShortStatus(short.status));
+  const authorLabel = author?.name?.trim() || t("nav.signYourName");
+  const authorAvatar = author?.hasAvatar
+    ? `/api/v1/author/avatar${author.updatedAt ? `?v=${encodeURIComponent(author.updatedAt)}` : ""}`
+    : "";
+
+  const pauseBook = async (book: BookSummary) => {
+    try {
+      await fetchJson(`/books/${book.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "paused" }),
+      });
+      bumpBookDataVersion();
+      void refetchBooks();
+    } catch {
+      void refetchBooks();
+    }
+  };
+
   const handleDeleteBookConfirm = async () => {
     if (!deleteBookTarget) return;
     const bookId = deleteBookTarget.id;
     mutateBooks((current) => current
       ? { books: removeBookFromCollection(current.books, bookId) }
       : current);
-    setExpandedBooks((prev) => {
+    setExpandedTalkBooks((prev) => {
       const next = new Set(prev);
       next.delete(bookId);
       return next;
@@ -376,9 +394,170 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   return (
     <aside className="w-[260px] shrink-0 border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
-      {/* Main Navigation — create section is the first item (no brand tile). */}
+      {/* Main Navigation — author → in-progress covers → create → talks. */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-        {/* Create Section — always visible, two columns. */}
+        <button
+          type="button"
+          data-testid="sidebar-author"
+          onClick={nav.toAuthor}
+          className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left ${
+            activePage === "author" ? "bg-secondary text-foreground" : "hover:bg-secondary/40"
+          }`}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.36_0.07_160)] text-sm text-[oklch(0.70_0.09_82)]">
+            {authorAvatar
+              ? <img src={authorAvatar} alt="" className="h-full w-full object-cover" />
+              : (author?.name?.trim().slice(0, 1) || "墨")}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium">{authorLabel}</span>
+            {author?.bio?.trim() && (
+              <span className="block truncate text-[12px] text-muted-foreground">{author.bio}</span>
+            )}
+          </span>
+        </button>
+
+        <div>
+          <SectionHeader label={t("nav.myBooks")} expanded={activeWorksExpanded} onToggle={() => setActiveWorksExpanded((v) => !v)} />
+          <Collapse open={activeWorksExpanded}>
+            <div className="space-y-2 pt-1" data-testid="sidebar-works-list">
+              <div className="grid grid-cols-2 gap-2 px-1">
+                {activeBooks.map((book) => (
+                  <div key={book.id} className="group/cover relative">
+                    <button
+                      type="button"
+                      data-testid={`sidebar-book-${book.id}`}
+                      onClick={() => openBook(book.id)}
+                      className="w-full text-left"
+                    >
+                      <DefaultCover
+                        title={book.title}
+                        createdAt={book.createdAt}
+                        written={book.chaptersWritten}
+                        target={book.targetChapters ?? 0}
+                        coverSrc={book.coverImagePath}
+                      />
+                      <span className="mt-1 block truncate px-0.5 text-[12px] leading-4">{book.title}</span>
+                      <span className="sr-only">{t("book.badgeLong")}</span>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        data-testid={`sidebar-book-menu-${book.id}`}
+                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 opacity-0 group-hover/cover:opacity-100"
+                      >
+                        <MoreHorizontal size={14} />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start" className="w-40">
+                        <DropdownMenuItem onClick={() => openBook(book.id)}>
+                          <FolderOpen size={14} />
+                          <span>{t("cockpit.title")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            const link = document.createElement("a");
+                            link.href = bookManuscriptExportPath(book.id);
+                            link.download = "";
+                            link.click();
+                          }}
+                        >
+                          <Download size={14} />
+                          <span>{t("book.export")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => nav.toBookSettings(book.id)}>
+                          <Settings size={14} />
+                          <span>{t("book.settings")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => void pauseBook(book)}>
+                          <span>{tr("移入书架", "Move to shelf")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          data-testid={`sidebar-book-delete-${book.id}`}
+                          onClick={() => setDeleteBookTarget({ id: book.id, title: book.title })}
+                        >
+                          <Trash2 size={14} />
+                          <span>{t("book.deleteBook")}</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                ))}
+                {activeShorts.map((short) => (
+                  <div key={`short-${short.id}`} className="group/cover relative" data-testid={`sidebar-short-${short.id}`}>
+                    <button type="button" onClick={() => nav.toShort(short.id)} className="w-full text-left">
+                      <DefaultCover
+                        title={short.title}
+                        coverSrc={short.coverImagePath}
+                        written={short.chapterCount ?? 0}
+                        target={short.chapterCount ?? 1}
+                      />
+                      <span className="mt-1 block truncate px-0.5 text-[12px] leading-4">{short.title}</span>
+                      <span className="sr-only">{t("short.badge")}</span>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        data-testid={`sidebar-short-menu-${short.id}`}
+                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 opacity-0 group-hover/cover:opacity-100"
+                      >
+                        <MoreHorizontal size={14} />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start" className="w-40">
+                        <DropdownMenuItem onClick={() => (
+                          short.status === "completed" ? nav.toShort(short.id) : handleContinueShort(short)
+                        )}>
+                          <Zap size={14} />
+                          <span>{short.status === "completed" ? t("short.finished") : t("dash.writeNext")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => nav.toShortAnalytics(short.id)}>
+                          <BarChart2 size={14} />
+                          <span>{t("dash.stats")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => nav.toShortSettings(short.id)}>
+                          <Settings size={14} />
+                          <span>{t("book.settings")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            const link = document.createElement("a");
+                            link.href = shortManuscriptExportPath(short.id);
+                            link.download = "";
+                            link.click();
+                          }}
+                        >
+                          <Download size={14} />
+                          <span>{t("book.export")}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setDeleteShortTarget({ id: short.id, title: short.title })}
+                        >
+                          <Trash2 size={14} />
+                          <span>{t("book.deleteBook")}</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                ))}
+              </div>
+              {activeBooks.length === 0 && activeShorts.length === 0 && (
+                <div className="px-3 py-4 text-xs text-muted-foreground/50 italic text-center">
+                  {t("dash.noBooks")}
+                </div>
+              )}
+              <button
+                type="button"
+                data-testid="sidebar-all-shelf"
+                onClick={nav.toDashboard}
+                className="w-full px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:text-foreground"
+              >
+                {t("nav.allShelf")}
+              </button>
+            </div>
+          </Collapse>
+        </div>
+
         <div>
           <div className="px-3 mb-2.5">
             <span className="text-[16px] leading-6 uppercase tracking-[0.1em] text-muted-foreground font-bold">
@@ -409,246 +588,119 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </div>
         </div>
 
-        {/* My Bookshelf Section */}
-        <div>
-          <SectionHeader label={t("nav.myBooks")} expanded={myBooksExpanded} onToggle={() => setMyBooksExpanded((v) => !v)} />
-          <Collapse open={myBooksExpanded}>
-          <div className="space-y-0.5 pt-1" data-testid="sidebar-works-list">
-            {books.map((book) => {
-              const bookSessions = sessionsByBook[book.id] ?? [];
-              const isActiveBook = activePage === `book:${book.id}`;
-              const isExpanded = expandedBooks.has(book.id);
-              return (
-                <div key={book.id}>
-                  {/* 书名行：箭头展开；标题进入该书，避免聊天区停留在上一本文稿。 */}
-                  <div className="group/book flex items-center">
-                    <button
-                      type="button"
-                      aria-label={isExpanded ? tr(`折叠 ${book.title}`, `Collapse ${book.title}`) : tr(`展开 ${book.title}`, `Expand ${book.title}`)}
-                      onClick={() => toggleBook(book.id)}
-                      className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-secondary/30 hover:text-foreground transition-colors"
-                    >
-                      <ChevronRight
-                        size={12}
-                        className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      data-testid={`sidebar-book-${book.id}`}
-                      onClick={() => openBook(book.id)}
-                      className={`flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pr-2 rounded-md text-[15px] leading-6 transition-colors ${
-                        isActiveBook ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
-                      }`}
-                    >
-                      <FolderOpen size={14} className="shrink-0 text-muted-foreground/60" />
-                      <span className="truncate flex-1 text-left">{book.title}</span>
-                      <span className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground" data-testid={`sidebar-book-badge-${book.id}`}>
-                        {t("book.badgeLong")}
-                      </span>
-                    </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        data-testid={`sidebar-book-menu-${book.id}`}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/book:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
-                      >
-                        <MoreHorizontal size={14} />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right" align="start" className="w-40">
-                        <DropdownMenuItem onClick={() => openBook(book.id)}>
-                          <FolderOpen size={14} />
-                          <span>{t("cockpit.manuscript")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            const link = document.createElement("a");
-                            link.href = bookManuscriptExportPath(book.id);
-                            link.download = "";
-                            link.click();
-                          }}
-                        >
-                          <Download size={14} />
-                          <span>{t("book.export")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          data-testid={`sidebar-book-delete-${book.id}`}
-                          onClick={() => setDeleteBookTarget({ id: book.id, title: book.title })}
-                        >
-                          <Trash2 size={14} />
-                          <span>{t("book.deleteBook")}</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* 展开后才显示 session 列表 + 新建按钮 */}
-                  <Collapse open={isExpanded}>
-                    <div className="mt-0.5">
-                      {bookSessions.map((session) => {
-                        const isActiveSession = isActiveBook && activeSessionId === session.sessionId;
-                        const label = getSessionLabel(session);
-                        return (
-                          <div
-                            key={session.sessionId}
-                            className={`group/session flex items-center rounded-md ${isActiveSession ? "bg-secondary/50" : "hover:bg-secondary/30"}`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => openSession(book.id, session.sessionId)}
-                              className="flex min-w-0 flex-1 items-center gap-2 pl-9 pr-2 py-1.5 text-left text-[14px] leading-5 transition-colors"
-                            >
-                              <span className={`truncate flex-1 ${isActiveSession ? "text-foreground" : "text-muted-foreground group-hover/session:text-foreground"}`}>
-                                {label}
-                              </span>
-                              {session.isStreaming ? (
-                                <Loader2 size={12} className="shrink-0 animate-spin text-primary" />
-                              ) : (
-                                <span className="shrink-0 text-[11px] text-muted-foreground/40">
-                                  {formatRelativeTime(session.sessionId)}
-                                </span>
-                              )}
-                            </button>
-
-                            <DropdownMenu>
-                              <DropdownMenuTrigger className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/session:opacity-100 text-muted-foreground hover:text-foreground transition-opacity">
-                                <MoreHorizontal size={14} />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent side="right" align="start" className="w-36">
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setRenameTarget({ sessionId: session.sessionId, currentTitle: label });
-                                    setRenameValue(session.title ?? "");
-                                  }}
-                                >
-                                  <Pencil size={14} />
-                                  <span>{tr("改名", "Rename")}</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setDeleteTarget({ sessionId: session.sessionId, title: label })}
-                                >
-                                  <Trash2 size={14} />
-                                  <span>{tr("删除", "Delete")}</span>
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        onClick={() => void handleCreateSession(book.id)}
-                        className="w-full flex items-center gap-2 pl-9 pr-2 py-1.5 text-[13px] text-muted-foreground/50 hover:text-foreground transition-colors"
-                      >
-                        <Plus size={12} />
-                        <span>{tr("新建会话", "New session")}</span>
-                      </button>
-                    </div>
-                  </Collapse>
-                </div>
-              );
-            })}
-
-            {shorts.map((short) => {
-              const isActiveShort = activePage === `short:${short.id}`;
-              return (
-                <div
-                  key={`short-${short.id}`}
-                  data-testid={`sidebar-short-${short.id}`}
-                  className={`group/short flex items-center rounded-md ${isActiveShort ? "bg-secondary/50" : "hover:bg-secondary/30"}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => nav.toShort(short.id)}
-                    className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors ${
-                      isActiveShort ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <ScrollText size={14} className="shrink-0 text-muted-foreground/60" />
-                    <span className="truncate flex-1 text-[15px] leading-6">{short.title}</span>
-                    <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                      {t("short.badge")}
-                    </span>
-                  </button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      data-testid={`sidebar-short-menu-${short.id}`}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/short:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
-                    >
-                      <MoreHorizontal size={14} />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" align="start" className="w-40">
-                      <DropdownMenuItem onClick={() => (
-                        short.status === "completed" ? nav.toShort(short.id) : handleContinueShort(short)
-                      )}>
-                        <Zap size={14} />
-                        <span>{short.status === "completed" ? t("short.finished") : t("dash.writeNext")}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => nav.toShortAnalytics(short.id)}>
-                        <BarChart2 size={14} />
-                        <span>{t("dash.stats")}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => nav.toShortSettings(short.id)}>
-                        <Settings size={14} />
-                        <span>{t("book.settings")}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          const link = document.createElement("a");
-                          link.href = shortManuscriptExportPath(short.id);
-                          link.download = "";
-                          link.click();
-                        }}
-                      >
-                        <Download size={14} />
-                        <span>{t("book.export")}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => setDeleteShortTarget({ id: short.id, title: short.title })}
-                      >
-                        <Trash2 size={14} />
-                        <span>{t("book.deleteBook")}</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              );
-            })}
-
-            {books.length === 0 && shorts.length === 0 && (
-              <div className="px-3 py-6 text-xs text-muted-foreground/50 italic text-center">
-                {t("dash.noBooks")}
-              </div>
-            )}
-          </div>
-          </Collapse>
-        </div>
-
-        {/* Sessions Section */}
         <div data-testid="sidebar-sessions">
           <SectionHeader
             label={t("nav.history")}
-            expanded={projectChatExpanded}
+            expanded={sessionsExpanded}
             onToggle={() => {
-              const next = !projectChatExpanded;
-              setProjectChatExpanded(next);
+              const next = !sessionsExpanded;
+              setSessionsExpanded(next);
               if (next) {
-                nav.toChat();
-                if (sessionIdsByBook[projectChatKey] === undefined) {
-                  void loadSessionList(null);
+                void loadSessionList(null);
+                for (const book of books) {
+                  if (sessionIdsByBook[book.id] === undefined) void loadSessionList(book.id);
                 }
               }
             }}
           />
-          <div className="space-y-1">
-            <div>
+          <Collapse open={sessionsExpanded}>
+            <div className="pt-1 space-y-1">
+              {books.map((book) => {
+                const bookSessions = sessionsByBook[book.id] ?? [];
+                const isExpanded = expandedTalkBooks.has(book.id);
+                return (
+                  <div key={`talk-${book.id}`}>
+                    <button
+                      type="button"
+                      onClick={() => toggleTalkBook(book.id)}
+                      className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[14px] text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronRight size={12} className={isExpanded ? "rotate-90" : ""} />
+                      <span className="truncate flex-1">{book.title}</span>
+                    </button>
+                    <Collapse open={isExpanded}>
+                      <div>
+                        {bookSessions.map((session) => {
+                          const isActiveSession = activePage === `book:${book.id}` && activeSessionId === session.sessionId;
+                          const label = getSessionLabel(session);
+                          return (
+                            <div
+                              key={session.sessionId}
+                              className={`group/session flex items-center rounded-md ${isActiveSession ? "bg-secondary/50" : "hover:bg-secondary/30"}`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => openSession(book.id, session.sessionId)}
+                                className="flex min-w-0 flex-1 items-center gap-2 pl-7 pr-2 py-1.5 text-left text-[14px] leading-5"
+                              >
+                                <span className={`truncate flex-1 ${isActiveSession ? "text-foreground" : "text-muted-foreground"}`}>
+                                  {label}
+                                </span>
+                                {session.isStreaming ? (
+                                  <Loader2 size={12} className="shrink-0 animate-spin text-primary" />
+                                ) : (
+                                  <span className="shrink-0 text-[11px] text-muted-foreground/40">
+                                    {formatRelativeTime(session.sessionId)}
+                                  </span>
+                                )}
+                              </button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/session:opacity-100 text-muted-foreground">
+                                  <MoreHorizontal size={14} />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent side="right" align="start" className="w-36">
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setRenameTarget({ sessionId: session.sessionId, currentTitle: label });
+                                      setRenameValue(session.title ?? "");
+                                    }}
+                                  >
+                                    <Pencil size={14} />
+                                    <span>{tr("改名", "Rename")}</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setDeleteTarget({ sessionId: session.sessionId, title: label })}
+                                  >
+                                    <Trash2 size={14} />
+                                    <span>{tr("删除", "Delete")}</span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => void handleCreateSession(book.id)}
+                          className="w-full flex items-center gap-2 pl-7 pr-2 py-1.5 text-[13px] text-muted-foreground/50 hover:text-foreground"
+                        >
+                          <Plus size={12} />
+                          <span>{tr("新建会话", "New session")}</span>
+                        </button>
+                      </div>
+                    </Collapse>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !projectChatExpanded;
+                  setProjectChatExpanded(next);
+                  if (next) {
+                    nav.toChat();
+                    if (sessionIdsByBook["__null__"] === undefined) void loadSessionList(null);
+                  }
+                }}
+                className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[14px] text-muted-foreground hover:text-foreground"
+              >
+                <ChevronRight size={12} className={projectChatExpanded ? "rotate-90" : ""} />
+                <span>{tr("项目对谈", "Project talks")}</span>
+              </button>
               <Collapse open={projectChatExpanded}>
-                <div className="pt-1">
+                <div>
                   {projectChatSessions.map((session) => {
                     const isActiveSession = activePage === "chat" && activeSessionId === session.sessionId;
                     const label = getSessionLabel(session);
@@ -660,13 +712,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
                         <button
                           type="button"
                           onClick={() => openProjectChatSession(session.sessionId)}
-                          className="flex min-w-0 flex-1 items-center gap-2 pl-2 pr-2 py-1.5 text-left text-[14px] leading-5 transition-colors"
+                          className="flex min-w-0 flex-1 items-center gap-2 pl-7 pr-2 py-1.5 text-left text-[14px] leading-5"
                         >
                           <SessionKindIcon
                             kind={session.sessionKind}
-                            className={`shrink-0 ${isActiveSession ? "text-foreground" : "text-muted-foreground/60 group-hover/session:text-foreground"}`}
+                            className={`shrink-0 ${isActiveSession ? "text-foreground" : "text-muted-foreground/60"}`}
                           />
-                          <span className={`truncate flex-1 ${isActiveSession ? "text-foreground" : "text-muted-foreground group-hover/session:text-foreground"}`}>
+                          <span className={`truncate flex-1 ${isActiveSession ? "text-foreground" : "text-muted-foreground"}`}>
                             {label}
                           </span>
                           {session.isStreaming ? (
@@ -677,9 +729,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
                             </span>
                           )}
                         </button>
-
                         <DropdownMenu>
-                          <DropdownMenuTrigger className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/session:opacity-100 text-muted-foreground hover:text-foreground transition-opacity">
+                          <DropdownMenuTrigger className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/session:opacity-100 text-muted-foreground">
                             <MoreHorizontal size={14} />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent side="right" align="start" className="w-36">
@@ -708,7 +759,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                   <button
                     type="button"
                     onClick={handleCreateProjectChatSession}
-                    className="w-full flex items-center gap-2 pl-2 pr-2 py-1.5 text-[13px] text-muted-foreground/50 hover:text-foreground transition-colors"
+                    className="w-full flex items-center gap-2 pl-7 pr-2 py-1.5 text-[13px] text-muted-foreground/50 hover:text-foreground"
                   >
                     <Plus size={12} />
                     <span>{tr("新建会话", "New session")}</span>
@@ -716,7 +767,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                 </div>
               </Collapse>
             </div>
-          </div>
+          </Collapse>
         </div>
 
         {/* Tools Section — 文风学习 / 题材模板 */}

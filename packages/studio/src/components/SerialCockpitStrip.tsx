@@ -71,7 +71,7 @@ export function SerialCockpitStrip({
             checked={skipPreviousApproval}
             onChange={(event) => onSkipChange(event.target.checked)}
           />
-          {isZh ? "带病续写（上一章未通过也继续）" : "Continue even if previous chapter is unapproved"}
+          {isZh ? "上一章未通过，仍要继续" : "Previous chapter is unapproved, continue anyway"}
         </label>
         )}
       </div>

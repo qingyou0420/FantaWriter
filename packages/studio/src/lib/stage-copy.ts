@@ -1,0 +1,84 @@
+/**
+ * C.5 empty-state and stage-aware CTA copy.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+import type { BookStageId } from "./book-stage";
+
+export interface StageGuideCopy {
+  readonly title: string;
+  readonly subtitle: string;
+  readonly action: string;
+  readonly target: "ask" | "ground" | "weave" | "write" | "create";
+}
+
+export function studyGuideCopy(stage: BookStageId, isZh: boolean): StageGuideCopy {
+  if (stage === "ask") {
+    return isZh
+      ? { title: "这本书还没有名字", subtitle: "先聊清楚它讲什么", action: "去问心", target: "ask" }
+      : { title: "This book still needs a name", subtitle: "Talk through what it is about first", action: "Go to Ask", target: "ask" };
+  }
+  if (stage === "ground") {
+    return isZh
+      ? { title: "先把世界与人磨实", subtitle: "研墨定稿后才能织卷", action: "去研墨", target: "ground" }
+      : { title: "Settle the world and people first", subtitle: "Ground the book before weaving volumes", action: "Go to Ground", target: "ground" };
+  }
+  if (stage === "weave") {
+    return isZh
+      ? { title: "全书要分几卷？", subtitle: "先定卷，再排前十章", action: "去织卷", target: "weave" }
+      : { title: "How many volumes?", subtitle: "Lock the volume split, then the first ten chapters", action: "Go to Weave", target: "weave" };
+  }
+  return isZh
+    ? { title: "今日一笔", subtitle: "", action: "落墨 · 写下一章", target: "write" }
+    : { title: "Today's stroke", subtitle: "", action: "落墨 · Write next", target: "write" };
+}
+
+export function weaveGuideWhenUngrounded(isZh: boolean): StageGuideCopy {
+  return isZh
+    ? { title: "纲要生于设定", subtitle: "研墨定稿后开启织卷", action: "去研墨", target: "ground" }
+    : { title: "Outline grows from ground", subtitle: "Confirm 研墨 before weaving volumes", action: "Go to Ground", target: "ground" };
+}
+
+export function writeEmptyCopy(input: {
+  readonly hasOutline: boolean;
+  readonly previousUnapproved?: number;
+  readonly isZh: boolean;
+}): StageGuideCopy {
+  if (input.previousUnapproved) {
+    return input.isZh
+      ? { title: `第 ${input.previousUnapproved} 章等你过目`, subtitle: "先审过上一章，再写下一章", action: "去审稿", target: "write" }
+      : { title: `Chapter ${input.previousUnapproved} is waiting`, subtitle: "Review the last chapter before writing on", action: "Open review", target: "write" };
+  }
+  if (!input.hasOutline) {
+    return input.isZh
+      ? { title: "还没有可写的章", subtitle: "去织卷排出前十章", action: "去织卷", target: "weave" }
+      : { title: "No writable chapter yet", subtitle: "Weave the first ten chapters first", action: "Go to Weave", target: "weave" };
+  }
+  return input.isZh
+    ? { title: "还没有落笔", subtitle: "从下一章开始", action: "落墨 · 写下一章", target: "write" }
+    : { title: "Nothing on the page yet", subtitle: "Start with the next chapter", action: "落墨 · Write next", target: "write" };
+}
+
+export function shelfEmptyCopy(isZh: boolean): StageGuideCopy {
+  return isZh
+    ? { title: "书架还空着", subtitle: "从一句话开始", action: "开始创作", target: "create" }
+    : { title: "The shelf is empty", subtitle: "Start from one sentence", action: "Start creating", target: "create" };
+}
+
+export const IN_PROGRESS_BOOK_STATUSES = ["incubating", "outlining", "active"] as const;
+
+export function isInProgressBookStatus(status: string): boolean {
+  return (IN_PROGRESS_BOOK_STATUSES as readonly string[]).includes(status);
+}
+
+export function isInProgressShortStatus(status: string): boolean {
+  return status === "outlining" || status === "drafting";
+}
+
+export function formatStartedOn(iso: string | undefined, isZh: boolean): string {
+  if (!iso) return "";
+  const date = iso.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
+  return isZh ? `始于 ${date}` : `Since ${date}`;
+}

@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-export type VolumeMapNodeKind = "volume" | "chapter" | "range";
+export type VolumeMapNodeKind = "volume" | "chapter" | "range" | "note";
 
 export const MAX_VOLUME_TREE_LABEL_CHARS = 22;
 
@@ -16,6 +16,15 @@ export interface VolumeMapChapterNode {
   readonly endChapter?: number;
   readonly title: string;
   readonly summary: string;
+  readonly lineStart: number;
+  readonly lineEnd: number;
+}
+
+export interface VolumeMapNoteNode {
+  readonly kind: "note";
+  readonly id: string;
+  readonly title: string;
+  readonly body: string;
   readonly lineStart: number;
   readonly lineEnd: number;
 }
@@ -31,6 +40,7 @@ export interface VolumeMapVolumeNode {
   readonly startChapter?: number;
   readonly endChapter?: number;
   readonly chapters: ReadonlyArray<VolumeMapChapterNode>;
+  readonly notes: ReadonlyArray<VolumeMapNoteNode>;
   readonly lineStart: number;
   readonly lineEnd: number;
 }
@@ -38,6 +48,7 @@ export interface VolumeMapVolumeNode {
 export interface VolumeMapTree {
   readonly volumes: ReadonlyArray<VolumeMapVolumeNode>;
   readonly orphanChapters: ReadonlyArray<VolumeMapChapterNode>;
+  readonly orphanNotes: ReadonlyArray<VolumeMapNoteNode>;
   readonly chapterCount: number;
   readonly volumeCount: number;
 }
@@ -83,8 +94,9 @@ const VOLUME_MARKER = /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?(第\s*([一二三四五�
 const RANGE_ON_LINE = /[（(]\s*(?:第|[Cc]hapters?\s+)?(\d+)\s*[-–~～—]\s*(\d+)\s*(?:章)?\s*[）)]|(?:第|[Cc]hapters?\s+)(\d+)\s*[-–~～—]\s*(\d+)\s*(?:章)?/i;
 const EXACT_CHAPTER = /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?(?:Chapter\s*(\d+)|第\s*(\d+)\s*章)(?!\s*[-~–—]\s*\d)(?:[:：-])?(?:\*\*)?\s*(.*)$/i;
 const RANGE_CHAPTER = /^(?:#+\s*)?(?:[-*]\s+)?(?:\*\*)?(?:Chapter\s*(\d+)\s*[-~–—]\s*(\d+)|第\s*(\d+)\s*[-~–—]\s*(\d+)\s*章)(?:[:：-])?(?:\*\*)?\s*(.*)$/i;
-const OKR_LINE = /(?:Objective|Key\s*Results?|KR\s*\d+|卷级目标|关键成果|关键结果)/i;
+const OKR_LINE = /(?:Objective|Key\s*Results?|KR\s*\d+|卷级目标|关键成果|关键结果|本卷要抵达|卷末必须落下)/i;
 const PROSE_HEADING_JUNK = /(?:埋线?|各卷OKR|OKR|KR\s*\d+|节奏原则|情绪曲线|回收承诺)/i;
+const VOLUME_NOTE_JUNK = /节点[A-Za-z0-9一二三四五六七八九十]|分章|事件清单/;
 
 export function parseChineseInt(raw: string): number | null {
   const trimmed = raw.replace(/\s+/g, "");
@@ -122,20 +134,45 @@ function looksLikeHeadingLine(line: string): boolean {
   return /^\s{0,3}#{1,6}\s+\S/.test(line) || /^\s{0,3}[-*]\s+\S/.test(line);
 }
 
+function restAfterVolumeMarker(stripped: string): string {
+  return stripped
+    .replace(/^(第\s*[一二三四五六七八九十百千万零〇两\d]+\s*卷|Volume\s+\d+)/i, "")
+    .trim();
+}
+
+function volumeNameFromRest(rest: string): string {
+  return rest.replace(/[（(].*$/, "").replace(/[：:].*$/, "").replace(/^[·.\s]+/, "").trim();
+}
+
+/**
+ * Canonical volume heading: `第N卷 卷名（第a–b章）` / `Volume N Title (a-b)`.
+ * `第N卷·节点A` / `第一卷分章事件清单` / colon-dumps become 备注, not volumes.
+ */
 function isLikelyVolumeHeadingLine(line: string): boolean {
   const stripped = stripDecor(line);
   if (!stripped) return false;
-  // Contract headings are `第N卷` / `Volume N`. Bare `卷一埋` / `卷一Objective`
-  // / `第一卷末：…` lines must never become sidebar titles.
   if (!/^(第\s*[一二三四五六七八九十百千万零〇两\d]+\s*卷|Volume\s+\d+)/i.test(stripped)) {
     return false;
   }
   if (PROSE_HEADING_JUNK.test(stripped) && !RANGE_ON_LINE.test(stripped)) return false;
-  if (looksLikeHeadingLine(line)) return true;
+  if (VOLUME_NOTE_JUNK.test(stripped)) return false;
+  const rest = restAfterVolumeMarker(stripped);
+  const name = volumeNameFromRest(rest);
+  if (!name) return false;
+  if (VOLUME_NOTE_JUNK.test(name)) return false;
+  if (/^[：:]/.test(rest)) return false;
+  if (RANGE_ON_LINE.test(stripped)) return name.length <= 24;
   if (stripped.length > 40) return false;
-  if (/[：:]/.test(stripped) && !RANGE_ON_LINE.test(stripped)) return false;
-  return /^(第\s*[一二三四五六七八九十百千万零〇两\d]+\s*卷|Volume\s+\d+)\s+\S/i.test(stripped)
-    || RANGE_ON_LINE.test(stripped);
+  if (/[：:]/.test(stripped)) return false;
+  return name.length > 0 && name.length <= 16;
+}
+
+function isNoteHeadingLine(line: string): boolean {
+  if (!looksLikeHeadingLine(line)) return false;
+  const stripped = stripDecor(line);
+  if (parseChapterLine(line)) return false;
+  if (isLikelyVolumeHeadingLine(line)) return false;
+  return /^(第\s*[一二三四五六七八九十百千万零〇两\d]+\s*卷|Volume\s+\d+)/i.test(stripped);
 }
 
 function extractShortVolumeTitle(line: string, rangeIndex?: number): string {
@@ -212,7 +249,7 @@ function parseChapterLine(line: string): VolumeMapChapterNode | null {
 }
 
 function isStructuralLine(line: string): boolean {
-  return Boolean(parseVolumeHeader(line) || parseChapterLine(line));
+  return Boolean(parseVolumeHeader(line) || parseChapterLine(line) || isNoteHeadingLine(line));
 }
 
 function trimTrailingBlankLines(lines: string[]): string[] {
@@ -251,6 +288,7 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const volumes: VolumeMapVolumeNode[] = [];
   const orphanChapters: VolumeMapChapterNode[] = [];
+  const orphanNotes: VolumeMapNoteNode[] = [];
 
   type OpenVolume = {
     volumeNumber: number | null;
@@ -259,6 +297,7 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
     endChapter?: number;
     lineStart: number;
     chapters: VolumeMapChapterNode[];
+    notes: VolumeMapNoteNode[];
   };
 
   let current: OpenVolume | null = null;
@@ -267,7 +306,8 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
     if (!current) return;
     const id = current.volumeNumber != null ? `volume:${current.volumeNumber}` : `volume:${current.lineStart}`;
     const firstChapterStart = current.chapters[0]?.lineStart;
-    const bodyUntil = firstChapterStart ?? endLine + 1;
+    const firstNoteStart = current.notes[0]?.lineStart;
+    const bodyUntil = firstChapterStart ?? firstNoteStart ?? endLine + 1;
     const bodyLines = trimTrailingBlankLines(lines.slice(current.lineStart + 1, bodyUntil));
     volumes.push({
       kind: "volume",
@@ -279,6 +319,7 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
       startChapter: current.startChapter,
       endChapter: current.endChapter,
       chapters: current.chapters,
+      notes: current.notes,
       lineStart: current.lineStart,
       lineEnd: Math.max(current.lineStart, endLine),
     });
@@ -308,7 +349,23 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
         ...volume,
         lineStart: index,
         chapters: [],
+        notes: [],
       };
+      continue;
+    }
+    if (isNoteHeadingLine(line)) {
+      const follow = collectSummary(lines, index + 1);
+      const note: VolumeMapNoteNode = {
+        kind: "note",
+        id: `note:${index}`,
+        title: stripDecor(line),
+        body: follow.summary,
+        lineStart: index,
+        lineEnd: follow.end >= index ? follow.end : index,
+      };
+      if (current) current.notes.push(note);
+      else orphanNotes.push(note);
+      index = note.lineEnd;
       continue;
     }
     const chapter = parseChapterLine(line);
@@ -326,6 +383,7 @@ export function parseVolumeMapTree(markdown: string): VolumeMapTree {
   return {
     volumes,
     orphanChapters,
+    orphanNotes,
     chapterCount,
     volumeCount: volumes.length,
   };
@@ -380,10 +438,12 @@ export function recommendedOutlineNodeId(tree: VolumeMapTree, nextChapter: numbe
 export function findNodeById(
   tree: VolumeMapTree,
   nodeId: string,
-): VolumeMapVolumeNode | VolumeMapChapterNode | undefined {
+): VolumeMapVolumeNode | VolumeMapChapterNode | VolumeMapNoteNode | undefined {
   return tree.volumes.find((volume) => volume.id === nodeId)
     ?? tree.volumes.flatMap((volume) => volume.chapters).find((node) => node.id === nodeId)
-    ?? tree.orphanChapters.find((node) => node.id === nodeId);
+    ?? tree.volumes.flatMap((volume) => volume.notes).find((node) => node.id === nodeId)
+    ?? tree.orphanChapters.find((node) => node.id === nodeId)
+    ?? tree.orphanNotes.find((node) => node.id === nodeId);
 }
 
 function replaceLineRange(
@@ -433,11 +493,11 @@ function replaceChapterHeadingTitle(
 }
 
 export function outlineEditorSource(
-  node: VolumeMapVolumeNode | VolumeMapChapterNode,
+  node: VolumeMapVolumeNode | VolumeMapChapterNode | VolumeMapNoteNode,
 ): { title: string; summary: string } {
   return {
     title: node.title,
-    summary: node.kind === "volume" ? node.body : node.summary,
+    summary: node.kind === "volume" ? node.body : node.kind === "note" ? node.body : node.summary,
   };
 }
 
@@ -446,7 +506,7 @@ export function outlineEditorSource(
  * unchanged title/summary must not rewrite volume_map (G2).
  */
 export function buildOutlineEditPatch(
-  node: VolumeMapVolumeNode | VolumeMapChapterNode,
+  node: VolumeMapVolumeNode | VolumeMapChapterNode | VolumeMapNoteNode,
   title: string,
   summary: string,
 ): { readonly title?: string; readonly summary?: string } | null {
@@ -486,6 +546,21 @@ export function applyVolumeMapNodeEdit(
   const node = findNodeById(tree, nodeId);
   if (!node) return markdown;
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+
+  if (node.kind === "note") {
+    const oldHeading = lines[node.lineStart] ?? "";
+    const hash = oldHeading.match(/^#+/)?.[0] ?? "##";
+    const nextHeading = patch.title !== undefined ? `${hash} ${patch.title}` : oldHeading;
+    if (patch.summary === undefined) {
+      return replaceLineRange(markdown, node.lineStart, node.lineStart, [nextHeading]);
+    }
+    return [
+      ...lines.slice(0, node.lineStart),
+      nextHeading,
+      ...patch.summary.split("\n"),
+      ...lines.slice(node.lineEnd + 1),
+    ].join("\n");
+  }
 
   if (node.kind === "volume") {
     const oldHeading = lines[node.lineStart] ?? "";
@@ -915,4 +990,93 @@ export function chapterNodesByNumber(tree: VolumeMapTree): Map<number, VolumeMap
     if (node.kind === "chapter") map.set(node.chapterNumber, node);
   }
   return map;
+}
+
+export function lockedNamedVolumeCount(tree: VolumeMapTree): number {
+  return tree.volumes.filter((volume) =>
+    volume.volumeNumber != null
+    && volume.startChapter != null
+    && volume.endChapter != null
+    && volume.endChapter >= volume.startChapter
+    && !isPlaceholderVolumeTitle(volume.title),
+  ).length;
+}
+
+export function splitOutlineTitleAndSummary(title: string, summary: string): {
+  readonly title: string;
+  readonly summary: string;
+  readonly split: boolean;
+} {
+  const trimmedTitle = title.trim();
+  const trimmedSummary = summary.trim();
+  if (trimmedTitle.length <= 20 || trimmedSummary) {
+    return { title: trimmedTitle, summary, split: false };
+  }
+  const mark = trimmedTitle.search(/[，。；→]/);
+  if (mark <= 0) {
+    return { title: truncateOutlineLabel(trimmedTitle, 12), summary: trimmedTitle, split: true };
+  }
+  return {
+    title: truncateOutlineLabel(trimmedTitle.slice(0, mark), 12),
+    summary: trimmedTitle.slice(mark + 1).trim(),
+    split: true,
+  };
+}
+
+export function tidyVolumeMapMarkdown(markdown: string, language: "zh" | "en" = "zh"): string {
+  const tree = parseVolumeMapTree(markdown);
+  if (tree.volumeCount === 0 && tree.orphanChapters.length === 0) return markdown;
+  const blocks: string[] = [];
+  const leftoverNotes = [
+    ...tree.orphanNotes.map((note) => [note.title, note.body].filter(Boolean).join("\n")),
+    leftoverVolumeMapProse(markdown),
+  ].filter((part) => part.trim());
+  if (leftoverNotes.length > 0) {
+    blocks.push(leftoverNotes.join("\n\n"));
+  }
+  for (const volume of tree.volumes) {
+    const range = volume.startChapter != null && volume.endChapter != null
+      ? (language === "en"
+        ? `(${volume.startChapter}-${volume.endChapter})`
+        : `（${volume.startChapter}-${volume.endChapter}章）`)
+      : "";
+    const shortTitle = extractShortVolumeTitle(volume.title)
+      .replace(/^第\s*[一二三四五六七八九十百\d]+\s*卷\s*/, "")
+      .replace(/^Volume\s+\d+\s*/i, "")
+      .trim() || volume.title;
+    const heading = language === "en"
+      ? `## Volume ${volume.volumeNumber ?? ""} ${shortTitle} ${range}`.replace(/\s+/g, " ").trim()
+      : `## 第${volume.volumeNumber ?? ""}卷 ${shortTitle}${range}`.replace(/\s+/g, " ").trim();
+    const chapterBlocks = volume.chapters.map((chapter) => {
+      const split = splitOutlineTitleAndSummary(chapter.title, chapter.summary);
+      if (chapter.kind === "range" && chapter.endChapter) {
+        const rangeHeading = language === "en"
+          ? `## Chapters ${chapter.chapterNumber}-${chapter.endChapter} (coarse) ${split.title}`.trim()
+          : `## 第 ${chapter.chapterNumber}–${chapter.endChapter} 章（粗纲） ${split.title}`.trim();
+        return split.summary ? `${rangeHeading}\n${split.summary}` : rangeHeading;
+      }
+      const chapterHeading = language === "en"
+        ? `## Chapter ${chapter.chapterNumber} ${split.title}`.trim()
+        : `## 第 ${chapter.chapterNumber} 章 ${split.title}`.trim();
+      return split.summary ? `${chapterHeading}\n${split.summary}` : chapterHeading;
+    });
+    const noteBlock = volume.notes.length > 0
+      ? [
+        language === "en" ? "### Notes" : "### 备注",
+        ...volume.notes.map((note) => [note.title, note.body].filter(Boolean).join("\n")),
+      ].join("\n")
+      : "";
+    blocks.push([heading, volume.body.trim(), "", ...chapterBlocks, noteBlock].filter((part, index, all) => {
+      if (part !== "") return true;
+      return index > 0 && all[index - 1] !== "";
+    }).join("\n").trim());
+  }
+  for (const chapter of tree.orphanChapters) {
+    const split = splitOutlineTitleAndSummary(chapter.title, chapter.summary);
+    const heading = language === "en"
+      ? `## Chapter ${chapter.chapterNumber} ${split.title}`.trim()
+      : `## 第 ${chapter.chapterNumber} 章 ${split.title}`.trim();
+    blocks.push(split.summary ? `${heading}\n${split.summary}` : heading);
+  }
+  return `${blocks.join("\n\n")}\n`;
 }

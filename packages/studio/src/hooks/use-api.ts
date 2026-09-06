@@ -61,6 +61,10 @@ export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
     return ["/api/v1/shorts", normalized];
   }
 
+  if (normalized === "/api/v1/author" || normalized.startsWith("/api/v1/author/")) {
+    return ["/api/v1/author"];
+  }
+
   if (normalized === "/api/v1/project") {
     return ["/api/v1/project"];
   }
@@ -183,6 +187,8 @@ export async function fetchJson<T>(
 
   if (method === "DELETE") {
     invalidateApiPaths(deriveInvalidationPaths(path));
+  } else if (method !== "GET" && url.startsWith("/api/v1/author")) {
+    invalidateApiPaths(["/api/v1/author"]);
   }
   return result;
 }

@@ -3,6 +3,7 @@ import {
   MAX_VOLUME_TREE_LABEL_CHARS,
   formatVolumeLabel,
   listedExactChapterNumbers,
+  lockedNamedVolumeCount,
   missingExactChapters,
   nextUnfilledChapterBatch,
   resolveOutlineWeaveStep,
@@ -10,6 +11,7 @@ import {
   isPlaceholderVolumeTitle,
   volumeMapHasLockedNamedVolumes,
   parseVolumeMapTree,
+  tidyVolumeMapMarkdown,
   planVolumeRanges,
   planVolumeRangesFromHints,
   renderVolumeMapMarkdown,
@@ -176,6 +178,39 @@ describe("parseVolumeMapTree — heading contract", () => {
     expect(tree.volumes[0]?.title).not.toMatch(/KR1|埋很长/);
     expect(formatVolumeLabel(tree.volumes[0]!.volumeNumber, tree.volumes[0]!.title, true).length)
       .toBeLessThanOrEqual(MAX_VOLUME_TREE_LABEL_CHARS);
+  });
+
+  it("folds junk 第N卷 headings into 备注 and keeps 7 locked volumes", () => {
+    const messy = [
+      "## 第1卷 书院（1-38章）",
+      "本卷要抵达：相识。",
+      "## 第一卷分章事件清单（可在其上补合细纲）",
+      "旧清单不要算一卷。",
+      "## 第一卷·节点A",
+      "节点说明。",
+      "## 第一卷·节点B",
+      "## 第 1 章 倒叙冷开",
+      "落回书院春日。",
+      "## 第 4–13 章（粗纲）",
+      "后半卷粗排。",
+      "## 第二卷:以\"德者掌兵\"开局压阵",
+      "这不是卷。",
+      "## 第2卷 焚院（39-72章）",
+      "## 第3卷 白羽（73-117章）",
+      "## 第4卷 商陆（118-157章）",
+      "## 第5卷 醉生（158-192章）",
+      "## 第6卷 江山（193-227章）",
+      "## 第7卷 清溪（228-260章）",
+    ].join("\n");
+    const tree = parseVolumeMapTree(messy);
+    expect(tree.volumeCount).toBe(7);
+    expect(lockedNamedVolumeCount(tree)).toBe(7);
+    expect(tree.volumes.some((volume) => /节点|分章|德者掌兵/.test(volume.title))).toBe(false);
+    expect(tree.volumes[0]?.notes.some((note) => note.title.includes("节点A"))).toBe(true);
+    expect(tree.volumes[0]?.chapters.some((node) => node.kind === "range" && node.chapterNumber === 4)).toBe(true);
+    const tidied = parseVolumeMapTree(tidyVolumeMapMarkdown(messy));
+    expect(tidied.volumeCount).toBe(7);
+    expect(tidied.volumes[0]?.title).toMatch(/书院/);
   });
 
   it("does not invent chapter entries from volume prose", () => {

@@ -297,7 +297,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
           className="group flex items-center gap-2 px-8 py-3.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
         >
           <Plus size={18} />
-          {t("nav.newBook")}
+          {t("nav.createSection")}
         </button>
       </div>
     );
