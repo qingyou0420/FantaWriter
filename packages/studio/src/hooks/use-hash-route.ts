@@ -3,10 +3,14 @@ import { useState, useEffect, useCallback } from "react";
 export type HashRoute =
   | { page: "dashboard" }
   | { page: "chat" }
-  | { page: "book"; bookId: string }
+  | { page: "book"; bookId: string; chatOpen?: boolean }
   | { page: "book-outline"; bookId: string }
   | { page: "book-chat"; bookId: string }
   | { page: "book-settings"; bookId: string }
+  | { page: "book-ask"; bookId: string }
+  | { page: "book-ground"; bookId: string }
+  | { page: "book-weave"; bookId: string }
+  | { page: "book-write"; bookId: string }
   | { page: "book-create" }
   | { page: "services" }
   | { page: "project-settings" }
@@ -32,6 +36,10 @@ export type HashRoute =
   | { page: "short-settings"; storyId: string }
   | { page: "short-analytics"; storyId: string };
 
+function decodePart(value: string): string {
+  return decodeURIComponent(value);
+}
+
 function parseHash(hash: string): HashRoute {
   const path = hash.replace(/^#\/?/, "");
 
@@ -47,43 +55,49 @@ function parseHash(hash: string): HashRoute {
   if (path === "book/new") return { page: "book-create" };
 
   const serviceMatch = path.match(/^services\/([^/]+)$/);
-  if (serviceMatch) return { page: "service-detail", serviceId: decodeURIComponent(serviceMatch[1]) };
+  if (serviceMatch) return { page: "service-detail", serviceId: decodePart(serviceMatch[1]) };
 
-  const bookSettingsMatch = path.match(/^book\/([^/]+)\/settings$/);
-  if (bookSettingsMatch) return { page: "book-settings", bookId: decodeURIComponent(bookSettingsMatch[1]) };
+  const bookAskMatch = path.match(/^book\/([^/]+)\/ask$/);
+  if (bookAskMatch) return { page: "book-ask", bookId: decodePart(bookAskMatch[1]) };
 
-  const bookOutlineMatch = path.match(/^book\/([^/]+)\/outline$/);
-  if (bookOutlineMatch) return { page: "book-outline", bookId: decodeURIComponent(bookOutlineMatch[1]) };
+  const bookGroundMatch = path.match(/^book\/([^/]+)\/ground$/);
+  if (bookGroundMatch) return { page: "book-ground", bookId: decodePart(bookGroundMatch[1]) };
+
+  const bookWeaveMatch = path.match(/^book\/([^/]+)\/(?:weave|outline)$/);
+  if (bookWeaveMatch) return { page: "book-weave", bookId: decodePart(bookWeaveMatch[1]) };
+
+  const bookWriteMatch = path.match(/^book\/([^/]+)\/(?:write|settings)$/);
+  if (bookWriteMatch) return { page: "book-write", bookId: decodePart(bookWriteMatch[1]) };
 
   const bookChatMatch = path.match(/^book\/([^/]+)\/chat$/);
-  if (bookChatMatch) return { page: "book-chat", bookId: decodeURIComponent(bookChatMatch[1]) };
+  if (bookChatMatch) return { page: "book", bookId: decodePart(bookChatMatch[1]), chatOpen: true };
 
   const bookMatch = path.match(/^book\/([^/]+)$/);
-  if (bookMatch) return { page: "book", bookId: decodeURIComponent(bookMatch[1]) };
+  if (bookMatch) return { page: "book", bookId: decodePart(bookMatch[1]) };
 
   const playMatch = path.match(/^play\/([^/]+)$/);
-  if (playMatch) return { page: "play", projectId: decodeURIComponent(playMatch[1]) };
+  if (playMatch) return { page: "play", projectId: decodePart(playMatch[1]) };
 
   const filmMatch = path.match(/^film\/([^/]+)$/);
-  if (filmMatch) return { page: "film", projectId: decodeURIComponent(filmMatch[1]) };
+  if (filmMatch) return { page: "film", projectId: decodePart(filmMatch[1]) };
 
   const flowMatch = path.match(/^flow\/([^/]+)$/);
-  if (flowMatch) return { page: "flow", projectId: decodeURIComponent(flowMatch[1]) };
+  if (flowMatch) return { page: "flow", projectId: decodePart(flowMatch[1]) };
 
   const filmAuthorMatch = path.match(/^film-author\/([^/]+)$/);
-  if (filmAuthorMatch) return { page: "film-author", projectId: decodeURIComponent(filmAuthorMatch[1]) };
+  if (filmAuthorMatch) return { page: "film-author", projectId: decodePart(filmAuthorMatch[1]) };
 
   const studioFilmMatch = path.match(/^studio\/film\/([^/]+)$/);
-  if (studioFilmMatch) return { page: "film-studio", projectId: decodeURIComponent(studioFilmMatch[1]) };
+  if (studioFilmMatch) return { page: "film-studio", projectId: decodePart(studioFilmMatch[1]) };
 
   const shortSettingsMatch = path.match(/^short\/([^/]+)\/settings$/);
-  if (shortSettingsMatch) return { page: "short-settings", storyId: decodeURIComponent(shortSettingsMatch[1]) };
+  if (shortSettingsMatch) return { page: "short-settings", storyId: decodePart(shortSettingsMatch[1]) };
 
   const shortAnalyticsMatch = path.match(/^short\/([^/]+)\/analytics$/);
-  if (shortAnalyticsMatch) return { page: "short-analytics", storyId: decodeURIComponent(shortAnalyticsMatch[1]) };
+  if (shortAnalyticsMatch) return { page: "short-analytics", storyId: decodePart(shortAnalyticsMatch[1]) };
 
   const shortMatch = path.match(/^short\/([^/]+)$/);
-  if (shortMatch) return { page: "short", storyId: decodeURIComponent(shortMatch[1]) };
+  if (shortMatch) return { page: "short", storyId: decodePart(shortMatch[1]) };
 
   return { page: "dashboard" };
 }
@@ -92,10 +106,16 @@ function routeToHash(route: HashRoute): string {
   switch (route.page) {
     case "dashboard": return "#/";
     case "chat": return "#/chat";
-    case "book": return `#/book/${encodeURIComponent(route.bookId)}`;
-    case "book-outline": return `#/book/${encodeURIComponent(route.bookId)}/outline`;
+    case "book": return route.chatOpen
+      ? `#/book/${encodeURIComponent(route.bookId)}/chat`
+      : `#/book/${encodeURIComponent(route.bookId)}`;
+    case "book-outline":
+    case "book-weave": return `#/book/${encodeURIComponent(route.bookId)}/weave`;
     case "book-chat": return `#/book/${encodeURIComponent(route.bookId)}/chat`;
-    case "book-settings": return `#/book/${encodeURIComponent(route.bookId)}/settings`;
+    case "book-settings":
+    case "book-write": return `#/book/${encodeURIComponent(route.bookId)}/write`;
+    case "book-ask": return `#/book/${encodeURIComponent(route.bookId)}/ask`;
+    case "book-ground": return `#/book/${encodeURIComponent(route.bookId)}/ground`;
     case "book-create": return "#/book/new";
     case "services": return "#/services";
     case "project-settings": return "#/settings";
@@ -117,7 +137,13 @@ function routeToHash(route: HashRoute): string {
 
 export { parseHash, routeToHash }; // for testing
 
-const HASH_PAGES = new Set(["dashboard", "chat", "book", "book-outline", "book-chat", "book-settings", "book-create", "services", "project-settings", "service-detail", "translation", "import", "update", "play", "film", "flow", "film-author", "film-studio", "short", "short-settings", "short-analytics"]);
+const HASH_PAGES = new Set([
+  "dashboard", "chat", "book", "book-outline", "book-chat", "book-settings",
+  "book-ask", "book-ground", "book-weave", "book-write", "book-create",
+  "services", "project-settings", "service-detail", "translation", "import",
+  "update", "play", "film", "flow", "film-author", "film-studio",
+  "short", "short-settings", "short-analytics",
+]);
 
 export function useHashRoute() {
   const [route, setRouteState] = useState<HashRoute>(() => parseHash(window.location.hash));

@@ -27,8 +27,8 @@ describe("collectNewSSEMessages for session events", () => {
 });
 
 describe("bookCreatedRoute", () => {
-  it("lands 建书 on 大纲 instead of the cockpit", () => {
-    expect(bookCreatedRoute("book-create", "zui-ci")).toEqual({ page: "book-outline", bookId: "zui-ci" });
+  it("lands 建书 in 书房", () => {
+    expect(bookCreatedRoute("book-create", "zui-ci")).toEqual({ page: "book", bookId: "zui-ci" });
     expect(bookCreatedRoute("dashboard", "zui-ci")).toBeNull();
   });
 });

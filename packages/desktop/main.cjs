@@ -248,7 +248,7 @@ function startEngine(listenPort, root) {
   const entry = studioEntry();
   if (!entry) {
     throw new Error(
-      "找不到幻想作家引擎入口 packages/studio/dist/api/index.js。请先运行 pnpm build。",
+      "找不到墨生万象引擎入口 packages/studio/dist/api/index.js。请先运行 pnpm build。",
     );
   }
   const engineRoot = resolveEngineRoot(entry) || path.dirname(entry);
@@ -272,7 +272,7 @@ function startEngine(listenPort, root) {
     if (engineProcess === child) engineProcess = null;
     if (engineHandle.child === child) clearEngineHandle(engineHandle);
     if (!quitting && code && code !== 0) {
-      dialog.showErrorBox("引擎已退出", `幻想作家引擎子进程退出（${code}）。\n日志：${getLogPath()}`);
+      dialog.showErrorBox("引擎已退出", `墨生万象引擎子进程退出（${code}）。\n日志：${getLogPath()}`);
     }
   });
   return `http://${HOST}:${listenPort}`;
@@ -383,7 +383,7 @@ function createWindow(targetUrl) {
     minHeight: 720,
     show: false,
     autoHideMenuBar: true,
-    title: "幻想作家 / FantaWriter",
+    title: "墨生万象 / Inkborne",
     icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -488,9 +488,9 @@ async function openCheckUpdateUi() {
 function showAbout() {
   dialog.showMessageBox(mainWindow || undefined, {
     type: "info",
-    title: "关于幻想作家",
+    title: "关于墨生万象",
     icon: path.join(__dirname, "icon.png"),
-    message: "幻想作家 / FantaWriter 2.0",
+    message: "墨生万象 / Inkborne 2.0",
     detail: [
       "内核与工作台 fork 自 InkOS (https://github.com/Narcooo/inkos) v1.8.x。",
       "许可证：GNU Affero General Public License v3.0。",
@@ -509,9 +509,9 @@ function showAbout() {
 function buildMenu() {
   const template = [
     {
-      label: "幻想作家",
+      label: "墨生万象",
       submenu: [
-        { label: "关于幻想作家", click: () => showAbout() },
+        { label: "关于墨生万象", click: () => showAbout() },
         { label: "检查更新", click: () => { openCheckUpdateUi(); } },
         { type: "separator" },
         { label: "重启引擎", click: () => restartEngine().catch((e) => dialog.showErrorBox("重启失败", String(e))) },
@@ -526,7 +526,7 @@ function buildMenu() {
       submenu: [
         { label: "检查更新", click: () => { openCheckUpdateUi(); } },
         { type: "separator" },
-        { label: "关于幻想作家", click: () => showAbout() },
+        { label: "关于墨生万象", click: () => showAbout() },
       ],
     },
   ];
@@ -888,7 +888,7 @@ function registerIpc() {
 
   ipcMain.handle("app:pickProjectRoot", async () => {
     const res = await dialog.showOpenDialog(mainWindow || undefined, {
-      title: "选择幻想作家项目根目录",
+      title: "选择墨生万象项目根目录",
       properties: ["openDirectory", "createDirectory"],
       defaultPath: defaultProjectRoot(tryAppPath("documents") || undefined),
     });

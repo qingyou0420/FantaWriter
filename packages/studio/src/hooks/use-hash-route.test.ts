@@ -19,13 +19,14 @@ describe("hash route", () => {
       expect(parseHash("#/book/my-novel")).toEqual({ page: "book", bookId: "my-novel" });
     });
 
-    it("parses book settings route", () => {
-      expect(parseHash("#/book/my-novel/settings")).toEqual({ page: "book-settings", bookId: "my-novel" });
-    });
-
-    it("parses book outline and chat as dedicated workspaces", () => {
-      expect(parseHash("#/book/my-novel/outline")).toEqual({ page: "book-outline", bookId: "my-novel" });
-      expect(parseHash("#/book/my-novel/chat")).toEqual({ page: "book-chat", bookId: "my-novel" });
+    it("parses four-step aliases and redirects old hashes", () => {
+      expect(parseHash("#/book/my-novel/ask")).toEqual({ page: "book-ask", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/ground")).toEqual({ page: "book-ground", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/weave")).toEqual({ page: "book-weave", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/write")).toEqual({ page: "book-write", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/outline")).toEqual({ page: "book-weave", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/settings")).toEqual({ page: "book-write", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/chat")).toEqual({ page: "book", bookId: "my-novel", chatOpen: true });
     });
 
     it("decodes encoded bookId", () => {
@@ -95,13 +96,15 @@ describe("hash route", () => {
       expect(routeToHash({ page: "book", bookId: "novel-1" })).toBe("#/book/novel-1");
     });
 
-    it("book-settings -> #/book/{id}/settings", () => {
-      expect(routeToHash({ page: "book-settings", bookId: "novel-1" })).toBe("#/book/novel-1/settings");
-    });
-
-    it("book-outline and book-chat have stable hashes", () => {
-      expect(routeToHash({ page: "book-outline", bookId: "novel-1" })).toBe("#/book/novel-1/outline");
+    it("writes four-step hashes and aliases old page types", () => {
+      expect(routeToHash({ page: "book-ask", bookId: "novel-1" })).toBe("#/book/novel-1/ask");
+      expect(routeToHash({ page: "book-ground", bookId: "novel-1" })).toBe("#/book/novel-1/ground");
+      expect(routeToHash({ page: "book-weave", bookId: "novel-1" })).toBe("#/book/novel-1/weave");
+      expect(routeToHash({ page: "book-write", bookId: "novel-1" })).toBe("#/book/novel-1/write");
+      expect(routeToHash({ page: "book-outline", bookId: "novel-1" })).toBe("#/book/novel-1/weave");
+      expect(routeToHash({ page: "book-settings", bookId: "novel-1" })).toBe("#/book/novel-1/write");
       expect(routeToHash({ page: "book-chat", bookId: "novel-1" })).toBe("#/book/novel-1/chat");
+      expect(routeToHash({ page: "book", bookId: "novel-1", chatOpen: true })).toBe("#/book/novel-1/chat");
     });
 
     it("encodes Chinese bookId", () => {

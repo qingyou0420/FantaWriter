@@ -19,7 +19,9 @@ import {
   startFreshBookCreateSession,
 } from "../pages/chat-page-state";
 import { useChatStore } from "../store/chat";
+import { BrandMark } from "./BrandMark";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { PRODUCT_VERSION } from "../lib/product-version";
 import {
   Dialog,
   DialogContent,
@@ -235,7 +237,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
     if (sessionIdsByBook[bookId] === undefined) {
       void loadSessionList(bookId);
     }
-    nav.toBookSettings(bookId);
+    nav.toBook(bookId);
   };
 
   const sessionsByBook = useMemo(
@@ -791,9 +793,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
         </div>
       </div>
 
-      {/* Footer / Status Area — only show when agent is online */}
       {daemon?.running && (
-        <div className="p-4 border-t border-border bg-secondary/40">
+        <div className="px-4 pt-2">
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-card border border-border shadow-sm">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
@@ -802,6 +803,16 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </div>
         </div>
       )}
+
+      <div
+        className="shrink-0 border-t border-border/40 px-4 py-2"
+        data-testid="sidebar-brand"
+      >
+        <div className="flex items-center gap-1.5 text-[11px] leading-none text-muted-foreground">
+          <BrandMark className="h-3 w-3 rounded-full" />
+          <span>墨生万象 · Inkborne · v{PRODUCT_VERSION}</span>
+        </div>
+      </div>
 
       <Dialog
         open={renameTarget !== null}

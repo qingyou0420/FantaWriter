@@ -186,6 +186,7 @@ import {
   resolveAgentModelBinding,
 } from "./resolve-agent-model.js";
 import { buildStudioBookConfig } from "./book-create.js";
+import { resolveBookStage } from "../lib/book-stage-io.js";
 import {
   deleteStudioTaskSnapshot,
   loadStudioTaskSnapshot,
@@ -1167,7 +1168,7 @@ function formatAgentFailure(
   if (kind === "internal") {
     return {
       code: "AGENT_INTERNAL_ERROR",
-      message: pick(lang, `幻想作家内部流程错误：${message}`, `FantaWriter internal pipeline error: ${message}`),
+      message: pick(lang, `墨生万象内部流程错误：${message}`, `Inkborne internal pipeline error: ${message}`),
       status: 500,
     };
   }
@@ -3055,6 +3056,26 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       const chapters = await state.loadChapterIndex(id);
       const nextChapter = await state.getNextChapterNumber(id);
       return c.json({ book, chapters, nextChapter });
+    } catch {
+      return c.json({ error: `Book "${id}" not found` }, 404);
+    }
+  });
+
+  app.get("/api/v1/books/:id/stage", async (c) => {
+    const id = c.req.param("id");
+    try {
+      const book = await state.loadBookConfig(id);
+      const chapters = await state.loadChapterIndex(id);
+      const nextChapter = await state.getNextChapterNumber(id);
+      const payload = await resolveBookStage({
+        bookDir: state.bookDir(id),
+        bookExists: true,
+        bookStatus: book.status,
+        targetChapters: book.targetChapters,
+        nextChapter,
+        chaptersWritten: chapters.length,
+      });
+      return c.json(payload);
     } catch {
       return c.json({ error: `Book "${id}" not found` }, 404);
     }

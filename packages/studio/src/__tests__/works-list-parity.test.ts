@@ -111,14 +111,14 @@ describe("sidebar create block", () => {
     expect(systemBlock).not.toMatch(/nav\.genreTemplates/);
   });
 
-  it("opens 我的创作 works as manuscript body, not the cockpit or chat", () => {
+  it("opens 我的创作 works in 书房, not a random tab", () => {
     const sidebar = read("src/components/Sidebar.tsx");
-    expect(sidebar).toMatch(/nav\.toBookSettings\(bookId\)/);
+    expect(sidebar).toMatch(/nav\.toBook\(bookId\)/);
     expect(sidebar).toMatch(/nav\.toShort\(short\.id\)/);
     const openBook = sidebar.slice(sidebar.indexOf("const openBook"), sidebar.indexOf("const sessionsByBook"));
-    expect(openBook).toMatch(/toBookSettings/);
+    expect(openBook).toMatch(/nav\.toBook\(bookId\)/);
     expect(openBook).not.toMatch(/toBookChat/);
-    expect(openBook).not.toMatch(/nav\.toBook\(/);
+    expect(openBook).not.toMatch(/toBookSettings/);
   });
 });
 

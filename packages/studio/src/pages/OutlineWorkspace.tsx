@@ -331,9 +331,9 @@ export function OutlineWorkspace({
           <span className="text-border">/</span>
           <button type="button" onClick={() => nav.toBook(bookId)} className="hover:text-primary">{data.book.title}</button>
           <span className="text-border">/</span>
-          <span className="text-foreground">{isZh ? "大纲" : "Outline"}</span>
+          <span className="text-foreground">{isZh ? "织卷" : "Weave"}</span>
         </nav>
-        <BookWorkspaceNav bookId={bookId} active="outline" nav={nav} isZh={isZh} />
+        <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
