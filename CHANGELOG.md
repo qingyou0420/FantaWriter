@@ -4,13 +4,20 @@
 
 ## [未发布]
 
+## [2.1.2] - 2026-09-06
+
+Windows 补丁安装包：`Inkborne-Setup-2.1.2.exe`（同时上传 `FantaWriter-Setup-2.1.2.exe` 与 `Fantasy-Writer-Setup-2.1.2.exe` 别名）。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。`appId` 仍为 `com.fantawriter.app`。
+
+### 修复
+
+- 问心抽屉只保留聊天与故事卡，不再被书籍侧栏挤掉；关闭后地址回到 `#/book/:id`。
+
 ### 变更
 
 - 侧栏「AI 动态」改称「实时动态」，去掉守护进程 / 实时动态前的状态点，六格对齐。
 - 系统设置顺序改为：模型配置 · 项目设置 / 资料设置 · 守护进程 / 实时动态 · 检查更新。
 - 「作者资料」改称「资料设置」；该页只留头像、姓名、简介、保存。
 - 首页去掉「在创」大标题；封面不再带进度条，封面下改为 `[连载|短篇]《书名》` / 始于日期 / 章数。
-- 问心抽屉只保留聊天，不再被书籍侧栏挤掉；关闭后地址回到 `#/book/:id`。
 - 「新开问心 / 新的问心」改「新开会话 / 新的会话」。
 
 ## [2.1.1] - 2026-09-06
@@ -429,6 +436,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.1.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.2
 [2.1.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.1
 [2.1.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.0
 [2.0.15]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.15
