@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.1.0
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.0.exe`（#93/#94/#95 墨生万象换标、书房四步、作者墙、问心故事卡、研墨定稿、松绿视觉与霞鹜文楷子集；主安装包更名为 Inkborne-Setup，并保留 FantaWriter / Fantasy-Writer 别名）。
+
 ## 2.0.15
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.15.exe`（#90 修复书籍写入锁卡住对话改设定；过期锁自动清理；占用时中文提示为写入被占用而非读取失败）。

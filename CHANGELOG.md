@@ -1,8 +1,29 @@
 # 更新日志
 
-本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「幻想作家」，英文名 FantaWriter。
+本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「墨生万象」，英文名 Inkborne（原名幻想作家 / FantaWriter）。
 
 ## [未发布]
+
+## [2.1.0] - 2026-09-06
+
+墨生万象（Inkborne）换标正式 Windows 安装包：`Inkborne-Setup-2.1.0.exe`（同时上传 `FantaWriter-Setup-2.1.0.exe` 与 `Fantasy-Writer-Setup-2.1.0.exe` 别名，给仍认旧文件名的客户端）。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。`appId` 仍为 `com.fantawriter.app`。
+
+### 新增
+
+- 产品名换为墨生万象 / Inkborne（原名幻想作家 / FantaWriter）。
+- 连载书房 + 问心 / 研墨 / 织卷 / 落笔四步流程壳。
+- 作者墙：作者卡、在创封面墙、对谈按书归组。
+- 问心故事卡（书名 / 一句话 / 梗概）与「就此建书」。
+- 研墨定稿：世界规则 / 人物 / 关系与主线 / 结局与伏笔 / 待定项。
+- 短篇创作书房（问心 · 织卷 · 落笔）。
+- 松绿 / 米纸 / 金视觉系统；本地霞鹜文楷子集 + Instrument Serif + JetBrains Mono。
+
+### 变更
+
+- 落笔页去设置化：页头只留导出与写下一章；设置 / 删书进抽屉危险区。
+- 织卷重排为单一主 CTA（锁定卷纲 → 下一批）。
+- 书房改为今日一笔 / 本卷要抵达 / 等你过目 / 四步一览。
+- 安装包主文件名改为 `Inkborne-Setup-*.exe`；检查更新同时识别旧 `FantaWriter-Setup-*` 与 `Fantasy-Writer-Setup-*`。
 
 ## [2.0.15] - 2026-09-06
 
@@ -387,6 +408,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.1.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.0
 [2.0.15]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.15
 [2.0.14]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.14
 [2.0.13]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.13

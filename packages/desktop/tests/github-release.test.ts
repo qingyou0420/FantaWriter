@@ -70,20 +70,20 @@ describe("github latest release parsing", () => {
         url: "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/2",
       },
       {
-        name: "FantaWriter-Setup-2.0.15.exe",
+        name: "FantaWriter-Setup-2.1.0.exe",
         browser_download_url:
-          "https://github.com/qingyou0420/FantaWriter/releases/download/v2.0.15/FantaWriter-Setup-2.0.15.exe",
+          "https://github.com/qingyou0420/FantaWriter/releases/download/v2.1.0/FantaWriter-Setup-2.1.0.exe",
         url: "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/3",
       },
       {
-        name: "Inkborne-Setup-2.0.15.exe",
+        name: "Inkborne-Setup-2.1.0.exe",
         browser_download_url:
-          "https://github.com/qingyou0420/FantaWriter/releases/download/v2.0.15/Inkborne-Setup-2.0.15.exe",
+          "https://github.com/qingyou0420/FantaWriter/releases/download/v2.1.0/Inkborne-Setup-2.1.0.exe",
         url: "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/4",
       },
     ]);
-    expect(picked?.name).toBe("Inkborne-Setup-2.0.15.exe");
-    expect(picked?.version).toBe("2.0.15");
+    expect(picked?.name).toBe("Inkborne-Setup-2.1.0.exe");
+    expect(picked?.version).toBe("2.1.0");
   });
 
   it("returns null when latest has no recognized Setup.exe", () => {
@@ -100,9 +100,9 @@ describe("github latest release parsing", () => {
   it("extracts Setup filename from a GitHub download URL", () => {
     expect(
       setupFileNameFromUrl(
-        "https://github.com/qingyou0420/FantaWriter/releases/download/v2.0.15/Inkborne-Setup-2.0.15.exe"
+        "https://github.com/qingyou0420/FantaWriter/releases/download/v2.1.0/Inkborne-Setup-2.1.0.exe"
       )
-    ).toBe("Inkborne-Setup-2.0.15.exe");
+    ).toBe("Inkborne-Setup-2.1.0.exe");
     expect(
       setupFileNameFromUrl(
         "https://github.com/qingyou0420/FantaWriter/releases/download/v1.4.1/FantaWriter-Setup-1.4.1.exe"

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const { assertNoSecrets } = require("./lib/refuse-secrets.cjs");
+const { setupFileNameForVersion } = require("./setup-artifact.cjs");
 const { aliasLegacySetup } = require("./alias-legacy-setup.cjs");
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -85,7 +86,7 @@ async function buildInstaller() {
 await buildInstaller();
 
 if (!dirOnly) {
-  const asset = `FantaWriter-Setup-${rootPkg.version}.exe`;
+  const asset = setupFileNameForVersion(rootPkg.version);
   const assetPath = join(distDir, asset);
   if (!existsSync(assetPath)) {
     throw new Error(`找不到安装包 ${assetPath}`);

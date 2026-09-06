@@ -52,7 +52,7 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$PKG" >> "$GITHUB_OUTPUT"
-          echo "asset=FantaWriter-Setup-${PKG}.exe" >> "$GITHUB_OUTPUT"
+          echo "asset=Inkborne-Setup-${PKG}.exe" >> "$GITHUB_OUTPUT"
 
       - run: pnpm install --frozen-lockfile
 
@@ -108,6 +108,7 @@ jobs:
             echo "找不到校验文件 ${asset}.sha256"
             exit 1
           fi
+          test -f "dist-installer/FantaWriter-Setup-${{ steps.meta.outputs.version }}.exe"
           test -f "dist-installer/Fantasy-Writer-Setup-${{ steps.meta.outputs.version }}.exe"
           node scripts/lib/refuse-secrets.cjs dist-installer
           echo "installer ok $(wc -c < "$asset") bytes"
@@ -120,6 +121,8 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
+            dist-installer/Inkborne-Setup-*.exe
+            dist-installer/Inkborne-Setup-*.exe.sha256
             dist-installer/FantaWriter-Setup-*.exe
             dist-installer/FantaWriter-Setup-*.exe.sha256
             dist-installer/Fantasy-Writer-Setup-*.exe
