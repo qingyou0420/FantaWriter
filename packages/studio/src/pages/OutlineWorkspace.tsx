@@ -1,6 +1,5 @@
 /**
- * Outline workspace: one tree + in-place detail + a single 织卷 entry.
- * Selected chapter always exposes 写这一章 / 查看正文. No second optimize-outline.
+ * 织卷: one tree + volume/chapter detail + a single weave CTA.
  *
  * SPDX-License-Identifier: AGPL-3.0-only
  */
@@ -9,17 +8,19 @@ import { buildApiUrl, fetchJson, useApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import type { SSEMessage } from "../hooks/use-sse";
 import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
-import { startWriteNext } from "../components/SerialCockpitStrip";
-import type { WritePreflightEvaluation } from "../components/SerialCockpitStrip";
 import {
   applyOutlineWorkspaceSave,
   findNodeById,
   insertChapterStub,
+  lockedNamedVolumeCount,
   outlineEditorSource,
   parseVolumeMapTree,
   recommendedOutlineNodeId,
+  splitOutlineTitleAndSummary,
+  tidyVolumeMapMarkdown,
   truncateOutlineLabel,
   type VolumeMapChapterNode,
+  type VolumeMapNoteNode,
 } from "../lib/volume-map-tree";
 import {
   applyOutlineWeaveSseEvent,
@@ -30,11 +31,19 @@ import {
   resolveOutlineWeaveAction,
   type OutlineWeaveProgress,
 } from "../lib/outline-weave";
-import { resolveWriteThisChapterAction } from "../lib/serial-cockpit";
+import { formatVolumeArriveCopy } from "../lib/copy-map";
+import { weaveGuideWhenUngrounded } from "../lib/stage-copy";
+import type { BookStageSnapshot } from "../lib/book-stage";
 import { TruthProposalCard, type PendingTruthProposal } from "../components/TruthProposalCard";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
-import { ChevronLeft, Feather, Plus, Zap, Eye } from "lucide-react";
+import { ChevronLeft, Feather, MoreHorizontal } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 
 interface ChapterMeta {
   readonly number: number;
@@ -58,23 +67,20 @@ interface Nav extends BookWorkspaceNavTarget {
   toChapter: (bookId: string, num: number) => void;
 }
 
-type Filter = "all" | "todo" | "done";
+type Filter = "all" | "coarse" | "pending" | "refined";
 
-function chapterWritten(chapters: ReadonlyArray<ChapterMeta>, number: number): boolean {
-  return chapters.some((chapter) => chapter.number === number);
+function isRefinedChapter(node: VolumeMapChapterNode): boolean {
+  return node.kind === "chapter" && Boolean(node.title.trim() || node.summary.trim());
 }
 
 function nodeVisible(
   node: VolumeMapChapterNode,
   filter: Filter,
   query: string,
-  written: ReadonlySet<number>,
 ): boolean {
-  const end = node.endChapter ?? node.chapterNumber;
-  const isDone = Array.from({ length: end - node.chapterNumber + 1 }, (_, index) => node.chapterNumber + index)
-    .every((num) => written.has(num));
-  if (filter === "todo" && isDone) return false;
-  if (filter === "done" && !isDone) return false;
+  if (filter === "coarse" && node.kind !== "range") return false;
+  if (filter === "pending" && (node.kind !== "range" && isRefinedChapter(node))) return false;
+  if (filter === "refined" && !isRefinedChapter(node)) return false;
   if (!query) return true;
   const hay = `${node.title} ${node.summary} ${node.chapterNumber}`.toLowerCase();
   return hay.includes(query);
@@ -93,7 +99,7 @@ export function OutlineWorkspace({
   t: TFunction;
   sse?: { readonly messages: ReadonlyArray<SSEMessage> };
 }) {
-  const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
+  const { data, loading, error } = useApi<BookData>(`/books/${bookId}`);
   const [volumeMap, setVolumeMap] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
@@ -101,13 +107,15 @@ export function OutlineWorkspace({
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  const [preflight, setPreflight] = useState<WritePreflightEvaluation | null>(null);
-  const [writePending, setWritePending] = useState(false);
   const [weaving, setWeaving] = useState(false);
   const [weaveStartedAt, setWeaveStartedAt] = useState<number | null>(null);
   const [weaveNow, setWeaveNow] = useState(0);
   const [weaveProgress, setWeaveProgress] = useState<OutlineWeaveProgress | null>(null);
   const [weaveProposal, setWeaveProposal] = useState<PendingTruthProposal | null>(null);
+  const [stage, setStage] = useState<BookStageSnapshot | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [splitHint, setSplitHint] = useState(false);
+  const [notesOpen, setNotesOpen] = useState<Record<string, boolean>>({});
 
   const isZh = data?.book.language !== "en";
   const tree = useMemo(() => parseVolumeMapTree(volumeMap), [volumeMap]);
@@ -115,19 +123,18 @@ export function OutlineWorkspace({
     () => new Set((data?.chapters ?? []).filter((chapter) => chapter.status).map((chapter) => chapter.number)),
     [data?.chapters],
   );
+  const groundDone = Boolean(
+    stage && (stage.steps.ground === "done" || stage.stage === "weave" || stage.stage === "write"),
+  );
 
   useEffect(() => {
     void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
       .then((body) => setVolumeMap(body.content ?? ""))
       .catch(() => setVolumeMap(""));
+    void fetchJson<BookStageSnapshot>(`/books/${bookId}/stage`)
+      .then(setStage)
+      .catch(() => setStage(null));
   }, [bookId]);
-
-  useEffect(() => {
-    if (!data) return;
-    void fetchJson<WritePreflightEvaluation>(`/books/${bookId}/write-preflight`)
-      .then(setPreflight)
-      .catch(() => setPreflight(null));
-  }, [bookId, data?.nextChapter]);
 
   useEffect(() => {
     if (selectedId || !data) return;
@@ -141,24 +148,26 @@ export function OutlineWorkspace({
     const source = outlineEditorSource(selected);
     setTitleDraft(source.title);
     setSummaryDraft(source.summary);
+    setSplitHint(false);
   }, [selected]);
 
   const visibleVolumes = tree.volumes
     .map((volume) => ({
       ...volume,
-      chapters: volume.chapters.filter((node) => nodeVisible(node, filter, query.trim().toLowerCase(), written)),
+      chapters: volume.chapters.filter((node) => nodeVisible(node, filter, query.trim().toLowerCase())),
     }))
     .filter((volume) => {
       if (volume.chapters.length > 0) return true;
       if (query && !`${volume.title} ${volume.body} ${volume.okr}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
       return filter === "all";
     });
-  const visibleOrphans = tree.orphanChapters.filter((node) => nodeVisible(node, filter, query.trim().toLowerCase(), written));
-  const writtenCount = data?.chapters.length ?? 0;
+  const visibleOrphans = tree.orphanChapters.filter((node) => nodeVisible(node, filter, query.trim().toLowerCase()));
   const targetChapters = data?.book.targetChapters && data.book.targetChapters > 0
     ? data.book.targetChapters
     : Math.max(tree.chapterCount, 1);
   const weaveAction = resolveOutlineWeaveAction(tree, targetChapters, volumeMap);
+  const lockedVolumes = lockedNamedVolumeCount(tree);
+  const plannedChapters = tree.chapterCount;
 
   const reloadVolumeMap = () => {
     void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
@@ -183,13 +192,24 @@ export function OutlineWorkspace({
     if (next) setWeaveProgress(next);
   }, [bookId, sse?.messages, weaveStartedAt, weaving]);
 
+  const persistMap = async (next: string) => {
+    await fetchJson(`/books/${bookId}/truth/outline/volume_map.md`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: next }),
+    });
+    setVolumeMap(next);
+  };
+
   const openWeave = async () => {
+    if (!groundDone) return;
     const action = resolveOutlineWeaveAction(tree, targetChapters, volumeMap);
     if (action.disabled) return;
     const startedAt = Date.now();
     setWeaving(true);
     setWeaveStartedAt(startedAt);
     setWeaveNow(startedAt);
+    setPageError(null);
     setWeaveProgress({
       bookId,
       phase: action.step === "volumes" ? "start" : "chunk",
@@ -231,7 +251,7 @@ export function OutlineWorkspace({
       setWeaveProposal(null);
       reloadVolumeMap();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "织卷 failed");
+      setPageError(err instanceof Error ? err.message : "织卷 failed");
     } finally {
       setWeaving(false);
       setWeaveStartedAt(null);
@@ -240,72 +260,63 @@ export function OutlineWorkspace({
   };
 
   const saveSelected = async () => {
-    if (!selected) return;
-    const next = applyOutlineWorkspaceSave(volumeMap, selected.id, titleDraft, summaryDraft);
+    if (!selected || !groundDone) return;
+    let nextTitle = titleDraft;
+    let nextSummary = summaryDraft;
+    if (selected.kind === "chapter" || selected.kind === "range") {
+      const split = splitOutlineTitleAndSummary(titleDraft, summaryDraft);
+      nextTitle = split.title;
+      nextSummary = split.summary;
+      if (split.split) {
+        setTitleDraft(split.title);
+        setSummaryDraft(split.summary);
+        setSplitHint(true);
+      }
+    }
+    const next = applyOutlineWorkspaceSave(volumeMap, selected.id, nextTitle, nextSummary);
     if (next === volumeMap) return;
     setSaving(true);
+    setPageError(null);
     try {
-      await fetchJson(`/books/${bookId}/truth/outline/volume_map.md`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: next }),
-      });
-      setVolumeMap(next);
+      await persistMap(next);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Save failed");
+      setPageError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
   const addFirstChapter = async () => {
+    if (!groundDone) return;
     const next = insertChapterStub(volumeMap, data?.nextChapter ?? 1);
     setSaving(true);
+    setPageError(null);
     try {
-      await fetchJson(`/books/${bookId}/truth/outline/volume_map.md`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: next }),
-      });
-      setVolumeMap(next);
+      await persistMap(next);
       setSelectedId(`chapter:${data?.nextChapter ?? 1}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Save failed");
+      setPageError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
-  const selectedChapterNumber = selected && selected.kind !== "volume"
-    ? selected.chapterNumber
-    : data?.nextChapter;
-  const writeAction = selectedChapterNumber && data && preflight
-    ? resolveWriteThisChapterAction({
-        selectedChapter: selectedChapterNumber,
-        nextChapter: data.nextChapter,
-        written: chapterWritten(data.chapters, selectedChapterNumber),
-        preflight,
-        isZh,
-      })
-    : null;
-
-  const handleWriteThis = async () => {
-    if (!writeAction || !data) return;
-    if (writeAction.kind === "view") {
-      nav.toChapter(bookId, writeAction.chapterNumber);
-      return;
-    }
-    if (!writeAction.enabled) return;
-    setWritePending(true);
+  const tidyOutline = async () => {
+    if (!groundDone) return;
+    const next = tidyVolumeMapMarkdown(volumeMap, isZh ? "zh" : "en");
+    if (next === volumeMap) return;
+    setSaving(true);
+    setPageError(null);
     try {
-      await startWriteNext(bookId, false);
-      refetch();
+      await persistMap(next);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed");
+      setPageError(err instanceof Error ? err.message : "Save failed");
     } finally {
-      setWritePending(false);
+      setSaving(false);
     }
   };
+
+  const goWrite = () => (nav.toWrite ?? nav.toBookSettings)(bookId);
 
   if (loading) {
     return (
@@ -319,6 +330,9 @@ export function OutlineWorkspace({
   if (!data) return null;
 
   const empty = tree.volumeCount === 0 && tree.chapterCount === 0;
+  const ungrounded = stage !== null && !groundDone;
+  const guide = weaveGuideWhenUngrounded(isZh);
+  const treeReadOnly = ungrounded || !groundDone;
 
   return (
     <div className="space-y-5 fade-in" data-testid="outline-workspace">
@@ -333,34 +347,25 @@ export function OutlineWorkspace({
           <span className="text-border">/</span>
           <span className="text-foreground">{isZh ? "织卷" : "Weave"}</span>
         </nav>
-        <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} />
+        <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} t={t} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-muted-foreground" data-testid="outline-stats">
-          {tree.volumeCount} {isZh ? "卷" : "vol"} · {tree.chapterCount} {isZh ? "章" : "ch"} · {writtenCount} {isZh ? "已写" : "written"}
+          {isZh
+            ? `已排 ${plannedChapters} / 目标 ${targetChapters} 章 · 已锁 ${lockedVolumes} / ${tree.volumeCount} 卷`
+            : `${plannedChapters} / ${targetChapters} outlined · ${lockedVolumes} / ${tree.volumeCount} locked volumes`}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            data-testid="outline-weave"
-            onClick={() => void openWeave()}
-            disabled={weaving || weaveAction.disabled}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
-          >
-            <Feather size={14} />
-            {weaving ? (isZh ? "织卷中…" : "Weaving…") : outlineWeaveButtonLabel(weaveAction, isZh)}
-          </button>
-          <button
-            type="button"
-            onClick={() => void addFirstChapter()}
-            disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2 text-xs font-bold"
-          >
-            <Plus size={14} />
-            {isZh ? "新增一章" : "Add chapter"}
-          </button>
-        </div>
+        <button
+          type="button"
+          data-testid="outline-weave"
+          onClick={() => void openWeave()}
+          disabled={weaving || weaveAction.disabled || treeReadOnly}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
+        >
+          <Feather size={14} />
+          {weaving ? (isZh ? "织卷中…" : "Weaving…") : outlineWeaveButtonLabel(weaveAction, isZh)}
+        </button>
       </div>
 
       {weaving && (
@@ -385,68 +390,121 @@ export function OutlineWorkspace({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={isZh ? "搜索卷 / 章" : "Search"}
-          className="rounded-lg border border-border/50 bg-secondary/30 px-3 py-1.5 text-sm outline-none focus:border-primary/50"
-        />
-        {(["all", "todo", "done"] as const).map((item) => (
+      {ungrounded ? (
+        <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-ungrounded">
+          <p className="font-serif text-lg">{guide.title}</p>
+          <p className="text-sm text-muted-foreground">{guide.subtitle}</p>
           <button
-            key={item}
             type="button"
-            onClick={() => setFilter(item)}
-            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${filter === item ? "bg-primary text-primary-foreground" : "bg-secondary/50 text-muted-foreground"}`}
+            onClick={() => (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId)}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
           >
-            {item === "all" ? (isZh ? "全部" : "All") : item === "todo" ? (isZh ? "待写" : "To write") : (isZh ? "已写" : "Written")}
+            {guide.action}
           </button>
-        ))}
-      </div>
-
-      {weaveProposal && (
-        <TruthProposalCard
-          bookId={bookId}
-          proposal={weaveProposal}
-          isZh={isZh}
-          onResolved={() => {
-            setWeaveProposal(null);
-            reloadVolumeMap();
-          }}
-        />
-      )}
-
-      {empty ? (
-        <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-empty">
-          <p className="text-sm text-muted-foreground">
-            {isZh ? "还没有章级大纲。先织卷锁定卷纲，再每次只织 10 章（走确认闸），或手工占一章。" : "No chapter outline yet. Lock volumes first, then weave 10 chapters at a time (confirm gate), or add a stub chapter."}
-          </p>
-          <div className="flex justify-center gap-2">
-            <button type="button" onClick={() => void openWeave()} disabled={weaving || weaveAction.disabled} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
-              {outlineWeaveButtonLabel(weaveAction, isZh)}
-            </button>
-            <button type="button" onClick={() => void addFirstChapter()} className="rounded-lg bg-secondary px-4 py-2 text-sm font-bold">
-              {isZh ? "新增第一章" : "Add chapter 1"}
-            </button>
-          </div>
         </div>
       ) : (
-        <div className="grid gap-5 md:grid-cols-[280px_1fr]" data-testid="outline-split">
-          <div className="rounded-2xl border border-border/40 overflow-hidden">
-            {visibleVolumes.map((volume) => (
-              <div key={volume.id}>
-                <button
-                  type="button"
-                  data-testid="outline-volume-label"
-                  onClick={() => setSelectedId(volume.id)}
-                  className={`w-full truncate px-3 py-2 text-left text-sm font-medium border-b border-border/30 ${
-                    selectedId === volume.id ? "bg-primary/10 text-primary" : "hover:bg-muted/30"
-                  }`}
-                  title={volume.title}
-                >
-                  {outlineTreeVolumeLabel(volume.volumeNumber, volume.title, isZh) || (isZh ? "未命名卷" : "Untitled volume")}
-                </button>
-                {volume.chapters.map((node) => (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={isZh ? "搜索卷 / 章" : "Search"}
+              className="rounded-lg border border-border/50 bg-secondary/30 px-3 py-1.5 text-sm outline-none focus:border-primary/50"
+            />
+            {(["all", "coarse", "pending", "refined"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                data-testid={`outline-filter-${item}`}
+                onClick={() => setFilter(item)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold ${filter === item ? "bg-primary text-primary-foreground" : "bg-secondary/50 text-muted-foreground"}`}
+              >
+                {item === "all"
+                  ? (isZh ? "全部" : "All")
+                  : item === "coarse"
+                    ? (isZh ? "仅粗纲" : "Coarse")
+                    : item === "pending"
+                      ? (isZh ? "待细化" : "To refine")
+                      : (isZh ? "已细化" : "Refined")}
+              </button>
+            ))}
+          </div>
+
+          {weaveProposal && (
+            <TruthProposalCard
+              bookId={bookId}
+              proposal={weaveProposal}
+              isZh={isZh}
+              onResolved={() => {
+                setWeaveProposal(null);
+                reloadVolumeMap();
+              }}
+            />
+          )}
+
+          {empty ? (
+            <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-empty">
+              <p className="text-sm text-muted-foreground">
+                {isZh ? "还没有章级大纲。先用右上角织卷锁定卷纲，再每次只织 10 章（走确认闸）。" : "No chapter outline yet. Use the weave button above to lock volumes, then weave 10 chapters at a time."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-[280px_1fr]" data-testid="outline-split">
+              <div className="rounded-2xl border border-border/40 overflow-hidden">
+                <div className="flex items-center justify-end border-b border-border/30 px-2 py-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      data-testid="outline-tree-more"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary"
+                    >
+                      <MoreHorizontal size={14} />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => void addFirstChapter()}>
+                        {isZh ? "新增一章" : "Add chapter"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => void tidyOutline()}>
+                        {isZh ? "整理卷纲" : "Tidy volumes"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                {visibleVolumes.map((volume) => (
+                  <div key={volume.id}>
+                    <button
+                      type="button"
+                      data-testid="outline-volume-label"
+                      onClick={() => setSelectedId(volume.id)}
+                      className={`w-full truncate px-3 py-2 text-left text-sm font-medium border-b border-border/30 ${
+                        selectedId === volume.id ? "bg-primary/10 text-primary" : "hover:bg-muted/30"
+                      }`}
+                      title={volume.title}
+                    >
+                      {outlineTreeVolumeLabel(volume.volumeNumber, volume.title, isZh) || (isZh ? "未命名卷" : "Untitled volume")}
+                    </button>
+                    {volume.chapters.map((node) => (
+                      <ChapterRow
+                        key={node.id}
+                        node={node}
+                        selected={selectedId === node.id}
+                        written={written.has(node.chapterNumber)}
+                        onClick={() => setSelectedId(node.id)}
+                        isZh={isZh}
+                      />
+                    ))}
+                    {volume.notes.length > 0 && (
+                      <NotesFold
+                        notes={volume.notes}
+                        open={Boolean(notesOpen[volume.id])}
+                        onToggle={() => setNotesOpen((prev) => ({ ...prev, [volume.id]: !prev[volume.id] }))}
+                        selectedId={selectedId}
+                        onSelect={setSelectedId}
+                        isZh={isZh}
+                      />
+                    )}
+                  </div>
+                ))}
+                {visibleOrphans.map((node) => (
                   <ChapterRow
                     key={node.id}
                     node={node}
@@ -456,93 +514,183 @@ export function OutlineWorkspace({
                     isZh={isZh}
                   />
                 ))}
+                {tree.orphanNotes.length > 0 && (
+                  <NotesFold
+                    notes={tree.orphanNotes}
+                    open={Boolean(notesOpen.orphan)}
+                    onToggle={() => setNotesOpen((prev) => ({ ...prev, orphan: !prev.orphan }))}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    isZh={isZh}
+                  />
+                )}
               </div>
-            ))}
-            {visibleOrphans.map((node) => (
-              <ChapterRow
-                key={node.id}
-                node={node}
-                selected={selectedId === node.id}
-                written={written.has(node.chapterNumber)}
-                onClick={() => setSelectedId(node.id)}
-                isZh={isZh}
-              />
-            ))}
-          </div>
 
-          <div className="rounded-2xl border border-border/40 p-5 space-y-4 min-h-[360px]" data-testid="outline-detail">
-            {!selected ? (
-              <p className="text-sm text-muted-foreground">{isZh ? "选中一章或一卷" : "Select a node"}</p>
-            ) : (
-              <>
-                <div className="text-xs text-muted-foreground">
-                  {selected.kind === "volume"
-                    ? (isZh ? "卷" : "Volume")
-                    : (isZh ? `第 ${selected.chapterNumber} 章` : `Chapter ${selected.chapterNumber}`)}
-                </div>
-                <input
-                  value={titleDraft}
-                  onChange={(event) => setTitleDraft(event.target.value)}
-                  onBlur={() => void saveSelected()}
-                  className="w-full rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 font-serif text-xl outline-none focus:border-primary/50"
-                />
-                <textarea
-                  value={summaryDraft}
-                  onChange={(event) => setSummaryDraft(event.target.value)}
-                  rows={8}
-                  className="w-full rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 text-sm leading-6 outline-none focus:border-primary/50"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void saveSelected()}
-                    disabled={saving}
-                    className="rounded-lg bg-secondary px-3 py-2 text-xs font-bold disabled:opacity-50"
-                  >
-                    {saving ? t("common.loading") : (isZh ? "保存" : "Save")}
-                  </button>
-                  {writeAction && (
-                    <button
-                      type="button"
-                      data-testid="outline-write-this"
-                      disabled={writeAction.kind !== "view" && (!writeAction.enabled || writePending)}
-                      title={!writeAction.enabled ? writeAction.reasons.map((reason) => isZh ? reason.messageZh : reason.message).join(" ") : undefined}
-                      onClick={() => void handleWriteThis()}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
-                    >
-                      {writeAction.kind === "view" ? <Eye size={14} /> : <Zap size={14} />}
-                      {writeAction.kind === "view"
-                        ? (isZh ? "查看正文" : "Open manuscript")
-                        : (isZh ? "落墨 · 写这一章" : "落墨 · Write this chapter")}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void openWeave()}
-                    disabled={weaving || weaveAction.disabled}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-2 text-xs font-bold disabled:opacity-50"
-                  >
-                    <Feather size={14} />
-                    {outlineWeaveButtonLabel(weaveAction, isZh)}
-                  </button>
-                </div>
-                {writeAction && !writeAction.enabled && writeAction.kind !== "view" && (
-                  <ul className="space-y-1 text-sm text-destructive" data-testid="outline-write-reasons">
-                    {writeAction.reasons.map((reason) => (
-                      <li key={reason.code}>{isZh ? reason.messageZh : reason.message}</li>
-                    ))}
-                  </ul>
+              <div className="rounded-2xl border border-border/40 p-5 space-y-4 min-h-[360px]" data-testid="outline-detail">
+                {!selected ? (
+                  <p className="text-sm text-muted-foreground">{isZh ? "选中一章或一卷" : "Select a node"}</p>
+                ) : selected.kind === "volume" ? (
+                  <VolumeDetail volumeTitle={selected.title} okr={selected.okr} startChapter={selected.startChapter} endChapter={selected.endChapter} locked={selected.startChapter != null && selected.endChapter != null} isZh={isZh} />
+                ) : selected.kind === "note" ? (
+                  <>
+                    <div className="text-xs text-muted-foreground">{isZh ? "备注" : "Note"}</div>
+                    <input
+                      value={titleDraft}
+                      onChange={(event) => setTitleDraft(event.target.value)}
+                      onBlur={() => void saveSelected()}
+                      disabled={treeReadOnly}
+                      className="w-full rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 font-serif text-xl outline-none focus:border-primary/50"
+                    />
+                    <textarea
+                      value={summaryDraft}
+                      onChange={(event) => setSummaryDraft(event.target.value)}
+                      rows={8}
+                      disabled={treeReadOnly}
+                      className="w-full rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 text-sm leading-6 outline-none focus:border-primary/50"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xs text-muted-foreground">
+                      {selected.kind === "range" && selected.endChapter
+                        ? (isZh ? `第 ${selected.chapterNumber}–${selected.endChapter} 章（粗纲）` : `Ch. ${selected.chapterNumber}–${selected.endChapter} (coarse)`)
+                        : (isZh ? `第 ${selected.chapterNumber} 章` : `Chapter ${selected.chapterNumber}`)}
+                    </div>
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted-foreground">{isZh ? "短题" : "Short title"} ≤12</span>
+                      <input
+                        value={titleDraft}
+                        maxLength={selected.kind === "range" ? undefined : 20}
+                        onChange={(event) => setTitleDraft(event.target.value)}
+                        onBlur={() => void saveSelected()}
+                        disabled={treeReadOnly}
+                        className="w-full rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 font-serif text-xl outline-none focus:border-primary/50"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted-foreground">{isZh ? "提要" : "Summary"}</span>
+                      <textarea
+                        value={summaryDraft}
+                        onChange={(event) => setSummaryDraft(event.target.value)}
+                        rows={8}
+                        disabled={treeReadOnly}
+                        className="w-full rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 text-sm leading-6 outline-none focus:border-primary/50"
+                      />
+                    </label>
+                    {splitHint && (
+                      <p className="text-xs text-muted-foreground">{isZh ? "标题偏长，已拆成短题与提要。" : "Long title was split into title + summary."}</p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void saveSelected()}
+                        disabled={saving || treeReadOnly}
+                        className="rounded-lg bg-secondary px-3 py-2 text-xs font-bold disabled:opacity-50"
+                      >
+                        {saving ? t("common.loading") : (isZh ? "保存" : "Save")}
+                      </button>
+                      {selected.kind === "chapter" && (
+                        <button
+                          type="button"
+                          data-testid="outline-go-write"
+                          onClick={goWrite}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-2 text-xs font-bold"
+                        >
+                          {isZh ? "去落笔 →" : "Go write →"}
+                        </button>
+                      )}
+                    </div>
+                  </>
                 )}
-                {selected.kind === "volume" && data.nextChapter > (selected.endChapter ?? 0) && selected.endChapter && (
-                  <div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-3 text-sm" data-testid="outline-volume-close">
-                    {isZh ? "本卷已写完。过卷是里程碑：用织卷起草下一卷，不要常驻一个过卷页。" : "This volume is complete. Use 织卷 to draft the next volume — volume close is not a tab."}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {pageError && <p className="text-sm text-destructive">{pageError}</p>}
+    </div>
+  );
+}
+
+function VolumeDetail({
+  volumeTitle,
+  okr,
+  startChapter,
+  endChapter,
+  locked,
+  isZh,
+}: {
+  readonly volumeTitle: string;
+  readonly okr: string;
+  readonly startChapter?: number;
+  readonly endChapter?: number;
+  readonly locked: boolean;
+  readonly isZh: boolean;
+}) {
+  const copy = formatVolumeArriveCopy(okr, isZh);
+  return (
+    <div className="space-y-3" data-testid="outline-volume-detail">
+      <div className="font-serif text-2xl">{volumeTitle}</div>
+      <div className="text-sm text-muted-foreground">
+        {startChapter && endChapter
+          ? (isZh ? `第 ${startChapter}–${endChapter} 章` : `Ch. ${startChapter}–${endChapter}`)
+          : (isZh ? "章范围未定" : "Range unset")}
+        {" · "}
+        {locked ? (isZh ? "已锁" : "Locked") : (isZh ? "未锁" : "Unlocked")}
+      </div>
+      {copy.arrive && (
+        <div>
+          <div className="text-xs text-muted-foreground">{isZh ? "本卷要抵达" : "Arrive at"}</div>
+          <p className="text-sm leading-6">{copy.arrive}</p>
         </div>
       )}
+      {copy.mustLand && (
+        <div>
+          <div className="text-xs text-muted-foreground">{isZh ? "卷末必须落下" : "Must land"}</div>
+          <p className="text-sm leading-6">{copy.mustLand}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotesFold({
+  notes,
+  open,
+  onToggle,
+  selectedId,
+  onSelect,
+  isZh,
+}: {
+  readonly notes: ReadonlyArray<VolumeMapNoteNode>;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  readonly selectedId: string | null;
+  readonly onSelect: (id: string) => void;
+  readonly isZh: boolean;
+}) {
+  return (
+    <div data-testid="outline-notes">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-5 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/30"
+      >
+        {open ? "▾" : "▸"} {isZh ? `备注（${notes.length}）` : `Notes (${notes.length})`}
+      </button>
+      {open && notes.map((note) => (
+        <button
+          key={note.id}
+          type="button"
+          onClick={() => onSelect(note.id)}
+          className={`w-full truncate px-7 py-1.5 text-left text-sm ${
+            selectedId === note.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/30"
+          }`}
+        >
+          {truncateOutlineLabel(note.title || (isZh ? "备注" : "Note"))}
+        </button>
+      ))}
     </div>
   );
 }
@@ -560,18 +708,20 @@ function ChapterRow({
   readonly onClick: () => void;
   readonly isZh: boolean;
 }) {
-  const label = node.kind === "range" && node.endChapter
-    ? (isZh ? `第 ${node.chapterNumber}-${node.endChapter} 章` : `Ch. ${node.chapterNumber}-${node.endChapter}`)
+  const coarse = node.kind === "range";
+  const label = coarse && node.endChapter
+    ? (isZh ? `第 ${node.chapterNumber}–${node.endChapter} 章（粗纲）` : `Ch. ${node.chapterNumber}–${node.endChapter} (coarse)`)
     : (isZh ? `第 ${node.chapterNumber} 章` : `Ch. ${node.chapterNumber}`);
   return (
     <button
       type="button"
       onClick={onClick}
+      data-testid={coarse ? "outline-coarse-row" : "outline-chapter-row"}
       className={`flex w-full items-center gap-2 px-5 py-1.5 text-left text-sm border-b border-border/20 ${
-        selected ? "bg-primary/10 text-primary" : "hover:bg-muted/30 text-muted-foreground"
-      }`}
+        coarse ? "text-muted-foreground/70" : ""
+      } ${selected ? "bg-primary/10 text-primary" : "hover:bg-muted/30 text-muted-foreground"}`}
     >
-      <span className="text-[11px]">{written ? "✓" : "○"}</span>
+      <span className="text-[11px]">{written ? "●" : "○"}</span>
       <span className="truncate">{label}{node.title ? ` ${truncateOutlineLabel(node.title)}` : ""}</span>
     </button>
   );

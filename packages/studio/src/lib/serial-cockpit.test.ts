@@ -166,7 +166,7 @@ describe("assembleCockpitSnapshot", () => {
       ],
       nextChapter: 5,
       volumeMap: [
-        "## 第一卷（1-4章）",
+        "## 第一卷 试炼（1-4章）",
         "Objective：入门。",
         "## 第 1 章",
         "## 第 2 章",
@@ -186,10 +186,10 @@ describe("assembleCockpitSnapshot", () => {
       ],
       nextChapter: 5,
       volumeMap: [
-        "## 第一卷（1-4章）",
+        "## 第一卷 试炼（1-4章）",
         "Objective：入门。",
         "## 第 4 章 收束",
-        "## 第二卷（5-8章）",
+        "## 第二卷 下山（5-8章）",
         "Objective：下山。",
         "## 第 5 章 启程",
       ].join("\n"),

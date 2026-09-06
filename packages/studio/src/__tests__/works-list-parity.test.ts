@@ -26,7 +26,7 @@ describe("sidebar create block", () => {
     const sidebar = read("src/components/Sidebar.tsx");
     const createBlock = sidebar.slice(
       sidebar.indexOf("nav.createSection"),
-      sidebar.indexOf("nav.myBooks"),
+      sidebar.indexOf("nav.history"),
     );
 
     expect(SIDEBAR_CREATE_ITEM_KEYS).toEqual(["nav.createNovel", "nav.createShort"]);
@@ -51,7 +51,7 @@ describe("sidebar create block", () => {
     const sidebar = read("src/components/Sidebar.tsx");
     const i18n = read("src/hooks/use-i18n.ts");
 
-    expect([...SIDEBAR_SECTION_ORDER]).toEqual(["create", "works", "sessions", "tools", "system"]);
+    expect([...SIDEBAR_SECTION_ORDER]).toEqual(["author", "active-works", "create", "sessions", "tools", "system"]);
     expect([...SIDEBAR_TOOL_ITEM_KEYS]).toEqual(["nav.style", "nav.genreTemplates"]);
     expect([...SIDEBAR_SYSTEM_ITEM_KEYS]).toEqual([
       "nav.config",
@@ -61,19 +61,23 @@ describe("sidebar create block", () => {
       "nav.logs",
     ]);
 
-    const create = sectionIndex(sidebar, "nav.createSection");
+    const author = sectionIndex(sidebar, "sidebar-author");
     const works = sectionIndex(sidebar, "nav.myBooks");
+    const create = sectionIndex(sidebar, "nav.createSection");
     const sessions = sectionIndex(sidebar, "nav.history");
     const tools = sectionIndex(sidebar, "nav.tools");
     const system = sectionIndex(sidebar, "nav.system");
-    expect(create).toBeLessThan(works);
-    expect(works).toBeLessThan(sessions);
+    expect(author).toBeLessThan(works);
+    expect(works).toBeLessThan(create);
+    expect(create).toBeLessThan(sessions);
     expect(sessions).toBeLessThan(tools);
     expect(tools).toBeLessThan(system);
 
     expect(i18n).toMatch(/"nav\.createSection": \{ zh: "开始创作"/);
-    expect(i18n).toMatch(/"nav\.myBooks": \{ zh: "我的创作"/);
-    expect(i18n).toMatch(/"nav\.history": \{ zh: "会话记录"/);
+    expect(i18n).toMatch(/"nav\.myBooks": \{ zh: "在创"/);
+    expect(i18n).toMatch(/"nav\.history": \{ zh: "对谈记录"/);
+    expect(i18n).toMatch(/"nav\.signYourName": \{ zh: "署上你的名字"/);
+    expect(i18n).toMatch(/"dash\.title": \{ zh: "书架"/);
     expect(i18n).toMatch(/"nav\.tools": \{ zh: "工具列表"/);
     expect(i18n).toMatch(/"nav\.system": \{ zh: "系统设置"/);
     expect(i18n).toMatch(/"nav\.style": \{ zh: "文风学习"/);
@@ -188,7 +192,8 @@ describe("works list delete refresh", () => {
   it("drops a deleted book from sidebar and dashboard lists immediately", () => {
     const sidebar = read("src/components/Sidebar.tsx");
     const dashboard = read("src/pages/Dashboard.tsx");
-    const bookDetail = read("src/pages/BookDetail.tsx");
+    const settings = read("src/components/BookSettingsDrawer.tsx");
+    const nav = read("src/components/BookWorkspaceNav.tsx");
 
     expect(sidebar).toMatch(/removeBookFromCollection/);
     expect(sidebar).toMatch(/handleDeleteBookConfirm/);
@@ -201,8 +206,9 @@ describe("works list delete refresh", () => {
     expect(dashboard).toMatch(/bumpBookDataVersion/);
     expect(dashboard).toMatch(/method: "DELETE"/);
 
-    expect(bookDetail).toMatch(/method: "DELETE"/);
-    expect(bookDetail).toMatch(/bumpBookDataVersion/);
-    expect(bookDetail).not.toMatch(/fetch\(`\/api\/v1\/books/);
+    expect(settings).toMatch(/method: "DELETE"/);
+    expect(settings).toMatch(/book-danger-zone/);
+    expect(nav).toMatch(/bumpBookDataVersion/);
+    expect(settings).not.toMatch(/fetch\(`\/api\/v1\/books/);
   });
 });

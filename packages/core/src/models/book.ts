@@ -63,6 +63,7 @@ export const BookConfigSchema = z.object({
   language: z.enum(["zh", "en"]).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  coverImagePath: z.string().min(1).optional(),
   parentBookId: z.string().optional(),
   fanficMode: FanficModeSchema.optional(),
   writing: z.object({

@@ -188,6 +188,17 @@ import {
 import { buildStudioBookConfig } from "./book-create.js";
 import { resolveBookStage } from "../lib/book-stage-io.js";
 import {
+  AUTHOR_AVATAR_MAX_BYTES,
+  AUTHOR_AVATAR_TYPES,
+  clearAuthorAvatar,
+  loadAuthorProfile,
+  normalizeAuthorPatch,
+  readAuthorAvatar,
+  saveAuthorAvatar,
+  saveAuthorProfile,
+  toAuthorPublic,
+} from "../lib/author-io.js";
+import {
   deleteStudioTaskSnapshot,
   loadStudioTaskSnapshot,
   saveStudioTaskSnapshot,
@@ -1850,7 +1861,22 @@ async function loadStudioBookListSummary(
 ): Promise<StudioBookListSummary> {
   const book = await state.loadBookConfig(bookId);
   const nextChapter = await state.getNextChapterNumber(bookId);
-  return { ...book, chaptersWritten: nextChapter - 1 };
+  const chaptersWritten = nextChapter - 1;
+  let stage: string | undefined;
+  try {
+    const payload = await resolveBookStage({
+      bookDir: state.bookDir(bookId),
+      bookExists: true,
+      bookStatus: book.status,
+      targetChapters: book.targetChapters,
+      nextChapter,
+      chaptersWritten,
+    });
+    stage = payload.stage;
+  } catch {
+    // Stage is display-only; a missing workflow file must not hide the book.
+  }
+  return { ...book, chaptersWritten, stage, coverImagePath: book.coverImagePath };
 }
 
 function isCustomServiceId(serviceId: string): boolean {
@@ -3040,6 +3066,66 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       externalContext: overrides?.externalContext,
     };
   }
+
+  // --- Author (project-root `.inkos/author.json`) ---
+
+  app.get("/api/v1/author", async (c) => {
+    const profile = await loadAuthorProfile(root);
+    return c.json(toAuthorPublic(profile));
+  });
+
+  app.put("/api/v1/author", async (c) => {
+    const body = await c.req.json<{ name?: unknown; bio?: unknown }>().catch(() => ({}));
+    const patch = normalizeAuthorPatch(body);
+    if ("error" in patch) {
+      return c.json({ error: patch.error }, 400);
+    }
+    const current = await loadAuthorProfile(root);
+    const saved = await saveAuthorProfile(root, {
+      name: patch.name ?? current.name,
+      bio: patch.bio ?? current.bio,
+      avatarPath: current.avatarPath,
+      updatedAt: new Date().toISOString(),
+    });
+    return c.json(toAuthorPublic(saved));
+  });
+
+  app.get("/api/v1/author/avatar", async (c) => {
+    const file = await readAuthorAvatar(root);
+    if (!file) return c.body(null, 404);
+    return new Response(new Uint8Array(file.bytes), {
+      headers: {
+        "Content-Type": file.contentType,
+        "Cache-Control": "no-cache",
+      },
+    });
+  });
+
+  app.post("/api/v1/author/avatar", async (c) => {
+    const body = await c.req.parseBody().catch(() => ({} as Record<string, unknown>));
+    const file = body.file ?? body.avatar;
+    if (!(file instanceof File)) {
+      return c.json({ error: "请选择头像文件" }, 400);
+    }
+    if (!AUTHOR_AVATAR_TYPES.has(file.type)) {
+      return c.json({ error: "头像只支持 png / jpg / webp" }, 400);
+    }
+    if (file.size > AUTHOR_AVATAR_MAX_BYTES) {
+      return c.json({ error: "头像不能超过 2 MB" }, 400);
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    try {
+      const saved = await saveAuthorAvatar(root, bytes, file.type, file.name);
+      return c.json(toAuthorPublic(saved));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "上传失败" }, 400);
+    }
+  });
+
+  app.delete("/api/v1/author/avatar", async (c) => {
+    const saved = await clearAuthorAvatar(root);
+    return c.json(toAuthorPublic(saved));
+  });
 
   // --- Books ---
 
@@ -6401,6 +6487,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       targetChapters?: number;
       status?: string;
       language?: string;
+      coverImagePath?: string | null;
     }>();
     try {
       const book = await state.loadBookConfig(id);
@@ -6410,6 +6497,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
         ...(updates.targetChapters !== undefined ? { targetChapters: Number(updates.targetChapters) } : {}),
         ...(updates.status !== undefined ? { status: updates.status as typeof book.status } : {}),
         ...(updates.language !== undefined ? { language: updates.language as "zh" | "en" } : {}),
+        ...(updates.coverImagePath !== undefined
+          ? { coverImagePath: updates.coverImagePath || undefined }
+          : {}),
         updatedAt: new Date().toISOString(),
       };
       await state.saveBookConfig(id, updated);

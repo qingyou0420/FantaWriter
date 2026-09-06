@@ -3,8 +3,8 @@ export const SIDEBAR_CREATE_ITEM_KEYS = ["nav.createNovel", "nav.createShort"] a
 
 export type SidebarCreateItemKey = (typeof SIDEBAR_CREATE_ITEM_KEYS)[number];
 
-/** Left-nav section order bound from 清游: create → works → sessions → tools → system. */
-export const SIDEBAR_SECTION_ORDER = ["create", "works", "sessions", "tools", "system"] as const;
+/** Left-nav section order: author → in-progress covers → create → talks → tools → system. */
+export const SIDEBAR_SECTION_ORDER = ["author", "active-works", "create", "sessions", "tools", "system"] as const;
 
 export type SidebarSectionId = (typeof SIDEBAR_SECTION_ORDER)[number];
 

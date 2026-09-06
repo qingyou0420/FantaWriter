@@ -19,6 +19,10 @@ describe("hash route", () => {
       expect(parseHash("#/book/my-novel")).toEqual({ page: "book", bookId: "my-novel" });
     });
 
+    it("parses author route", () => {
+      expect(parseHash("#/author")).toEqual({ page: "author" });
+    });
+
     it("parses four-step aliases and redirects old hashes", () => {
       expect(parseHash("#/book/my-novel/ask")).toEqual({ page: "book-ask", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/ground")).toEqual({ page: "book-ground", bookId: "my-novel" });
@@ -86,6 +90,10 @@ describe("hash route", () => {
   describe("routeToHash", () => {
     it("dashboard -> #/", () => {
       expect(routeToHash({ page: "dashboard" })).toBe("#/");
+    });
+
+    it("author -> #/author", () => {
+      expect(routeToHash({ page: "author" })).toBe("#/author");
     });
 
     it("chat -> #/chat", () => {

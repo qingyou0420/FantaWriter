@@ -6,7 +6,8 @@ import { BrandMark } from "./components/BrandMark";
 import { Dashboard } from "./pages/Dashboard";
 import { ChatPage } from "./pages/ChatPage";
 import { BookDetail } from "./pages/BookDetail";
-import { SerialCockpit } from "./pages/SerialCockpit";
+import { BookStudy } from "./pages/BookStudy";
+import { AuthorPage } from "./pages/AuthorPage";
 import { OutlineWorkspace } from "./pages/OutlineWorkspace";
 import { BookAskPage } from "./pages/BookAskPage";
 import { BookWorkspaceNav } from "./components/BookWorkspaceNav";
@@ -107,6 +108,7 @@ export function App() {
 
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
+    toAuthor: () => setRoute({ page: "author" }),
     toChat: () => setRoute({ page: "chat" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
     toAsk: (bookId: string) => setRoute({ page: "book-ask", bookId }),
@@ -265,6 +267,11 @@ export function App() {
               <Dashboard nav={nav} sse={sse} theme={theme} t={t} />
             </div>
           )}
+          {route.page === "author" && (
+            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <AuthorPage nav={nav} t={t} isZh={currentLang !== "en"} />
+            </div>
+          )}
           {route.page === "short" && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <ShortReader storyId={route.storyId} nav={nav} theme={theme} t={t} />
@@ -304,7 +311,7 @@ export function App() {
           )}
           {(route.page === "book" || route.page === "book-chat") && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
-              <SerialCockpit bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
+              <BookStudy bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "book-ask" && (
@@ -315,7 +322,7 @@ export function App() {
           {route.page === "book-ground" && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <div className="mb-4 flex justify-end">
-                <BookWorkspaceNav bookId={route.bookId} active="ground" nav={nav} isZh={currentLang !== "en"} />
+                <BookWorkspaceNav bookId={route.bookId} active="ground" nav={nav} isZh={currentLang !== "en"} t={t} />
               </div>
               <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />
             </div>

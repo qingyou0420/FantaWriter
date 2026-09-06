@@ -7,7 +7,11 @@
 import { MoreHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchJson } from "../hooks/use-api";
+import type { TFunction } from "../hooks/use-i18n";
 import type { BookStageId, BookStageSnapshot, BookStepState } from "../lib/book-stage";
+import { useChatStore } from "../store/chat";
+import { BookSettingsDrawer } from "./BookSettingsDrawer";
+import { BookToolsDrawer } from "./BookToolsDrawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +41,7 @@ export interface BookWorkspaceNavTarget {
   readonly toWrite?: (bookId: string) => void;
   readonly toTruth?: (bookId: string) => void;
   readonly toAnalytics?: (bookId: string) => void;
+  readonly toDashboard?: () => void;
   readonly onToggleChat?: (bookId: string) => void;
   readonly chatOpen?: boolean;
 }
@@ -70,6 +75,7 @@ export function BookWorkspaceNav({
   isZh,
   chatOpen,
   stage,
+  t,
 }: {
   readonly bookId: string;
   readonly active: BookWorkspaceTab;
@@ -77,10 +83,15 @@ export function BookWorkspaceNav({
   readonly isZh: boolean;
   readonly chatOpen?: boolean;
   readonly stage?: BookStageSnapshot;
+  readonly t?: TFunction;
 }) {
   const current = normalizeBookWorkspaceTab(active);
   const talkOpen = chatOpen ?? Boolean(nav.chatOpen);
   const [loaded, setLoaded] = useState<BookStageSnapshot | null>(stage ?? null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const bumpBookDataVersion = useChatStore((state) => state.bumpBookDataVersion);
+  const copy = t ?? ((key: string) => key);
 
   useEffect(() => {
     if (stage) {
@@ -175,21 +186,40 @@ export function BookWorkspaceNav({
           <span className="sr-only">{isZh ? "更多" : "More"}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => goWrite()}>
+          <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
             {isZh ? "书籍设置" : "Book settings"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setToolsOpen(true)}>
+            {isZh ? "更多工具" : "More tools"}
           </DropdownMenuItem>
           {nav.toTruth && (
             <DropdownMenuItem onClick={() => nav.toTruth?.(bookId)}>
               {isZh ? "真相文件" : "Truth files"}
             </DropdownMenuItem>
           )}
-          {nav.toAnalytics && (
-            <DropdownMenuItem onClick={() => nav.toAnalytics?.(bookId)}>
-              {isZh ? "数据分析" : "Analytics"}
-            </DropdownMenuItem>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
+      <BookSettingsDrawer
+        bookId={bookId}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        t={copy}
+        isZh={isZh}
+        onDeleted={() => {
+          bumpBookDataVersion();
+          setSettingsOpen(false);
+          if (nav.toDashboard) nav.toDashboard();
+          else nav.toBook(bookId);
+        }}
+      />
+      <BookToolsDrawer
+        bookId={bookId}
+        open={toolsOpen}
+        onClose={() => setToolsOpen(false)}
+        t={copy}
+        isZh={isZh}
+        onOpenAnalytics={() => nav.toAnalytics?.(bookId)}
+      />
     </nav>
   );
 }

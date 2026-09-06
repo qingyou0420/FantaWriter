@@ -607,7 +607,8 @@ export class VolumeMapMaterializer extends BaseAgent {
         "Output ONLY markdown chapter headings and 1-3 sentence summaries.",
         "Each chapter must be exactly:",
         "## Chapter N Short Title",
-        "One to three sentences.",
+        "One to three sentences of summary on the next line. Do not put the summary in the title.",
+        "Short title ≤ 12 characters. Never emit a chapter range as one node.",
         "Do not emit volume headings, tables, or commentary.",
         `Write every chapter in this set: ${needed.join(", ")}.`,
       ].join("\n")
@@ -616,7 +617,9 @@ export class VolumeMapMaterializer extends BaseAgent {
         "只输出章标题和 1-3 句提要，不要写卷标题、表格或解释。",
         "每一章必须是：",
         "## 第 N 章 短标题",
-        "一两句到三句内容提要。",
+        "提要另起一行，一两句到三句。不要把提要写进标题。",
+        "短标题不超过 12 字。禁止输出「第a–b章」这种范围节点。",
+        "卷标题如果出现，只能是「## 第N卷 卷名（第a–b章）」。",
         `必须写全这些章号：${needed.join("、")}。`,
       ].join("\n");
     const user = params.language === "en"
@@ -642,8 +645,8 @@ export class VolumeMapMaterializer extends BaseAgent {
         if (!node) return null;
         return {
           chapterNumber: number,
-          title: node.title || (params.language === "en" ? `Beat ${number}` : `节点${number}`),
-          summary: node.summary || node.title,
+          title: (node.title || (params.language === "en" ? `Beat ${number}` : `第${number}章`)).trim().slice(0, 12),
+          summary: node.summary || (node.title.length > 12 ? node.title : ""),
         };
       })
       .filter((chapter): chapter is AssembledVolumeChapter => chapter != null);

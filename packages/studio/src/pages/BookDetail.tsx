@@ -1,35 +1,33 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
-import { useChatStore } from "../store/chat";
 import { SerialCockpitStrip, startDraft, startWriteNext } from "../components/SerialCockpitStrip";
 import { BookWorkspaceNav } from "../components/BookWorkspaceNav";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
-import { useColors } from "../hooks/use-colors";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { bookManuscriptExportPath } from "../lib/work-export";
+import { hasPreviousChapterUnapprovedReason, isMustFixSeverity, mapAuditCategory, mapAuditSeverity } from "../lib/copy-map";
+import { writeEmptyCopy } from "../lib/stage-copy";
+import type { BookStageSnapshot } from "../lib/book-stage";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import {
   ChevronLeft,
   Zap,
   FileText,
-  CheckCheck,
-  BarChart2,
   Download,
-  Search,
-  Wand2,
   Eye,
-  Database,
   Check,
   X,
   ShieldCheck,
   RotateCcw,
   RefreshCw,
-  Sparkles,
-  Trash2,
-  Save,
-  Hand,
+  ChevronDown,
   Settings2
 } from "lucide-react";
 
@@ -57,7 +55,6 @@ interface BookData {
 
 type ReviseMode = "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect";
 type ExportFormat = "txt" | "md" | "epub";
-type BookStatus = "active" | "paused" | "outlining" | "completed" | "dropped";
 
 interface Nav {
   toDashboard: () => void;
@@ -93,7 +90,7 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = 
 export function BookDetail({
   bookId,
   nav,
-  theme,
+  theme: _theme,
   t,
   sse,
 }: {
@@ -103,20 +100,14 @@ export function BookDetail({
   t: TFunction;
   sse: { messages: ReadonlyArray<SSEMessage> };
 }) {
-  const c = useColors(theme);
-  const bumpBookDataVersion = useChatStore((s) => s.bumpBookDataVersion);
   const { data, loading, error, refetch } = useApi<BookData>(`/books/${bookId}`);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [writeRequestPending, setWriteRequestPending] = useState(false);
   const [draftRequestPending, setDraftRequestPending] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [stage, setStage] = useState<BookStageSnapshot | null>(null);
   const [rewritingChapters, setRewritingChapters] = useState<ReadonlyArray<number>>([]);
   const [revisingChapters, setRevisingChapters] = useState<ReadonlyArray<number>>([]);
   const [syncingChapters, setSyncingChapters] = useState<ReadonlyArray<number>>([]);
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [settingsWordCount, setSettingsWordCount] = useState<number | null>(null);
-  const [settingsTargetChapters, setSettingsTargetChapters] = useState<number | null>(null);
-  const [settingsStatus, setSettingsStatus] = useState<BookStatus | null>(null);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("txt");
   const [exportApprovedOnly, setExportApprovedOnly] = useState(false);
   const [bookActionPending, setBookActionPending] = useState<string | null>(null);
@@ -125,7 +116,7 @@ export function BookDetail({
   // the current book, with project-level mode as the inherited default.
   const [reviewMode, setReviewMode] = useState<"auto" | "manual">("auto");
   const [skipPreviousApproval, setSkipPreviousApproval] = useState(false);
-  const [preflightOk, setPreflightOk] = useState(true);
+  const [preflight, setPreflight] = useState<{ ok: boolean; reasons: Array<{ code?: string; message?: string; messageZh?: string; chapterNumber?: number }> } | null>(null);
   const [reviewQueue, setReviewQueue] = useState<ReadonlyArray<{
     chapterNumber: number;
     severity: string;
@@ -168,12 +159,15 @@ export function BookDetail({
 
   useEffect(() => {
     const query = skipPreviousApproval ? "?skipPreviousApproval=1" : "";
-    void fetchJson<{ ok: boolean }>(`/books/${bookId}/write-preflight${query}`)
-      .then((body) => setPreflightOk(body.ok))
-      .catch(() => setPreflightOk(true));
+    void fetchJson<{ ok: boolean; reasons?: Array<{ code?: string; message?: string; messageZh?: string; chapterNumber?: number }> }>(`/books/${bookId}/write-preflight${query}`)
+      .then((body) => setPreflight({ ok: body.ok, reasons: body.reasons ?? [] }))
+      .catch(() => setPreflight({ ok: true, reasons: [] }));
     void fetchJson<{ items?: Array<{ chapterNumber: number; severity: string; category: string; description: string }> }>(`/books/${bookId}/review-queue`)
       .then((body) => setReviewQueue(body.items ?? []))
       .catch(() => setReviewQueue([]));
+    void fetchJson<BookStageSnapshot>(`/books/${bookId}/stage`)
+      .then(setStage)
+      .catch(() => setStage(null));
   }, [bookId, skipPreviousApproval, data?.nextChapter, activity.lastError]);
 
   const handleWriteNext = async () => {
@@ -182,7 +176,7 @@ export function BookDetail({
       await startWriteNext(bookId, skipPreviousApproval);
     } catch (e) {
       setWriteRequestPending(false);
-      alert(e instanceof Error ? e.message : "Failed");
+      setActionMessage(e instanceof Error ? e.message : "Failed");
     }
   };
 
@@ -192,7 +186,7 @@ export function BookDetail({
       await startDraft(bookId, skipPreviousApproval);
     } catch (e) {
       setDraftRequestPending(false);
-      alert(e instanceof Error ? e.message : "Failed");
+      setActionMessage(e instanceof Error ? e.message : "Failed");
     }
   };
 
@@ -207,20 +201,6 @@ export function BookDetail({
       });
     } catch {
       setReviewMode(reviewMode); // revert on failure
-    }
-  };
-
-  const handleDeleteBook = async () => {
-    setConfirmDeleteOpen(false);
-    setDeleting(true);
-    try {
-      await fetchJson(`/books/${encodeURIComponent(bookId)}`, { method: "DELETE" });
-      bumpBookDataVersion();
-      nav.toDashboard();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -241,7 +221,7 @@ export function BookDetail({
       });
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Rewrite failed");
+      setActionMessage(e instanceof Error ? e.message : "Rewrite failed");
     } finally {
       setRewritingChapters((prev) => prev.filter((n) => n !== chapterNum));
     }
@@ -264,7 +244,7 @@ export function BookDetail({
       });
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Revision failed");
+      setActionMessage(e instanceof Error ? e.message : "Revision failed");
     } finally {
       setRevisingChapters((prev) => prev.filter((n) => n !== chapterNum));
     }
@@ -287,30 +267,9 @@ export function BookDetail({
       });
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Sync failed");
+      setActionMessage(e instanceof Error ? e.message : "Sync failed");
     } finally {
       setSyncingChapters((prev) => prev.filter((n) => n !== chapterNum));
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    if (!data) return;
-    setSavingSettings(true);
-    try {
-      const body: Record<string, unknown> = {};
-      if (settingsWordCount !== null) body.chapterWordCount = settingsWordCount;
-      if (settingsTargetChapters !== null) body.targetChapters = settingsTargetChapters;
-      if (settingsStatus !== null) body.status = settingsStatus;
-      await fetchJson(`/books/${bookId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      refetch();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSavingSettings(false);
     }
   };
 
@@ -323,11 +282,11 @@ export function BookDetail({
         await postApi(`/books/${bookId}/chapters/${chapter.number}/approve`, {});
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
-        if (/critical/i.test(message) || /APPROVE_BLOCKED/.test(String(error))) {
+        if (/critical|须处理|APPROVE_BLOCKED/i.test(message) || /APPROVE_BLOCKED/.test(String(error))) {
           const why = window.prompt(
             data?.book.language === "en"
-              ? `Chapter ${chapter.number} has critical issues. Type an override reason or cancel.`
-              : `第 ${chapter.number} 章仍有 critical 问题。输入带病定稿原因，或取消。`,
+              ? `Chapter ${chapter.number} still has must-fix issues. Type an override reason or cancel.`
+              : `第 ${chapter.number} 章仍有须处理的问题。输入带病定稿原因，或取消。`,
             "",
           );
           if (!why?.trim()) {
@@ -348,7 +307,7 @@ export function BookDetail({
       }
     }
     if (failed > 0) {
-      alert(`${failed}/${reviewable.length} approve(s) failed`);
+      setActionMessage(`${failed}/${reviewable.length} approve(s) failed`);
     }
     refetch();
   };
@@ -356,103 +315,13 @@ export function BookDetail({
   const runBookAction = async (key: string, action: () => Promise<string>) => {
     setBookActionPending(key);
     try {
-      alert(await action());
+      setActionMessage(await action());
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Action failed");
+      setActionMessage(e instanceof Error ? e.message : "Action failed");
     } finally {
       setBookActionPending(null);
     }
-  };
-
-  const handleEvaluate = async () => {
-    await runBookAction("eval", async () => {
-      const result = await fetchJson<{
-        qualityScore: number;
-        totalChapters: number;
-        totalWords: number;
-        auditPassRate: number;
-        avgAiTellDensity: number;
-        hookResolveRate: number;
-      }>(`/books/${bookId}/eval`);
-      return [
-        `${t("book.evaluate")}: ${result.qualityScore}/100`,
-        `${t("dash.chapters")}: ${result.totalChapters}`,
-        `${t("book.words")}: ${result.totalWords.toLocaleString()}`,
-        `Audit: ${result.auditPassRate}%`,
-        `AI tells: ${result.avgAiTellDensity}/1k`,
-        `Hooks: ${result.hookResolveRate}%`,
-      ].join("\n");
-    });
-  };
-
-  const handleConsolidate = async () => {
-    await runBookAction("consolidate", async () => {
-      const result = await fetchJson<{ archivedVolumes?: number; retainedChapters?: number }>(`/books/${bookId}/consolidate`, {
-        method: "POST",
-      });
-      return data?.book.language === "en"
-        ? `Consolidated ${result.archivedVolumes ?? 0} volume(s). Retained ${result.retainedChapters ?? 0} recent chapter summaries.`
-        : `已归并 ${result.archivedVolumes ?? 0} 个卷摘要，保留最近 ${result.retainedChapters ?? 0} 条章节摘要。`;
-    });
-  };
-
-  const handleReviseFoundation = async () => {
-    const feedback = window.prompt(
-      data?.book.language === "en"
-        ? "Foundation revision feedback. This rewrites the book foundation, not chapter body."
-        : "输入重修基础设定的反馈。此操作会重写基础设定，不直接改正文。",
-      "",
-    );
-    if (!feedback?.trim()) return;
-    await runBookAction("revise-foundation", async () => {
-      await fetchJson(`/books/${bookId}/foundation/revise`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback }),
-      });
-      return data?.book.language === "en" ? "Foundation revised." : "基础设定已重修。";
-    });
-  };
-
-  const handlePlan = async () => {
-    const context = window.prompt(
-      data?.book.language === "en"
-        ? "Optional planning context for the next chapter."
-        : "可选：下一章规划补充说明。",
-      "",
-    );
-    if (context === null) return;
-    await runBookAction("plan", async () => {
-      const result = await fetchJson<{ chapterNumber?: number; title?: string }>(`/books/${bookId}/plan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ context: context.trim() || undefined }),
-      });
-      return data?.book.language === "en"
-        ? `Planned chapter ${result.chapterNumber ?? "?"}: ${result.title ?? ""}`
-        : `已计划第 ${result.chapterNumber ?? "?"} 章：${result.title ?? ""}`;
-    });
-  };
-
-  const handleCompose = async () => {
-    const context = window.prompt(
-      data?.book.language === "en"
-        ? "Optional compose context for the next chapter."
-        : "可选：下一章组装补充说明。",
-      "",
-    );
-    if (context === null) return;
-    await runBookAction("compose", async () => {
-      const result = await fetchJson<{ chapterNumber?: number; title?: string }>(`/books/${bookId}/compose`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ context: context.trim() || undefined }),
-      });
-      return data?.book.language === "en"
-        ? `Composed chapter ${result.chapterNumber ?? "?"}: ${result.title ?? ""}`
-        : `已组装第 ${result.chapterNumber ?? "?"} 章：${result.title ?? ""}`;
-    });
   };
 
   const handleRepairState = async (chapterNum: number) => {
@@ -476,9 +345,14 @@ export function BookDetail({
   const totalWords = chapters.reduce((sum, ch) => sum + (ch.wordCount ?? 0), 0);
   const reviewCount = chapters.filter((ch) => ch.status === "ready-for-review").length;
 
-  const currentWordCount = settingsWordCount ?? book.chapterWordCount;
-  const currentTargetChapters = settingsTargetChapters ?? book.targetChapters ?? 0;
-  const currentStatus = settingsStatus ?? (book.status as BookStatus);
+  const preflightOk = preflight?.ok !== false;
+  const showSkip = hasPreviousChapterUnapprovedReason(preflight?.reasons ?? []);
+  const isZh = book.language !== "en";
+  const emptyCopy = writeEmptyCopy({
+    hasOutline: stage?.stage === "write" || Boolean(stage?.steps.weave === "done"),
+    previousUnapproved: showSkip ? (preflight?.reasons.find((reason) => reason.chapterNumber)?.chapterNumber) : undefined,
+    isZh,
+  });
 
   const exportHref = bookManuscriptExportPath(bookId, exportFormat, exportApprovedOnly);
 
@@ -498,12 +372,11 @@ export function BookDetail({
           {book.title}
         </button>
         <span className="text-border">/</span>
-        <span className="text-foreground">{book.language === "en" ? "Write" : "落笔"}</span>
+        <span className="text-foreground">{isZh ? "落笔" : "Write"}</span>
       </nav>
-      <BookWorkspaceNav bookId={bookId} active="write" nav={nav} isZh={book.language !== "en"} />
+      <BookWorkspaceNav bookId={bookId} active="write" nav={nav} isZh={isZh} t={t} />
       </div>
 
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border/40 pb-8">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
@@ -513,7 +386,7 @@ export function BookDetail({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground font-medium">
-            <span className="px-2 py-0.5 rounded bg-secondary/50 text-foreground/70 uppercase tracking-wider text-xs">{book.genre}</span>
+            <span className="px-2 py-0.5 rounded bg-secondary/50 text-foreground/70 text-xs">{book.genre}</span>
             <div className="flex items-center gap-1.5">
               <FileText size={14} />
               <span>{chapters.length} {t("dash.chapters")}</span>
@@ -522,59 +395,85 @@ export function BookDetail({
               <Zap size={14} />
               <span>{totalWords.toLocaleString()} {t("book.words")}</span>
             </div>
-            {book.fanficMode && (
-              <span className="flex items-center gap-1 text-purple-500">
-                <Sparkles size={12} />
-                <span className="italic">fanfic:{book.fanficMode}</span>
-              </span>
-            )}
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={handleWriteNext}
-            disabled={writing || drafting || !preflightOk}
-            title={!preflightOk ? (data?.book.language === "en" ? "Write blocked until outline/intent gates pass" : "落墨被闸：先补大纲/意图或带病续写") : undefined}
-            className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
-          >
-            {writing ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Zap size={16} />}
-            {writing ? t("dash.writing") : (data?.book.language === "en" ? "落墨 · Write next" : "落墨 · 写下一章")}
-          </button>
-          <button
-            onClick={handleDraft}
-            disabled={writing || drafting || !preflightOk}
-            className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-all border border-border/50 disabled:opacity-50"
-          >
-            {drafting ? <div className="w-4 h-4 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" /> : <Wand2 size={16} />}
-            {drafting ? t("book.drafting") : t("book.draftOnly")}
-          </button>
-          <button
-            onClick={handleToggleReviewMode}
-            title={reviewMode === "manual"
-              ? "手动审查：写完即停，由你点 审稿/修订/通过（更快、更可控）。点此切回自动。"
-              : "自动审查：写完自动审校并按需重写（更省心，但更慢）。点此切到手动·写完即停。"}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-secondary/60 text-foreground rounded-xl border border-border/50 hover:bg-secondary transition-all"
-          >
-            {reviewMode === "manual" ? <Hand size={16} /> : <Settings2 size={16} />}
-            {reviewMode === "manual" ? "审查：手动·写完即停" : "审查：自动"}
-          </button>
-          <button
-            onClick={() => setConfirmDeleteOpen(true)}
-            disabled={deleting}
-            className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-destructive/10 text-destructive rounded-xl hover:bg-destructive hover:text-white transition-all border border-destructive/20 disabled:opacity-50"
-          >
-            {deleting ? <div className="w-4 h-4 border-2 border-destructive/20 border-t-destructive rounded-full animate-spin" /> : <Trash2 size={16} />}
-            {deleting ? t("common.loading") : t("book.deleteBook")}
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-xl border border-border/50 bg-secondary/50 px-4 py-2.5 text-sm font-medium">
+              <Download size={14} />
+              {t("book.exportMenu")}
+              <ChevronDown size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 p-2 space-y-2">
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                className="w-full rounded-md border border-border/50 bg-background px-2 py-1.5 text-xs"
+              >
+                <option value="txt">TXT</option>
+                <option value="md">MD</option>
+                <option value="epub">EPUB</option>
+              </select>
+              <label className="flex items-center gap-1.5 text-xs">
+                <input type="checkbox" checked={exportApprovedOnly} onChange={(e) => setExportApprovedOnly(e.target.checked)} />
+                {t("book.approvedOnly")}
+              </label>
+              <a href={exportHref} download data-testid="book-export-manuscript" className="block rounded-md px-2 py-1.5 text-xs hover:bg-secondary">
+                {t("book.export")}
+              </a>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const exported = await fetchJson<{ path?: string; chapters?: number }>(`/books/${bookId}/export-save`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ format: exportFormat, approvedOnly: exportApprovedOnly }),
+                    });
+                    setBookActionPending(`saved:${exported.path ?? ""}`);
+                  } catch (e) {
+                    setBookActionPending(e instanceof Error ? e.message : "Export failed");
+                  }
+                }}
+                className="block w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-secondary"
+              >
+                {t("book.exportSave")}
+              </button>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <div className="inline-flex overflow-hidden rounded-xl bg-primary text-primary-foreground">
+            <button
+              type="button"
+              onClick={handleWriteNext}
+              disabled={writing || drafting || !preflightOk}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold disabled:opacity-50"
+              data-testid="write-next-primary"
+            >
+              {writing ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Zap size={16} />}
+              {writing ? t("dash.writing") : t("cockpit.writeNext")}
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="border-l border-primary-foreground/20 px-2">
+                <ChevronDown size={14} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void handleDraft()}>{t("book.draftOnly")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleToggleReviewMode()}>
+                  {reviewMode === "manual" ? t("book.reviewManual") : t("book.reviewAuto")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 
       <SerialCockpitStrip
         bookId={bookId}
-        isZh={book.language !== "en"}
+        isZh={isZh}
         skipPreviousApproval={skipPreviousApproval}
         onSkipChange={setSkipPreviousApproval}
+        showSkip={showSkip}
         onJumpOutline={() => nav.toOutline(bookId)}
         onJumpReview={(chapterNumber) => {
           if (chapterNumber) nav.toChapter(bookId, chapterNumber);
@@ -583,21 +482,28 @@ export function BookDetail({
 
       {reviewQueue.length > 0 && (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 space-y-2" data-testid="review-queue">
-          <div className="text-sm font-medium">{book.language === "en" ? "Review queue" : "审稿队列"}</div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">{isZh ? "等你过目" : "Review queue"}</div>
+            {reviewCount > 0 && (
+              <button type="button" onClick={handleApproveAll} className="text-xs font-medium text-emerald-600">
+                {t("book.approveAll")} ({reviewCount})
+              </button>
+            )}
+          </div>
           <ul className="space-y-1 text-sm">
             {reviewQueue.slice(0, 12).map((item, index) => (
               <li key={`${item.chapterNumber}-${item.category}-${index}`}>
-                <span className={item.severity === "critical" ? "text-destructive font-medium" : "text-muted-foreground"}>
-                  [{item.severity}]
+                <span className={isMustFixSeverity(item.severity) ? "text-destructive font-medium" : "text-muted-foreground"}>
+                  {mapAuditSeverity(item.severity, isZh)}
                 </span>{" "}
-                {book.language === "en" ? "Ch." : "第"}{item.chapterNumber} · {item.category}: {item.description}
+                {isZh ? "第" : "Ch."}{item.chapterNumber} · {mapAuditCategory(item.category, isZh)}: {item.description}
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {(writing || drafting || activity.lastError) && (
+      {(writing || drafting || activity.lastError || actionMessage || (typeof bookActionPending === "string" && bookActionPending.startsWith("saved:"))) && (
         <div
           className={`rounded-2xl border px-4 py-3 text-sm ${
             activity.lastError
@@ -606,177 +512,18 @@ export function BookDetail({
           }`}
         >
           {activity.lastError ? (
-            <span>
-              {t("book.pipelineFailed")}: {activity.lastError}
-            </span>
+            <span>{t("book.pipelineFailed")}: {activity.lastError}</span>
           ) : writing ? (
             <span>{t("book.pipelineWriting")}</span>
-          ) : (
+          ) : drafting ? (
             <span>{t("book.pipelineDrafting")}</span>
+          ) : actionMessage ? (
+            <span className="whitespace-pre-wrap">{actionMessage}</span>
+          ) : (
+            <span>{t("common.exportSuccess")}</span>
           )}
         </div>
       )}
-
-      {/* Tool Strip */}
-      <div className="flex flex-wrap items-center gap-2 py-1">
-          {reviewCount > 0 && (
-            <button
-              onClick={handleApproveAll}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-emerald-500/10 text-emerald-600 rounded-lg hover:bg-emerald-500/20 transition-all border border-emerald-500/20"
-            >
-              <CheckCheck size={14} />
-              {t("book.approveAll")} ({reviewCount})
-            </button>
-          )}
-          <button
-            onClick={() => nav.toTruth(bookId)}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
-          >
-            <Database size={14} />
-            {t("book.truthFiles")}
-          </button>
-          <button
-            onClick={() => nav.toAnalytics(bookId)}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
-          >
-            <BarChart2 size={14} />
-            {t("book.analytics")}
-          </button>
-          <button
-            onClick={handleEvaluate}
-            disabled={bookActionPending === "eval"}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50 disabled:opacity-50"
-          >
-            <Search size={14} />
-            {bookActionPending === "eval" ? t("common.loading") : t("book.evaluate")}
-          </button>
-          <button
-            onClick={handleConsolidate}
-            disabled={bookActionPending === "consolidate"}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50 disabled:opacity-50"
-          >
-            <Database size={14} />
-            {bookActionPending === "consolidate" ? t("common.loading") : t("book.consolidate")}
-          </button>
-          <button
-            onClick={handleReviseFoundation}
-            disabled={bookActionPending === "revise-foundation"}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50 disabled:opacity-50"
-          >
-            <Sparkles size={14} />
-            {bookActionPending === "revise-foundation" ? t("common.loading") : t("book.reviseFoundation")}
-          </button>
-          <button
-            onClick={handlePlan}
-            disabled={bookActionPending === "plan"}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50 disabled:opacity-50"
-          >
-            <FileText size={14} />
-            {bookActionPending === "plan" ? t("common.loading") : (data?.book.language === "en" ? "织卷 · Plan next" : "织卷 · 规划下一章")}
-          </button>
-          <button
-            onClick={handleCompose}
-            disabled={bookActionPending === "compose"}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50 disabled:opacity-50"
-          >
-            <Wand2 size={14} />
-            {bookActionPending === "compose" ? t("common.loading") : t("book.composeNext")}
-          </button>
-          <div className="flex items-center gap-2">
-            <select
-              value={exportFormat}
-              onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-              className="px-2 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg border border-border/50 outline-none"
-            >
-              <option value="txt">TXT</option>
-              <option value="md">MD</option>
-              <option value="epub">EPUB</option>
-            </select>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={exportApprovedOnly}
-                onChange={(e) => setExportApprovedOnly(e.target.checked)}
-                className="rounded border-border/50"
-              />
-              {t("book.approvedOnly")}
-            </label>
-            <a
-              href={exportHref}
-              download
-              data-testid="book-export-manuscript"
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
-            >
-              <Download size={14} />
-              {t("book.export")}
-            </a>
-            <button
-              onClick={async () => {
-                try {
-                  const data = await fetchJson<{ path?: string; chapters?: number }>(`/books/${bookId}/export-save`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ format: exportFormat, approvedOnly: exportApprovedOnly }),
-                  });
-                  alert(`${t("common.exportSuccess")}\n${data.path}\n(${data.chapters} ${t("dash.chapters")})`);
-                } catch (e) {
-                  alert(e instanceof Error ? e.message : "Export failed");
-                }
-              }}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary/50 text-muted-foreground rounded-lg hover:text-foreground hover:bg-secondary transition-all border border-border/50"
-            >
-              <Download size={14} />
-              {t("book.exportSave")}
-            </button>
-          </div>
-      </div>
-
-      {/* Book Settings */}
-      <div className="paper-sheet rounded-2xl border border-border/40 shadow-sm p-6">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4">{t("book.settings")}</h2>
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{t("create.wordsPerChapter")}</label>
-            <input
-              type="number"
-              value={currentWordCount}
-              onChange={(e) => setSettingsWordCount(Number(e.target.value))}
-              className="px-3 py-2 text-sm rounded-lg border border-border/50 bg-secondary/30 outline-none focus:border-primary/50 w-32"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{t("create.targetChapters")}</label>
-            <input
-              type="number"
-              value={currentTargetChapters}
-              onChange={(e) => setSettingsTargetChapters(Number(e.target.value))}
-              className="px-3 py-2 text-sm rounded-lg border border-border/50 bg-secondary/30 outline-none focus:border-primary/50 w-32"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{t("book.status")}</label>
-            <select
-              value={currentStatus}
-              onChange={(e) => setSettingsStatus(e.target.value as BookStatus)}
-              className="px-3 py-2 text-sm rounded-lg border border-border/50 bg-secondary/30 outline-none focus:border-primary/50"
-            >
-              <option value="active">{t("book.statusActive")}</option>
-              <option value="paused">{t("book.statusPaused")}</option>
-              <option value="outlining">{t("book.statusOutlining")}</option>
-              <option value="completed">{t("book.statusCompleted")}</option>
-              <option value="dropped">{t("book.statusDropped")}</option>
-            </select>
-          </div>
-          <button
-            onClick={handleSaveSettings}
-            disabled={savingSettings}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
-          >
-            {savingSettings ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Save size={14} />}
-            {savingSettings ? t("book.saving") : t("book.save")}
-          </button>
-        </div>
-      </div>
 
       {/* Chapters Table */}
       <div className="paper-sheet rounded-2xl overflow-hidden border border-border/40 shadow-xl shadow-primary/5">
@@ -824,12 +571,12 @@ export function BookDetail({
                               } catch (e) {
                                 const why = window.prompt(
                                   data?.book.language === "en"
-                                    ? "Critical issues block approve. Type override reason or cancel."
-                                    : "critical 问题阻止通过。输入带病定稿原因，或取消。",
+                                    ? "Must-fix issues block approve. Type override reason or cancel."
+                                    : "须处理的问题阻止通过。输入带病定稿原因，或取消。",
                                   "",
                                 );
                                 if (!why?.trim()) {
-                                  alert(e instanceof Error ? e.message : "Approve failed");
+                                  setActionMessage(e instanceof Error ? e.message : "Approve failed");
                                   return;
                                 }
                                 try {
@@ -838,7 +585,7 @@ export function BookDetail({
                                   });
                                   refetch();
                                 } catch (retry) {
-                                  alert(retry instanceof Error ? retry.message : "Approve failed");
+                                  setActionMessage(retry instanceof Error ? retry.message : "Approve failed");
                                 }
                               }
                             }}
@@ -850,7 +597,7 @@ export function BookDetail({
                           <button
                             onClick={async () => {
                               try { await postApi(`/books/${bookId}/chapters/${ch.number}/reject`); refetch(); }
-                              catch (e) { alert(e instanceof Error ? e.message : "Reject failed"); }
+                              catch (e) { setActionMessage(e instanceof Error ? e.message : "Reject failed"); }
                             }}
                             className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-white transition-all shadow-sm"
                             title={data?.book.language === "en" ? "Rollback this chapter" : "回滚本章"}
@@ -863,10 +610,12 @@ export function BookDetail({
                         onClick={async () => {
                           try {
                             const auditResult = await fetchJson<{ passed?: boolean; issues?: unknown[] }>(`/books/${bookId}/audit/${ch.number}`, { method: "POST" });
-                            alert(auditResult.passed ? "Audit passed" : `Audit failed: ${auditResult.issues?.length ?? 0} issues`);
+                            setActionMessage(auditResult.passed
+                              ? (isZh ? "审校已通过" : "Audit passed")
+                              : (isZh ? `审校未过：${auditResult.issues?.length ?? 0} 条` : `Audit failed: ${auditResult.issues?.length ?? 0} issues`));
                             refetch();
                           } catch (e) {
-                            alert(e instanceof Error ? e.message : "Audit failed");
+                            setActionMessage(e instanceof Error ? e.message : "Audit failed");
                           }
                         }}
                         className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all shadow-sm"
@@ -933,27 +682,29 @@ export function BookDetail({
         </div>
 
         {chapters.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-12 h-12 rounded-full bg-muted/20 flex items-center justify-center mb-4">
-               <FileText size={20} className="text-muted-foreground/40" />
-            </div>
-            <p className="text-sm italic font-serif text-muted-foreground">
-              {t("book.noChapters")}
-            </p>
+          <div className="flex flex-col items-center justify-center py-20 text-center" data-testid="write-empty">
+            <p className="font-serif text-lg">{emptyCopy.title}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{emptyCopy.subtitle}</p>
+            {emptyCopy.target === "weave" && (
+              <button type="button" onClick={() => nav.toOutline(bookId)} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+                {emptyCopy.action}
+              </button>
+            )}
+            {emptyCopy.target === "write" && Boolean(showSkip) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const chapter = preflight?.reasons.find((reason) => reason.chapterNumber)?.chapterNumber;
+                  if (chapter) nav.toChapter(bookId, chapter);
+                }}
+                className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+              >
+                {emptyCopy.action}
+              </button>
+            )}
           </div>
         )}
       </div>
-
-      <ConfirmDialog
-        open={confirmDeleteOpen}
-        title={t("book.deleteBook")}
-        message={t("book.confirmDelete")}
-        confirmLabel={t("common.delete")}
-        cancelLabel={t("common.cancel")}
-        variant="danger"
-        onConfirm={handleDeleteBook}
-        onCancel={() => setConfirmDeleteOpen(false)}
-      />
     </div>
   );
 }
