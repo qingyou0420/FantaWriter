@@ -28,8 +28,8 @@ export function BookBusyCard() {
   const bookId = owner?.bookId;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 backdrop-blur-sm">
-      <div className="w-full max-w-lg mx-4 rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-foreground/20 fade-in-150">
+      <div className="w-full max-w-lg mx-4 rounded-2xl border border-border bg-card p-6 space-y-4">
         <div>
           <h2 className="text-lg font-semibold">写入被占用</h2>
           <p className="mt-2 text-sm text-muted-foreground break-words">{error.message}</p>

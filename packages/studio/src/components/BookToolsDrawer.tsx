@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { fetchJson } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
+import { Drawer } from "./ui/drawer";
 
 export function BookToolsDrawer({
   bookId,
@@ -26,8 +27,6 @@ export function BookToolsDrawer({
   const [pending, setPending] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  if (!open) return null;
-
   const run = async (key: string, action: () => Promise<string>) => {
     setPending(key);
     setMessage(null);
@@ -41,17 +40,8 @@ export function BookToolsDrawer({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex justify-end bg-black/30" onClick={onClose} data-testid="book-tools-drawer">
-      <aside
-        className="h-full w-full max-w-md overflow-y-auto border-l border-border bg-card px-5 py-6 space-y-4"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium">{t("book.moreTools")}</h2>
-          <button type="button" onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground">
-            {isZh ? "关闭" : "Close"}
-          </button>
-        </div>
+    <Drawer open={open} title={t("book.moreTools")} onClose={onClose} testId="book-tools-drawer">
+      <div className="space-y-4">
         <ToolRow
           label={t("book.analytics")}
           hint={isZh ? "看字数、通过率和伏笔回收。" : "Words, pass rate, and hook resolve."}
@@ -91,8 +81,8 @@ export function BookToolsDrawer({
           })}
         />
         {message && <p className="whitespace-pre-wrap text-sm text-muted-foreground" data-testid="book-tools-message">{message}</p>}
-      </aside>
-    </div>
+      </div>
+    </Drawer>
   );
 }
 
@@ -112,7 +102,7 @@ function ToolRow({
       type="button"
       onClick={onClick}
       disabled={pending}
-      className="w-full rounded-xl border border-border/50 px-4 py-3 text-left hover:bg-secondary/40 disabled:opacity-50"
+      className="w-full rounded-xl border border-border px-4 py-3 text-left hover:bg-accent disabled:opacity-50"
     >
       <div className="text-sm font-medium">{pending ? "…" : label}</div>
       <div className="mt-1 text-xs text-muted-foreground">{hint}</div>

@@ -298,6 +298,81 @@ h3 { font-size: 1.25rem; }
   animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+.fade-in-150 {
+  animation: fadeIn 150ms ease-out forwards;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 40px;
+  padding: 0 1.25rem;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid transparent;
+}
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:disabled { opacity: 0.4; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 40px;
+  padding: 0 1.25rem;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  border-radius: 10px;
+  background: var(--secondary);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: var(--accent); }
+.btn-secondary:disabled { opacity: 0.4; }
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  height: 32px;
+  padding: 0 0.5rem;
+  font-size: 14px;
+  font-weight: 450;
+  line-height: 20px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  border: 1px solid transparent;
+}
+.btn-ghost:hover { background: var(--accent); color: var(--foreground); }
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 40px;
+  padding: 0 1.25rem;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  border-radius: 10px;
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  border: 1px solid transparent;
+}
+.btn-danger:hover { opacity: 0.92; }
+.btn-danger:disabled { opacity: 0.4; }
+
 .stagger-1 { animation-delay: 0.05s; opacity: 0; }
 .stagger-2 { animation-delay: 0.1s; opacity: 0; }
 .stagger-3 { animation-delay: 0.15s; opacity: 0; }

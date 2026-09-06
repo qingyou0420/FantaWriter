@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { putApi, useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
+import { deleteStudioShortWork } from "../lib/short-api";
+import { showToast } from "../lib/toast";
 import { shortManuscriptExportPath } from "../lib/work-export";
 import type { StudioShortDetail } from "../shared/short-works";
 
@@ -21,6 +23,8 @@ export function ShortSettings({ storyId, nav, t }: {
   const [direction, setDirection] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const isZh = t("nav.connected") === "已连接";
 
   useEffect(() => {
     if (!data) return;
@@ -47,28 +51,25 @@ export function ShortSettings({ storyId, nav, t }: {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await deleteStudioShortWork(storyId);
+      setDeleteOpen(false);
+      nav.toDashboard();
+    } catch (deleteError) {
+      showToast(deleteError instanceof Error ? deleteError.message : t("common.error"), "error");
+    }
+  };
+
   if (loading) return <div className="text-muted-foreground">{t("common.loading")}</div>;
   if (error) return <div className="text-destructive">{t("common.error")}: {error}</div>;
   if (!data) return null;
 
   return (
     <div className="space-y-8">
-      <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-        <button type="button" onClick={nav.toDashboard} className="hover:text-primary transition-colors flex items-center gap-1">
-          <ChevronLeft size={14} />
-          {t("bread.books")}
-        </button>
-        <span className="text-border">/</span>
-        <button type="button" onClick={() => nav.toShort(storyId)} className="hover:text-primary">
-          {data.title}
-        </button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("short.settings")}</span>
-      </nav>
-
       <div>
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{t("short.badge")}</span>
-        <h1 className="mt-3 font-serif text-3xl">{t("short.settings")}</h1>
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{t("short.badge")}</span>
+        <h1 className="mt-3 font-serif text-[32px] font-medium leading-10">{t("short.settings")}</h1>
       </div>
 
       <div className="paper-sheet rounded-2xl border border-border/40 p-6 space-y-5">
@@ -78,7 +79,7 @@ export function ShortSettings({ storyId, nav, t }: {
             data-testid="short-settings-title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-border/50 bg-secondary/30 outline-none focus:border-primary/50"
+            className="h-10 rounded-[10px] border border-border-strong bg-card px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -89,7 +90,7 @@ export function ShortSettings({ storyId, nav, t }: {
             min={1}
             value={chapterCount}
             onChange={(event) => setChapterCount(Number(event.target.value))}
-            className="px-3 py-2 text-sm rounded-lg border border-border/50 bg-secondary/30 outline-none focus:border-primary/50 w-32"
+            className="h-10 w-32 rounded-[10px] border border-border-strong bg-card px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -100,7 +101,7 @@ export function ShortSettings({ storyId, nav, t }: {
             onChange={(event) => setDirection(event.target.value)}
             placeholder={t("short.directionPlaceholder")}
             rows={4}
-            className="px-3 py-2 text-sm rounded-lg border border-border/50 bg-secondary/30 outline-none focus:border-primary/50"
+            className="rounded-[10px] border border-border-strong bg-card px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -109,7 +110,7 @@ export function ShortSettings({ storyId, nav, t }: {
             data-testid="short-settings-save"
             onClick={() => void handleSave()}
             disabled={saving || !title.trim()}
-            className="px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground disabled:opacity-50"
+            className="btn-primary"
           >
             {saving ? t("book.saving") : t("book.save")}
           </button>
@@ -117,13 +118,37 @@ export function ShortSettings({ storyId, nav, t }: {
             href={shortManuscriptExportPath(storyId)}
             download
             data-testid="short-settings-export"
-            className="px-5 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground"
+            className="btn-secondary"
           >
             {t("book.export")}
           </a>
         </div>
         {message && <p className="text-sm text-muted-foreground">{message}</p>}
       </div>
+
+      <div className="rounded-xl border border-destructive/20 px-5 py-5 space-y-3" data-testid="short-danger-zone">
+        <div className="text-[13px] text-destructive">{isZh ? "危险区" : "Danger zone"}</div>
+        <p className="text-sm text-muted-foreground">{isZh ? "删除后无法恢复。" : "This cannot be undone."}</p>
+        <button
+          type="button"
+          data-testid="short-delete"
+          onClick={() => setDeleteOpen(true)}
+          className="btn-danger"
+        >
+          {isZh ? "删除短篇" : "Delete short"}
+        </button>
+      </div>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title={isZh ? "删除这篇短篇？" : "Delete this short?"}
+        message={isZh ? "删除后无法恢复。" : "This cannot be undone."}
+        confirmLabel={isZh ? "删除" : "Delete"}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => void handleDelete()}
+      />
     </div>
   );
 }

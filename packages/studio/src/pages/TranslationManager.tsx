@@ -3,7 +3,7 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { fetchJson, useApi } from "../hooks/use-api";
-import { Download, FileText, Languages, Loader2, Play, Upload } from "lucide-react";
+import { Download, FileText, Loader2, Play, Upload } from "lucide-react";
 
 interface Nav { toDashboard: () => void }
 
@@ -257,16 +257,9 @@ export function TranslationManager({ nav, theme, t }: { nav: Nav; theme: Theme; 
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("nav.translation")}</span>
-      </div>
-
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-serif text-3xl flex items-center gap-3">
-            <Languages size={28} className="text-primary" />
+          <h1 className="font-serif text-[32px] font-medium leading-10">
             {t("translation.title")}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">

@@ -54,14 +54,8 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("nav.daemon")}</span>
-      </div>
-
       <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-3xl">{t("daemon.title")}</h1>
+        <h1 className="font-serif text-[32px] font-medium leading-10">{t("daemon.title")}</h1>
         <div className="flex items-center gap-3">
           <span className={`text-sm font-medium ${isRunning ? "text-foreground" : "text-muted-foreground"}`}>
             {isRunning ? t("daemon.running") : t("daemon.stopped")}

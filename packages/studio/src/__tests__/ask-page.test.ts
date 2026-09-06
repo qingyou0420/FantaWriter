@@ -34,12 +34,16 @@ describe("ask page layout", () => {
     expect(page).toMatch(/mode="book"/);
     expect(page).toMatch(/ChatPage/);
     expect(page).toMatch(/AskStoryRail/);
-    expect(page).toMatch(/active="ask"/);
+    expect(page).not.toMatch(/BookWorkspaceNav/);
     expect(page).not.toMatch(/BookSidebar/);
   });
 
-  it("highlights chrome by route and keeps 书房 on the left", () => {
+  it("lifts book chrome into the App top bar", () => {
+    const app = read("src/App.tsx");
     const nav = read("src/components/BookWorkspaceNav.tsx");
+    expect(app).toMatch(/BookWorkspaceNav/);
+    expect(app).toMatch(/justify-between/);
+    expect(app).toMatch(/deriveBookChromeTab/);
     expect(nav).not.toMatch(/onToggleChat/);
     expect(nav).not.toMatch(/talkOpen/);
     expect(nav).toMatch(/justify-between/);

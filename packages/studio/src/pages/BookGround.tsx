@@ -5,7 +5,9 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import { invalidateBookStage, useBookStage } from "../hooks/use-book-stage";
+import { useChatStore } from "../store/chat";
 import { StageDot } from "../components/StageDot";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
@@ -63,10 +65,12 @@ export function BookGround({
   const { data: frameData, refetch: refetchFrame } = useApi<{ content?: string | null }>(`/books/${bookId}/truth/outline/story_frame.md`);
   const { data: hooksData, refetch: refetchHooks } = useApi<{ content?: string | null }>(`/books/${bookId}/truth/pending_hooks.md`);
   const { data: openData, refetch: refetchOpen } = useApi<{ content?: string | null }>(`/books/${bookId}/truth/open_questions.md`);
-  const { data: stageData, refetch: refetchStage } = useApi<{
-    readonly workflow?: { groundConfirmedAt?: string };
-    readonly steps?: Record<"ask" | "ground" | "weave" | "write", "done" | "current" | "todo" | "blocked">;
-  }>(`/books/${bookId}/stage`);
+  const stageData = useBookStage(bookId);
+  const bumpBookDataVersion = useChatStore((state) => state.bumpBookDataVersion);
+  const refreshStage = () => {
+    invalidateBookStage(bookId);
+    bumpBookDataVersion();
+  };
   const { data: proposalsData, refetch: refetchProposals } = useApi<{ proposals?: ReadonlyArray<PendingTruthProposal> }>(
     `/books/${bookId}/truth-proposals?status=pending`,
   );
@@ -133,7 +137,8 @@ export function BookGround({
         body: JSON.stringify({ content }),
       });
       warnIfConfirmed();
-      await Promise.all([refetchFrame(), refetchHooks(), refetchOpen(), refetchFiles(), refetchStage()]);
+      await Promise.all([refetchFrame(), refetchHooks(), refetchOpen(), refetchFiles()]);
+      refreshStage();
       showToast(isZh ? "已保存" : "Saved", "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : t("common.error"), "error");
@@ -152,7 +157,7 @@ export function BookGround({
     try {
       await postApi(`/books/${bookId}/ground/confirm`, { continueWithOpen: openDoc.continueWithOpen });
       setConfirmOpen(false);
-      await refetchStage();
+      refreshStage();
       showToast(isZh ? "研墨已定稿" : "Ground confirmed", "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : t("common.error"), "error");
@@ -190,11 +195,9 @@ export function BookGround({
 
   return (
     <div className="space-y-6 fade-in" data-testid="book-ground-page">
-      <BookWorkspaceNav bookId={bookId} active="ground" nav={nav} isZh={isZh} t={t} stage={stageData?.steps ? stageData : undefined} />
-
       <header className="space-y-2">
         <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${title}》` : title}</p>
-        <h1 className="font-serif text-[40px]">{isZh ? "研墨" : "Ground"}</h1>
+        <h1 className="font-serif text-[32px] font-medium leading-10">{isZh ? "研墨" : "Ground"}</h1>
         <p className="text-[15px] leading-7 text-muted-foreground">
           {isZh ? "把世界与人磨实，定稿后开始织卷。" : "Settle the world and people, then start weaving."}
         </p>
@@ -391,7 +394,7 @@ export function BookGround({
           data-testid="ground-confirm"
           disabled={!validation.ok}
           onClick={() => setConfirmOpen(true)}
-          className="ml-auto rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-40"
+          className="btn-primary ml-auto"
         >
           {isZh ? "研墨定稿" : "Confirm ground"}
         </button>

@@ -110,15 +110,8 @@ export function CheckUpdate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFun
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button type="button" onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("nav.checkUpdate")}</span>
-      </div>
-
       <div>
-        <h1 className="font-serif text-3xl flex items-center gap-3">
-          <RefreshCw size={28} className="text-primary" />
+        <h1 className="font-serif text-[32px] font-medium leading-10">
           {t("update.title")}
         </h1>
       </div>

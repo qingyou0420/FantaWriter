@@ -13,26 +13,24 @@ export function LiteraryEmpty({
 }: {
   readonly title: string;
   readonly subtitle?: string;
-  readonly action: string;
-  readonly onAction: () => void;
+  readonly action?: string;
+  readonly onAction?: () => void;
   readonly testId?: string;
 }) {
   return (
     <div
-      className="flex flex-col items-start gap-4 rounded-xl border border-border/60 bg-card px-6 py-8"
+      className="flex flex-col items-start gap-4 py-12"
       data-testid={testId ?? "literary-empty"}
     >
       <div className="space-y-2">
-        <h2 className="font-serif text-[28px]">{title}</h2>
+        <h2 className="font-serif text-2xl font-medium leading-8">{title}</h2>
         {subtitle ? <p className="text-[15px] leading-7 text-muted-foreground">{subtitle}</p> : null}
       </div>
-      <button
-        type="button"
-        onClick={onAction}
-        className="inline-flex items-center rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground"
-      >
-        {action}
-      </button>
+      {action && onAction ? (
+        <button type="button" onClick={onAction} className="btn-primary">
+          {action}
+        </button>
+      ) : null}
     </div>
   );
 }

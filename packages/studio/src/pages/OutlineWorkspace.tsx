@@ -7,7 +7,8 @@
 import { buildApiUrl, fetchJson, useApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import type { SSEMessage } from "../hooks/use-sse";
-import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import {
   applyOutlineWorkspaceSave,
   findNodeById,
@@ -334,10 +335,9 @@ export function OutlineWorkspace({
 
   return (
     <div className="space-y-5 fade-in" data-testid="outline-workspace">
-      <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} t={t} stage={stage} />
       <header className="space-y-1">
         <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${data.book.title}》` : data.book.title}</p>
-        <h1 className="font-serif text-[32px]">{isZh ? "织卷" : "Weave"}</h1>
+        <h1 className="font-serif text-[32px] font-medium leading-10">{isZh ? "织卷" : "Weave"}</h1>
       </header>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -351,7 +351,7 @@ export function OutlineWorkspace({
           data-testid="outline-weave"
           onClick={() => void openWeave()}
           disabled={weaving || weaveAction.disabled || treeReadOnly}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
+          className="btn-primary disabled:opacity-40"
         >
           <Feather size={14} />
           {weaving ? (isZh ? "织卷中…" : "Weaving…") : outlineWeaveButtonLabel(weaveAction, isZh)}
@@ -381,17 +381,13 @@ export function OutlineWorkspace({
       )}
 
       {ungrounded ? (
-        <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-ungrounded">
-          <p className="font-serif text-lg">{guide.title}</p>
-          <p className="text-sm text-muted-foreground">{guide.subtitle}</p>
-          <button
-            type="button"
-            onClick={() => (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId)}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-          >
-            {guide.action}
-          </button>
-        </div>
+        <LiteraryEmpty
+          title={guide.title}
+          subtitle={guide.subtitle}
+          action={guide.action}
+          onAction={() => (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId)}
+          testId="outline-ungrounded"
+        />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -433,11 +429,13 @@ export function OutlineWorkspace({
           )}
 
           {empty ? (
-            <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-empty">
-              <p className="text-sm text-muted-foreground">
-                {isZh ? "还没有卷纲。先定卷，再每次排十章。" : "No volume outline yet. Lock volumes, then weave ten chapters at a time."}
-              </p>
-            </div>
+            <LiteraryEmpty
+              title={isZh ? "还没有卷纲" : "No volume outline yet"}
+              subtitle={isZh ? "先定卷，再每次排十章。" : "Lock volumes, then weave ten chapters at a time."}
+              action={weaving ? (isZh ? "织卷中…" : "Weaving…") : outlineWeaveButtonLabel(weaveAction, isZh)}
+              onAction={() => void openWeave()}
+              testId="outline-empty"
+            />
           ) : (
             <div className="grid gap-5 md:grid-cols-[280px_1fr]" data-testid="outline-split">
               <div className="rounded-2xl border border-border/40 overflow-hidden">

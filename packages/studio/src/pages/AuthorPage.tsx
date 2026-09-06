@@ -10,7 +10,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import { AUTHOR_BIO_MAX, AUTHOR_NAME_MAX, type AuthorPublic } from "../lib/author-profile";
 
 export function AuthorPage({
-  nav,
+  nav: _nav,
   t,
   isZh,
 }: {
@@ -81,13 +81,7 @@ export function AuthorPage({
 
   return (
     <div className="space-y-8 fade-in" data-testid="author-page">
-      <nav className="flex items-center gap-2 text-[13px] text-muted-foreground">
-        <button type="button" onClick={nav.toDashboard} className="hover:text-primary">{t("bread.home")}</button>
-        <span>/</span>
-        <span className="text-foreground">{t("bread.author")}</span>
-      </nav>
-
-      <h1 className="font-serif text-3xl">{t("author.title")}</h1>
+      <h1 className="font-serif text-[32px] font-medium leading-10">{t("author.title")}</h1>
 
       <div className="flex items-end gap-4">
         <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-primary text-2xl text-primary-foreground">
@@ -153,7 +147,7 @@ export function AuthorPage({
           data-testid="author-save"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          className="btn-primary"
         >
           {saving ? t("book.saving") : t("author.save")}
         </button>

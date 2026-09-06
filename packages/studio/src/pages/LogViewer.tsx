@@ -5,6 +5,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import type { SSEMessage } from "../hooks/use-sse";
 import { deriveActiveBookIds } from "../hooks/use-book-activity";
+import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import { deriveActivityHeadline, formatActivityEvent } from "../lib/activity-copy";
 
 interface LogEntry {
@@ -53,14 +54,8 @@ export function LogViewer({ nav, theme, t, sse }: {
 
   return (
     <div className="space-y-6" data-testid="ai-activity-page">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("logs.title")}</span>
-      </div>
-
       <div className="flex items-baseline justify-between gap-4">
-        <h1 className="font-serif text-3xl">{t("logs.title")}</h1>
+        <h1 className="font-serif text-[32px] font-medium leading-10">{t("logs.title")}</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
             {headline}
@@ -92,9 +87,12 @@ export function LogViewer({ nav, theme, t, sse }: {
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground text-sm italic py-10 text-center">
-              {t("logs.noActivity")}
-            </div>
+            <LiteraryEmpty
+              title={t("logs.noActivity")}
+              action={t("common.refresh")}
+              onAction={() => refetch()}
+              testId="logs-empty-live"
+            />
           )}
         </div>
       </div>
@@ -126,9 +124,12 @@ export function LogViewer({ nav, theme, t, sse }: {
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground text-sm italic py-12 text-center">
-              {t("logs.empty")}
-            </div>
+            <LiteraryEmpty
+              title={t("logs.empty")}
+              action={t("common.refresh")}
+              onAction={() => refetch()}
+              testId="logs-empty-raw"
+            />
           )}
         </div>
       </div>

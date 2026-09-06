@@ -3,7 +3,7 @@ import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
-import { Wand2, Upload, BarChart3 } from "lucide-react";
+import { Upload, BarChart3 } from "lucide-react";
 
 interface StyleProfile {
   readonly sourceName: string;
@@ -82,14 +82,7 @@ export function StyleManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("nav.style")}</span>
-      </div>
-
-      <h1 className="font-serif text-3xl flex items-center gap-3">
-        <Wand2 size={28} className="text-primary" />
+      <h1 className="font-serif text-[32px] font-medium leading-10">
         {t("style.title")}
       </h1>
 

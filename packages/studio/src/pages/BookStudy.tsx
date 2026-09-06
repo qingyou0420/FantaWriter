@@ -6,7 +6,7 @@
 
 import { fetchJson, useApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
-import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
 import { StageDot } from "../components/StageDot";
 import { startWriteNext } from "../components/SerialCockpitStrip";
 import type { WritePreflightEvaluation } from "../components/SerialCockpitStrip";
@@ -264,10 +264,8 @@ export function BookStudy({
 
   return (
     <div className="space-y-8 fade-in" data-testid="serial-cockpit-home">
-      <BookWorkspaceNav bookId={bookId} active="study" nav={nav} isZh={isZh} t={t} stage={stage} />
-
       <header className="space-y-2">
-        <h1 className="font-serif text-4xl font-medium">{book.title}</h1>
+        <h1 className="font-serif text-[32px] font-medium leading-10">{book.title}</h1>
         <p className="text-sm text-muted-foreground">
           {[
             book.genre,
@@ -320,7 +318,7 @@ export function BookStudy({
               type="button"
               onClick={() => void handleWriteNext()}
               disabled={writing}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50"
+              className="btn-primary disabled:opacity-40"
               data-testid="cockpit-write-next-button"
             >
               {writing

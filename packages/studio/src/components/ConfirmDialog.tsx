@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface ConfirmDialogProps {
   readonly open: boolean;
@@ -44,49 +44,34 @@ export function ConfirmDialog({
   return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm fade-in"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground/20 fade-in-150"
       onClick={(e) => { if (e.target === overlayRef.current) onCancel(); }}
     >
-      <div className="bg-card border border-border rounded-2xl shadow-2xl shadow-primary/10 w-full max-w-md mx-4 overflow-hidden chat-msg-assistant">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-2">
+      <div className="w-full max-w-md mx-4 overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="px-6 pt-6 pb-2">
           <div className="flex items-center gap-3">
             {isDanger && (
-              <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
                 <AlertTriangle size={20} className="text-destructive" />
               </div>
             )}
-            <h3 className="text-lg font-semibold">{title}</h3>
+            <h3 className="font-serif text-[20px] font-medium leading-7">{title}</h3>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
-            <X size={16} />
-          </button>
         </div>
 
-        {/* Body */}
         <div className="px-6 py-4">
-          <p className="text-sm text-muted-foreground leading-relaxed">{message}</p>
+          {message ? <p className="text-sm leading-relaxed text-muted-foreground">{message}</p> : null}
           {children}
         </div>
 
-        {/* Footer */}
         <div className="flex justify-end gap-3 px-6 pb-6">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2.5 text-sm font-medium rounded-xl bg-secondary text-foreground hover:bg-secondary/80 transition-all border border-border/50"
-          >
+          <button type="button" onClick={onCancel} className="btn-ghost">
             {cancelLabel}
           </button>
           <button
+            type="button"
             onClick={onConfirm}
-            className={`px-4 py-2.5 text-sm font-bold rounded-xl transition-colors shadow-sm ${
-              isDanger
-                ? "bg-destructive text-destructive-foreground hover:shadow-destructive/20"
-                : "bg-primary text-primary-foreground hover:shadow-primary/20"
-            }`}
+            className={isDanger ? "btn-danger" : "btn-primary"}
           >
             {confirmLabel}
           </button>

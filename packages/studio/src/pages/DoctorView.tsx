@@ -2,7 +2,7 @@ import { useApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
-import { Stethoscope, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 interface DoctorChecks {
   readonly inkosJson: boolean;
@@ -35,15 +35,8 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("nav.doctor")}</span>
-      </div>
-
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-3xl flex items-center gap-3">
-          <Stethoscope size={28} className="text-primary" />
+        <h1 className="font-serif text-[32px] font-medium leading-10">
           {t("doctor.title")}
         </h1>
         <button onClick={() => refetch()} className={`px-4 py-2 text-sm rounded-lg ${c.btnSecondary}`}>

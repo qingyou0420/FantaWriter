@@ -18,13 +18,6 @@ import { BrandMark } from "./BrandMark";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { PRODUCT_VERSION } from "../lib/product-version";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -588,58 +581,33 @@ export function Sidebar({ nav, activePage, sse, t }: {
         </div>
       </div>
 
-      <Dialog
+      <ConfirmDialog
         open={renameTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRenameTarget(null);
-            setRenameValue("");
-          }
+        title={t("nav.renameAsk")}
+        message=""
+        confirmLabel={tr("保存", "Save")}
+        cancelLabel={tr("取消", "Cancel")}
+        onConfirm={() => void handleRenameConfirm()}
+        onCancel={() => {
+          setRenameTarget(null);
+          setRenameValue("");
         }}
       >
-        <DialogContent
-          showCloseButton={false}
-          className="sm:max-w-[360px] p-4 gap-3"
-        >
-          <DialogHeader className="space-y-0 gap-0">
-            <DialogTitle className="font-sans text-sm font-medium">{t("nav.renameAsk")}</DialogTitle>
-          </DialogHeader>
-          <input
-            id="session-rename-input"
-            autoFocus
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void handleRenameConfirm();
-              }
-            }}
-            placeholder={tr("输入新标题", "Enter a new title")}
-            className="w-full rounded-md border border-border/60 bg-background px-3 py-1.5 text-sm outline-none focus:border-border"
-          />
-          <DialogFooter className="gap-1 sm:gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                setRenameTarget(null);
-                setRenameValue("");
-              }}
-              className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {tr("取消", "Cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleRenameConfirm()}
-              disabled={!renameValue.trim()}
-              className="px-3 py-1 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-30"
-            >
-              {tr("保存", "Save")}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <input
+          id="session-rename-input"
+          autoFocus
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void handleRenameConfirm();
+            }
+          }}
+          placeholder={tr("输入新标题", "Enter a new title")}
+          className="mt-3 h-10 w-full rounded-[10px] border border-border-strong bg-card px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={deleteTarget !== null}
