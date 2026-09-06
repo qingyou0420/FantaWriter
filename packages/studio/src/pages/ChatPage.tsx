@@ -245,7 +245,7 @@ function SkillPickerPanel({
       <div className="max-h-[380px] overflow-y-auto p-3">
         {createError ? <div className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">{createError}</div> : null}
         {diagnostics?.length ? (
-          <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <div className="mb-3 rounded-xl border border-border bg-mark-soft px-3 py-2 text-xs text-mark-text">
             <div className="font-semibold">{isZh ? "部分外部 Skill 未加载" : "Some external skills were not loaded"}</div>
             {diagnostics.slice(0, 4).map((item, index) => (
               <div key={`${item.path ?? "skill"}-${index}`} className="mt-1 break-all">
@@ -1022,7 +1022,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
       </div>
 
       {/* Quick actions (only when a book is active) */}
-      {hasBook && !showChoicePanel && (
+      {hasBook && !showChoicePanel && mode !== "book" && (
         <div className={`shrink-0 transition-[padding] duration-200 ${worldPanelInsetClass}`}>
           <div className="max-w-3xl mx-auto w-full px-4">
             <QuickActions
@@ -1198,7 +1198,13 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void onSend(input); } }}
-                  placeholder={isZh ? "输入指令..." : "Enter command..."}
+                  placeholder={
+                    mode === "book"
+                      ? (isZh ? "和它聊聊这本书……" : "Talk about this book…")
+                      : mode === "book-create"
+                        ? (isZh ? "告诉我你想写什么——题材、世界、主角、冲突" : "Tell me what you want to write — genre, world, lead, conflict")
+                        : t("common.enterCommand")
+                  }
                   disabled={!activeSessionId}
                   rows={1}
                   className="flex-1 bg-transparent text-base leading-7 placeholder:text-muted-foreground/50 outline-none! border-none! ring-0! shadow-none focus:outline-none! focus:ring-0! focus:border-none! resize-none disabled:opacity-50 max-h-[200px] overflow-y-auto"

@@ -22,7 +22,7 @@ function sectionIndex(source: string, marker: string): number {
 }
 
 describe("sidebar create block", () => {
-  it("temporarily keeps only 长篇小说 and 短篇小说", () => {
+  it("temporarily keeps only 长篇 and 短篇", () => {
     const sidebar = read("src/components/Sidebar.tsx");
     const createBlock = sidebar.slice(
       sidebar.indexOf("nav.createSection"),
@@ -76,8 +76,8 @@ describe("sidebar create block", () => {
     expect(i18n).toMatch(/"nav\.history": \{ zh: "问心记录"/);
     expect(i18n).toMatch(/"nav\.signYourName": \{ zh: "署上你的名字"/);
     expect(i18n).toMatch(/"dash\.title": \{ zh: "书架"/);
-    expect(i18n).toMatch(/"nav\.tools": \{ zh: "工具列表"/);
-    expect(i18n).toMatch(/"nav\.system": \{ zh: "系统设置"/);
+    expect(i18n).toMatch(/"nav\.tools": \{ zh: "工具"/);
+    expect(i18n).toMatch(/"nav\.system": \{ zh: "设置"/);
     expect(i18n).toMatch(/"nav\.style": \{ zh: "文风学习"/);
     expect(i18n).toMatch(/"nav\.genreTemplates": \{ zh: "题材模板"/);
     expect(i18n).toMatch(/"nav\.logs": \{ zh: "实时动态"/);
@@ -150,24 +150,21 @@ describe("works list long/short parity", () => {
   it("gives shorts the same cover-menu actions as books", () => {
     const dashboard = read("src/pages/Dashboard.tsx");
     expect(dashboard).toMatch(/home-short-menu-/);
-    expect(dashboard).toMatch(/short-stats-/);
-    expect(dashboard).toMatch(/short-settings-/);
     expect(dashboard).toMatch(/short-export-manuscript-/);
     expect(dashboard).toMatch(/short-delete-/);
-    expect(dashboard).toMatch(/short\.finished|dash\.writeNext/);
-    expect(dashboard).toMatch(/book\.settings/);
+    expect(dashboard).toMatch(/short\.finished|short\.continue/);
+    expect(dashboard).toMatch(/home\.toWrite|cockpit\.title/);
     expect(dashboard).toMatch(/book\.export/);
     expect(dashboard).toMatch(/shortManuscriptExportPath/);
     expect(dashboard).not.toMatch(/\/books\/\$\{short/);
-    expect(dashboard).not.toMatch(/short-continue-/);
   });
 
-  it("labels export as 导出原文 for books and shorts", () => {
+  it("labels export as 导出 for books and shorts", () => {
     const i18n = read("src/hooks/use-i18n.ts");
     const dashboard = read("src/pages/Dashboard.tsx");
     const bookDetail = read("src/pages/BookDetail.tsx");
 
-    expect(i18n).toMatch(/"book\.export": \{ zh: "导出原文"/);
+    expect(i18n).toMatch(/"book\.export": \{ zh: "导出"/);
     expect(i18n).toMatch(/"book\.exportSave": \{ zh: "保存原文到项目"/);
     expect(dashboard).toMatch(/bookManuscriptExportPath/);
     expect(dashboard).toMatch(/shortManuscriptExportPath/);

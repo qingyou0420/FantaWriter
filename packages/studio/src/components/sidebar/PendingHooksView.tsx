@@ -7,14 +7,14 @@ interface PendingHooksViewProps {
 }
 
 const HOOK_TYPE_COLOR: Record<string, string> = {
-  "主线伏笔": "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  "角色前置": "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  "情感线伏笔": "bg-pink-500/15 text-pink-600 dark:text-pink-400",
-  "次要伏笔": "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  "主线伏笔": "bg-mark-soft text-mark-text dark:text-mark-text",
+  "角色前置": "bg-ok/15 text-foreground dark:text-foreground",
+  "情感线伏笔": "bg-muted text-muted-foreground dark:text-muted-foreground",
+  "次要伏笔": "bg-muted text-muted-foreground",
 };
 
 function hookTypeColor(type: string): string {
-  return HOOK_TYPE_COLOR[type] ?? "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400";
+  return HOOK_TYPE_COLOR[type] ?? "bg-muted text-muted-foreground dark:text-muted-foreground";
 }
 
 // Renders pending_hooks.md (a 13-column tracking table) as browsable cards: the
@@ -35,12 +35,12 @@ export function PendingHooksView({ content }: PendingHooksViewProps) {
         <div key={hook.id} className="rounded-lg bg-secondary/30 px-3 py-2.5">
           <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
             {hook.promoted === false && (
-              <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-zinc-500/10 text-muted-foreground">
+              <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
                 {tr("种子", "Seed")}
               </span>
             )}
             {hook.promoted === true && (
-              <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+              <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-ok/15 text-foreground dark:text-foreground">
                 {tr("活跃", "Active")}
               </span>
             )}
@@ -50,7 +50,7 @@ export function PendingHooksView({ content }: PendingHooksViewProps) {
               </span>
             )}
             {hook.core && (
-              <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-mark-soft text-mark-text dark:text-mark-text">
                 {tr("核心", "Core")}
               </span>
             )}

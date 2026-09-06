@@ -214,7 +214,7 @@ export function StyleManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
               ? "bg-destructive/10 text-destructive"
               : statusNotice.tone === "info"
                 ? "bg-secondary text-muted-foreground"
-                : "bg-emerald-500/10 text-emerald-600"
+                : "bg-ok/15 text-foreground"
           }`}
         >
           {statusNotice.message}

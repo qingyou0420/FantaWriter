@@ -88,7 +88,7 @@ export function ServiceConfigSourceCard({ onChange }: { onChange?: () => void })
 
   if (!data) {
     return (
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 text-sm text-amber-600">
+      <div className="rounded-xl border border-mark/30 bg-mark-soft p-4 text-sm text-mark-text">
         {error ?? tr("读取配置来源失败", "Failed to load config source")}
       </div>
     );
@@ -137,7 +137,7 @@ export function ServiceConfigSourceCard({ onChange }: { onChange?: () => void })
       </div>
 
       {storedConfigSource === "env" ? (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.04] p-3 text-xs text-muted-foreground/80">
+        <div className="rounded-lg border border-mark/30 bg-mark-soft p-3 text-xs text-muted-foreground/80">
           {tr(
             "检测到旧配置标记为 `.env` 优先。Studio 运行时不会使用它；CLI、daemon 和部署环境仍可按 env 覆盖层使用。",
             "A legacy setting marks `.env` as preferred. The Studio runtime ignores it; CLI, daemon, and deployment environments may still use the env override layer.",
@@ -146,7 +146,7 @@ export function ServiceConfigSourceCard({ onChange }: { onChange?: () => void })
       ) : null}
 
       {envDetected ? (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.04] p-3 text-xs text-muted-foreground/80 space-y-1.5">
+        <div className="rounded-lg border border-mark/30 bg-mark-soft p-3 text-xs text-muted-foreground/80 space-y-1.5">
           <div className="text-foreground">
             {tr("检测到 LLM 环境变量覆盖：", "Detected LLM environment variable override:")}
             <span className="font-medium"> {envLabel ?? tr("已检测到但未定位来源", "detected but source not located")}</span>
@@ -172,7 +172,7 @@ export function ServiceConfigSourceCard({ onChange }: { onChange?: () => void })
       )}
 
       {error ? (
-        <div className="text-xs text-rose-500">{error}</div>
+        <div className="text-xs text-destructive">{error}</div>
       ) : null}
     </div>
   );

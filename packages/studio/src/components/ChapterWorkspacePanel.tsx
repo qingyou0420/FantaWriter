@@ -157,7 +157,7 @@ export function ChapterWorkspacePanel({
             type="button"
             onClick={deleteChapter}
             disabled={busy !== null}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive transition-colors hover:bg-destructive hover:text-white disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive transition-colors hover:bg-destructive hover:text-primary-foreground disabled:opacity-50"
           >
             <Trash2 size={14} />
             {t("reader.deleteChapter")}
@@ -206,7 +206,7 @@ export function ChapterWorkspacePanel({
               type="button"
               onClick={() => void drawInspiration()}
               disabled={busy !== null}
-              className="inline-flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-700 transition hover:bg-amber-500/15 dark:text-amber-300 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-mark/30 bg-mark-soft px-4 py-2 text-xs font-bold text-mark-text transition hover:bg-mark-soft dark:text-mark-text disabled:opacity-50"
             >
               <Lightbulb size={14} />
               {busy === "inspiration" ? t("reader.drawing") : t("reader.inspiration")}
@@ -221,18 +221,18 @@ export function ChapterWorkspacePanel({
         </div>
       )}
       {notice && (
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+        <div className="rounded-xl border border-border bg-ok/10 px-4 py-3 text-sm text-foreground dark:text-foreground">
           {notice}
         </div>
       )}
 
       {inspiration && (
-        <article className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+        <article className="rounded-xl border border-mark/30 bg-mark-soft p-4">
           <div className="whitespace-pre-wrap text-sm leading-6 text-foreground">{inspiration}</div>
           <button
             type="button"
             onClick={addInspirationToBrief}
-            className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-amber-700 hover:text-amber-600 dark:text-amber-300"
+            className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-mark-text hover:text-mark-text dark:text-mark-text"
           >
             <Lightbulb size={13} />
             {t("reader.addToBrief")}

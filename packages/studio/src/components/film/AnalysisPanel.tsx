@@ -79,7 +79,7 @@ const SVG_PAD_Y = 16;
 
 function levelClass(level: "error" | "warning" | "info"): string {
   if (level === "error") return "text-destructive";
-  if (level === "warning") return "text-amber-500";
+  if (level === "warning") return "text-mark-text";
   return "text-muted-foreground";
 }
 

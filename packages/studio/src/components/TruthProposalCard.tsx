@@ -41,7 +41,7 @@ export function TruthProposalCard({
 
   return (
     <div
-      className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2"
+      className="rounded-xl border border-border bg-card px-4 py-3 space-y-2"
       data-testid="truth-proposal-card"
     >
       <div className="text-sm font-medium">
@@ -57,7 +57,7 @@ export function TruthProposalCard({
           type="button"
           disabled={pending !== null}
           onClick={() => void run("apply")}
-          className="rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-700 disabled:opacity-50"
+          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
         >
           {pending === "apply" ? "…" : (isZh ? "确认写入" : "Apply")}
         </button>

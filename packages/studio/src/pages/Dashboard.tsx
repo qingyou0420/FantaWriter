@@ -20,7 +20,7 @@ import { bookManuscriptExportPath, shortManuscriptExportPath } from "../lib/work
 import type { AuthorPublic } from "../lib/author-profile";
 import { formatStartedOn, isInProgressBookStatus, isInProgressShortStatus, shelfEmptyCopy } from "../lib/stage-copy";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
-import { Pencil, ChevronRight, MoreHorizontal, FolderOpen, Download, Settings, Trash2, BarChart2, Feather } from "lucide-react";
+import { Pencil, ChevronRight, MoreHorizontal, FolderOpen, Download, Trash2, Feather } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -180,11 +180,8 @@ export function Dashboard({ nav, sse, t }: {
     <div className="space-y-10 fade-in" data-testid="home-page">
       {!hasServices && (
         <p className="text-sm text-muted-foreground">
-          {t("home.noModel")}
-          <span className="mx-1.5 text-border">·</span>
-          {t("home.noModelHint")}
-          <button type="button" onClick={nav.toServices} className="ml-2 text-primary hover:underline">
-            {t("home.goConfigure")}
+          <button type="button" onClick={nav.toServices} className="underline-offset-2 hover:underline">
+            {t("home.noModel")}
           </button>
         </p>
       )}
@@ -197,7 +194,7 @@ export function Dashboard({ nav, sse, t }: {
             onClick={() => {
               if (!author?.name?.trim()) nav.toAuthor();
             }}
-            className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.36_0.07_160)] text-2xl text-[oklch(0.70_0.09_82)]"
+            className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-primary text-2xl text-primary-foreground"
           >
             {avatarSrc
               ? <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
@@ -248,7 +245,7 @@ export function Dashboard({ nav, sse, t }: {
         </div>
       </header>
 
-      <div className="h-px bg-[oklch(0.70_0.09_82_/_0.45)]" />
+      <div className="literary-kicker" aria-hidden="true" />
 
       {!hasWorks ? (
         <LiteraryEmpty
@@ -285,7 +282,7 @@ export function Dashboard({ nav, sse, t }: {
               ))}
             </div>
             {inProgressBooks.length === 0 && inProgressShorts.length === 0 && (
-              <p className="text-sm text-muted-foreground italic">{t("dash.noBooks")}</p>
+              <p className="text-sm text-muted-foreground">{t("dash.noBooks")}</p>
             )}
           </section>
 
@@ -295,7 +292,7 @@ export function Dashboard({ nav, sse, t }: {
                 type="button"
                 data-testid="home-shelf-archived-toggle"
                 onClick={() => setPausedOpen((open) => !open)}
-                className="flex items-center gap-1.5 text-[16px] font-bold tracking-[0.1em] text-muted-foreground hover:text-foreground"
+                className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight size={15} className={pausedOpen ? "rotate-90" : ""} />
                 {t("home.pausedCompleted")}
@@ -422,8 +419,8 @@ function HomeBookCard({
             <span>{t("book.export")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => nav.toBookSettings(book.id)}>
-            <Settings size={14} />
-            <span>{t("book.settings")}</span>
+            <Feather size={14} />
+            <span>{t("home.toWrite")}</span>
           </DropdownMenuItem>
           {onPause && (
             <DropdownMenuItem onClick={onPause}>
@@ -438,7 +435,7 @@ function HomeBookCard({
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" data-testid={`home-book-delete-${book.id}`} onClick={onDelete}>
             <Trash2 size={14} />
-            <span>{t("book.deleteBook")}</span>
+            <span>{t("home.delete")}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -483,16 +480,12 @@ function HomeShortCard({
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right" align="start" className="w-40">
           <DropdownMenuItem onClick={() => nav.toShort(short.id)}>
+            <FolderOpen size={14} />
+            <span>{t("cockpit.title")}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => nav.toShort(short.id)}>
             <Feather size={14} />
-            <span>{short.status === "completed" ? t("short.finished") : t("dash.writeNext")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem data-testid={`short-settings-${short.id}`} onClick={() => nav.toShortSettings(short.id)}>
-            <Settings size={14} />
-            <span>{t("book.settings")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem data-testid={`short-stats-${short.id}`} onClick={() => nav.toShortAnalytics(short.id)}>
-            <BarChart2 size={14} />
-            <span>{t("dash.stats")}</span>
+            <span>{short.status === "completed" ? t("short.finished") : t("short.continue")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem
             data-testid={`short-export-manuscript-${short.id}`}
@@ -509,7 +502,7 @@ function HomeShortCard({
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" data-testid={`short-delete-${short.id}`} onClick={onDelete}>
             <Trash2 size={14} />
-            <span>{t("book.deleteBook")}</span>
+            <span>{t("home.delete")}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -105,7 +105,7 @@ function label(zh: boolean, values: readonly [string, string]): string {
 function RiskPills({ risks, zh }: { risks: readonly ForecastRisk[]; zh: boolean }) {
   if (risks.length === 0) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-300">
+      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-ok/10 px-2 py-0.5 text-[11px] text-foreground dark:text-foreground">
         <ShieldCheck size={11} />
         {zh ? "未发现硬风险" : "No hard risks"}
       </span>
@@ -117,7 +117,7 @@ function RiskPills({ risks, zh }: { risks: readonly ForecastRisk[]; zh: boolean 
         <span
           key={`${risk.kind}-${index}`}
           title={risk.description}
-          className="inline-flex items-center rounded-full border border-amber-500/25 bg-amber-500/8 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-200"
+          className="inline-flex items-center rounded-full border border-mark/30 bg-mark-soft px-2 py-0.5 text-[11px] text-mark-text dark:text-mark-text"
         >
           {label(zh, RISK_LABELS[risk.kind])}
         </span>
@@ -241,7 +241,7 @@ export function NarrativeForecastPreview({ exec, onSelectBranch, onRecheck }: Na
           )}
         </p>
         {details.stale && (
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+          <p className="mt-2 text-xs text-mark-text dark:text-mark-text">
             {tr("该推演基于旧正史，请核验后再继续写作。", "This forecast is stale; verify it before writing.")}
           </p>
         )}
@@ -284,7 +284,7 @@ export function NarrativeForecastPreview({ exec, onSelectBranch, onRecheck }: Na
                 {zh ? "非正史规划" : "NON-CANONICAL"}
               </span>
               {stale && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200">
+                <span className="inline-flex items-center gap-1 rounded-full border border-mark/30 bg-mark-soft px-2 py-0.5 text-[10px] font-medium text-mark-text dark:text-mark-text">
                   <AlertTriangle size={11} />
                   {zh ? "正史已变化" : "Canon changed"}
                 </span>
@@ -310,7 +310,7 @@ export function NarrativeForecastPreview({ exec, onSelectBranch, onRecheck }: Na
           )}
         </div>
         {stale && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100">
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-mark/30 bg-mark-soft px-3 py-2 text-xs leading-5 text-mark-text dark:text-mark-text">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <span>{zh ? "正史输入已在生成后变化。请重新推演，不要继续采用旧分支。" : "Canonical inputs changed after generation. Regenerate before selecting a branch."}</span>
           </div>

@@ -35,6 +35,10 @@ export interface BookStageSnapshot {
   readonly steps: Record<BookStageId, BookStepState>;
 }
 
+export interface BookStageView extends BookStageSnapshot {
+  readonly workflow?: BookWorkflowJson;
+}
+
 const STAGE_ORDER: ReadonlyArray<BookStageId> = ["ask", "ground", "weave", "write"];
 
 const FRAME_SECTION_GROUPS: ReadonlyArray<RegExp> = [

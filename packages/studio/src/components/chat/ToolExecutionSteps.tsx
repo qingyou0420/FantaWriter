@@ -42,7 +42,7 @@ function ExecStatusBadge({ status }: { status: ToolExecution["status"] }) {
       );
     case "completed":
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+        <span className="inline-flex items-center gap-1 text-xs text-foreground dark:text-foreground">
           <CheckCircle2 size={12} />
           <span>{tr("已完成", "Completed")}</span>
         </span>
@@ -64,7 +64,7 @@ function StageIcon({ status }: { status: PipelineStage["status"] }) {
     case "active":
       return <Loader2 size={14} className="text-primary animate-spin shrink-0" />;
     case "completed":
-      return <CheckCircle2 size={14} className="text-green-600 dark:text-green-400 shrink-0" />;
+      return <CheckCircle2 size={14} className="text-foreground dark:text-foreground shrink-0" />;
   }
 }
 
@@ -475,13 +475,13 @@ function ChapterRevisionPreview({ exec }: { exec: ToolExecution }) {
   return (
     <div
       data-testid="chapter-revision-preview"
-      className={`mx-3 mb-3 mt-1 rounded-xl border px-3 py-2.5 ${passed ? "border-emerald-500/25 bg-emerald-500/5" : "border-amber-500/25 bg-amber-500/5"}`}
+      className={`mx-3 mb-3 mt-1 rounded-xl border px-3 py-2.5 ${passed ? "border-border bg-ok/10" : "border-mark/30 bg-mark-soft"}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-[15px] font-semibold text-foreground">
           {details.chapterNumber ? tr(`第 ${details.chapterNumber} 章修订`, `Chapter ${details.chapterNumber} revision`) : tr("章节修订", "Chapter revision")}
         </div>
-        <div className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${passed ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"}`}>
+        <div className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${passed ? "bg-ok/15 text-foreground" : "bg-mark-soft text-mark-text"}`}>
           {!details.applied
             ? tr("保留原稿", "Original kept")
             : details.auditPassed
@@ -510,13 +510,13 @@ function ChapterStateResyncPreview({ exec }: { exec: ToolExecution }) {
   return (
     <div
       data-testid="chapter-state-resync-preview"
-      className={`mx-3 mb-3 mt-1 rounded-xl border px-3 py-2.5 ${passed ? "border-emerald-500/25 bg-emerald-500/5" : "border-amber-500/25 bg-amber-500/5"}`}
+      className={`mx-3 mb-3 mt-1 rounded-xl border px-3 py-2.5 ${passed ? "border-border bg-ok/10" : "border-mark/30 bg-mark-soft"}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-[15px] font-semibold text-foreground">
           {details.chapterNumber ? tr(`第 ${details.chapterNumber} 章状态已同步`, `Chapter ${details.chapterNumber} state resynced`) : tr("章节状态已同步", "Chapter state resynced")}
         </div>
-        <div className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${passed ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"}`}>
+        <div className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${passed ? "bg-ok/15 text-foreground" : "bg-mark-soft text-mark-text"}`}>
           {passed ? tr("审稿通过", "Audit passed") : tr("仍需修订", "Revision required")}
         </div>
       </div>
@@ -1327,7 +1327,7 @@ function PipelineExecution({
                 const isError = log.startsWith("[error]") || /error/i.test(log);
                 const isWarn = log.startsWith("[warning]") || /warning|警告/i.test(log);
                 return (
-                  <li key={i} className={`text-xs font-mono break-words ${isError ? "text-destructive" : isWarn ? "text-yellow-600 dark:text-yellow-400" : "text-muted-foreground"}`}>
+                  <li key={i} className={`text-xs font-mono break-words ${isError ? "text-destructive" : isWarn ? "text-mark-text dark:text-mark-text" : "text-muted-foreground"}`}>
                     {log}
                   </li>
                 );
@@ -1350,7 +1350,7 @@ function PipelineExecution({
 function UtilityExecStatusIcon({ status }: { status: ToolExecution["status"] }) {
   switch (status) {
     case "completed":
-      return <CheckCircle2 size={10} className="text-green-600 dark:text-green-400 shrink-0" />;
+      return <CheckCircle2 size={10} className="text-foreground dark:text-foreground shrink-0" />;
     case "error":
       return <XCircle size={10} className="text-destructive shrink-0" />;
     case "running":
@@ -1398,7 +1398,7 @@ function UtilityToolsGroup({ execs }: { execs: ToolExecution[] }) {
       <CollapsibleTrigger className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer text-xs text-muted-foreground">
         <Wrench size={12} />
         <span>{tr(`${execs.length} 个文件操作`, `${execs.length} file operation${execs.length === 1 ? "" : "s"}`)}</span>
-        {allDone && !hasError && <CheckCircle2 size={10} className="text-green-600 dark:text-green-400" />}
+        {allDone && !hasError && <CheckCircle2 size={10} className="text-foreground dark:text-foreground" />}
         {hasError && <XCircle size={10} className="text-destructive" />}
         {!allDone && <Loader2 size={10} className="animate-spin text-primary" />}
         <ChevronDown size={10} className={`transition-transform ${open ? "rotate-180" : ""}`} />

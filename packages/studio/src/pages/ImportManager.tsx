@@ -385,7 +385,7 @@ export function ImportManager({ nav, theme, t, initialTab }: { nav: Nav; theme: 
         )}
 
         {status && (
-          <div className={`text-sm px-3 py-2 rounded-lg ${status.startsWith("Error") ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-600"}`}>
+          <div className={`text-sm px-3 py-2 rounded-lg ${status.startsWith("Error") ? "bg-destructive/10 text-destructive" : "bg-ok/15 text-foreground"}`}>
             {status}
           </div>
         )}

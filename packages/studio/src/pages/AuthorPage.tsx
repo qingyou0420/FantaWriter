@@ -90,7 +90,7 @@ export function AuthorPage({
       <h1 className="font-serif text-3xl">{t("author.title")}</h1>
 
       <div className="flex items-end gap-4">
-        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.36_0.07_160)] text-2xl text-[oklch(0.70_0.09_82)]">
+        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-primary text-2xl text-primary-foreground">
           {avatarSrc
             ? <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
             : (currentName.trim().slice(0, 1) || "墨")}

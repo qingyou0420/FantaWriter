@@ -33,16 +33,16 @@ function parseCharacterMatrix(md: string): CharacterInfo[] {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  "主角": "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  "反派": "bg-red-500/15 text-red-600 dark:text-red-400",
-  "盟友": "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  "配角": "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-  "提及": "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
-  "protagonist": "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  "antagonist": "bg-red-500/15 text-red-600 dark:text-red-400",
-  "ally": "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  "minor": "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-  "mentioned": "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
+  "主角": "bg-mark-soft text-mark-text dark:text-mark-text",
+  "反派": "bg-destructive/10 text-destructive dark:text-destructive",
+  "盟友": "bg-ok/15 text-foreground dark:text-foreground",
+  "配角": "bg-muted text-muted-foreground",
+  "提及": "bg-muted text-muted-foreground dark:text-muted-foreground",
+  "protagonist": "bg-mark-soft text-mark-text dark:text-mark-text",
+  "antagonist": "bg-destructive/10 text-destructive dark:text-destructive",
+  "ally": "bg-ok/15 text-foreground dark:text-foreground",
+  "minor": "bg-muted text-muted-foreground",
+  "mentioned": "bg-muted text-muted-foreground dark:text-muted-foreground",
 };
 
 function getRoleColor(role: string): string {
@@ -50,13 +50,13 @@ function getRoleColor(role: string): string {
   for (const [key, color] of Object.entries(ROLE_COLORS)) {
     if (lower.includes(key)) return color;
   }
-  return "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400";
+  return "bg-muted text-muted-foreground dark:text-muted-foreground";
 }
 
 // label 在渲染时经 tr() 取当前语言，不能在模块加载时就固定成一种语言。
 const TIER_BADGE: Record<RoleRef["tier"], { zh: string; en: string; color: string }> = {
-  major: { zh: "主要", en: "Major", color: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
-  minor: { zh: "次要", en: "Minor", color: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+  major: { zh: "主要", en: "Major", color: "bg-mark-soft text-mark-text dark:text-mark-text" },
+  minor: { zh: "次要", en: "Minor", color: "bg-muted text-muted-foreground" },
 };
 
 // Phase 5 layout: one file per character under roles/. Each entry opens the

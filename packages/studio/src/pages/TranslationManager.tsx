@@ -464,7 +464,7 @@ export function TranslationManager({ nav, theme, t }: { nav: Nav; theme: Theme; 
       </div>
 
       {status && (
-        <div className={`rounded-xl px-4 py-3 text-sm ${status.startsWith("Error:") ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-600"}`}>
+        <div className={`rounded-xl px-4 py-3 text-sm ${status.startsWith("Error:") ? "bg-destructive/10 text-destructive" : "bg-ok/15 text-foreground"}`}>
           {status}
         </div>
       )}

@@ -20,7 +20,7 @@ interface Nav {
 
 const LEVEL_COLORS: Record<string, string> = {
   error: "text-destructive",
-  warn: "text-amber-500",
+  warn: "text-mark-text",
   info: "text-primary/70",
   debug: "text-muted-foreground/50",
 };
@@ -62,7 +62,7 @@ export function LogViewer({ nav, theme, t, sse }: {
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="font-serif text-3xl">{t("logs.title")}</h1>
         <div className="flex items-center gap-3">
-          <span className={`text-sm ${activityBooks.size > 0 ? "text-emerald-500" : "text-muted-foreground"}`}>
+          <span className="text-sm text-muted-foreground">
             {headline}
           </span>
           <button
@@ -114,7 +114,7 @@ export function LogViewer({ nav, theme, t, sse }: {
                     </span>
                   )}
                   {entry.level && (
-                    <span className={`shrink-0 w-12 uppercase ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}>
+                    <span className={`shrink-0 w-12 ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}>
                       {entry.level}
                     </span>
                   )}
@@ -133,9 +133,6 @@ export function LogViewer({ nav, theme, t, sse }: {
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        {t("logs.showingRecent")}
-      </p>
     </div>
   );
 }

@@ -33,11 +33,11 @@ type StoryNode = Node<{ label: string; nodeType: string }, "story">;
 type StoryEdge = Edge;
 
 const TYPE_COLOR: Record<string, string> = {
-  start: "bg-emerald-500/15 border-emerald-500/50",
-  branch: "bg-amber-500/15 border-amber-500/50",
-  ending: "bg-rose-500/15 border-rose-500/50",
-  merge: "bg-sky-500/15 border-sky-500/50",
-  explore: "bg-violet-500/15 border-violet-500/50",
+  start: "bg-ok/15 border-border",
+  branch: "bg-mark-soft border-mark/30",
+  ending: "bg-destructive/10 border-destructive/30",
+  merge: "bg-muted border-border",
+  explore: "bg-muted border-border",
   normal: "bg-muted border-border",
 };
 
