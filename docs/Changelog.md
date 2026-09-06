@@ -4,7 +4,9 @@
 
 ## Unreleased
 
-P0-5：问心改为独立页 `#/book/:id/ask`（`/chat` 重定向到 `/ask`）；删除问心抽屉；书内 chrome 左【书房】右 问心·研墨·织卷·落笔；侧栏问心记录进问心页。不 bump。
+## 2.1.3
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.3.exe`（#104 P0-5：问心改为独立页 `#/book/:id/ask`（`/chat` 重定向到 `/ask`）；书房+问心/研墨/织卷/落笔五页平铺；删 talk-drawer；chrome 左【书房】右四入口；侧栏问心记录进问心页）。
 
 ## 2.1.2
 
