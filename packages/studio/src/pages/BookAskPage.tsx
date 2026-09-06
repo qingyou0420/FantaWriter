@@ -5,14 +5,13 @@
  */
 
 import { AskStoryRail } from "../components/AskStoryRail";
-import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
 import { useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import type { Theme } from "../hooks/use-theme";
 import { ChatPage } from "./ChatPage";
 
-interface Nav extends BookWorkspaceNavTarget {
+interface Nav {
   readonly toDashboard: () => void;
   readonly toServices: () => void;
   readonly toFilm: (projectId: string) => void;
