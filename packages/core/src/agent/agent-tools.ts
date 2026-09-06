@@ -7,7 +7,11 @@ import { defaultChapterLength } from "../utils/length-metrics.js";
 import { inferLanguage } from "../utils/language.js";
 import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { StateManager } from "../state/manager.js";
+import {
+  BookWriteLockError,
+  formatBookWriteLockCopy,
+  StateManager,
+} from "../state/manager.js";
 import { deleteLatestChapter } from "../state/chapter-delete.js";
 import { assertSafeTruthFileName, createInteractionToolsFromDeps } from "../interaction/project-tools.js";
 import { writeExportArtifact } from "../interaction/export-artifact.js";
@@ -3497,11 +3501,20 @@ export function createWriteTruthFileTool(
     description: "Replace a truth/control file under story/ using a native tool call (never print a prose marker such as （tool_write_truth_file: outline/story_frame.md）). Direction, foundation, and rules files are staged as a diff for the author to confirm — they are not written until the confirm button is pressed.",
     label: "Write Truth File",
     parameters: WriteTruthFileParams,
-    async execute(_toolCallId, params): Promise<AgentToolResult<unknown>> {
+    async execute(_toolCallId, params, _signal, onUpdate): Promise<AgentToolResult<unknown>> {
       try {
         const bookId = resolveToolBookId("write_truth_file", params.bookId, activeBookId);
         const fileName = assertSafeTruthFileName(params.fileName);
-        const result = await tools.writeTruthFile(bookId, fileName, params.content) as {
+        let lastWaitNotice = -1;
+        const result = await tools.writeTruthFile(bookId, fileName, params.content, {
+          onWaiting: (owner, waitedMs) => {
+            const seconds = Math.max(1, Math.round(waitedMs / 1000));
+            if (seconds === lastWaitNotice) return;
+            lastWaitNotice = seconds;
+            const stage = owner?.stage ? `（${owner.stage}）` : "";
+            onUpdate?.(textResult(`写入被占用，正在等待当前写作任务释放锁${stage}…（已等待 ${seconds} 秒）`));
+          },
+        }) as {
           readonly kind?: string;
           readonly fileName?: string;
           readonly proposal?: {
@@ -3532,8 +3545,20 @@ export function createWriteTruthFileTool(
           );
         }
         return textResult(`Updated "${fileName}" for "${bookId}".`);
-      } catch (err: any) {
-        return textResult(`write_truth_file failed: ${err?.message ?? String(err)}`);
+      } catch (err: unknown) {
+        if (err instanceof BookWriteLockError) {
+          return Object.assign(
+            textResult(formatBookWriteLockCopy(err, "zh"), {
+              kind: "book_busy",
+              code: "BOOK_BUSY",
+              bookId: err.bookId,
+              owner: err.owner,
+            }),
+            { isError: true },
+          );
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        return Object.assign(textResult(`write_truth_file failed: ${message}`), { isError: true });
       }
     },
   };

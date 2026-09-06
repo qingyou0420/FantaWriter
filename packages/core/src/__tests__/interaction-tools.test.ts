@@ -121,8 +121,8 @@ describe("interaction tools", () => {
       await tools.renameEntity("harbor", "Alpha", "Beta");
       await tools.patchChapterText("harbor", 1, "Gamma", "Delta");
 
-      expect(acquireBookLock).toHaveBeenNthCalledWith(1, "harbor");
-      expect(acquireBookLock).toHaveBeenNthCalledWith(2, "harbor");
+      expect(acquireBookLock).toHaveBeenNthCalledWith(1, "harbor", expect.objectContaining({ stage: "interactive-edit" }), expect.objectContaining({ waitMs: expect.any(Number) }));
+      expect(acquireBookLock).toHaveBeenNthCalledWith(2, "harbor", expect.objectContaining({ stage: "interactive-edit" }), expect.objectContaining({ waitMs: expect.any(Number) }));
       expect(releases).toBe(2);
     } finally {
       await rm(root, { recursive: true, force: true });

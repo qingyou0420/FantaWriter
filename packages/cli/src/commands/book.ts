@@ -246,6 +246,7 @@ bookCommand
       }
 
       const bookDir = join(root, "books", bookId);
+      await state.forceReleaseBookLock(bookId, { graceMs: 0 });
       await rm(bookDir, { recursive: true, force: true });
 
       if (opts.json) {

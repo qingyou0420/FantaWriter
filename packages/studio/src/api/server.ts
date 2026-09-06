@@ -12,6 +12,10 @@ import { randomUUID } from "node:crypto";
 import {
   StateManager,
   BookWriteLockError,
+  BOOK_LOCK_INTERACTIVE_WAIT_MS,
+  formatBookWriteLockCopy,
+  isBookWriteLockMessage,
+  setBookLockLivenessCheck,
   PipelineRunner,
   VolumeMapWeaveError,
   createLLMClient,
@@ -266,6 +270,7 @@ const TOOL_LABELS: Record<string, BilingualLabel> = {
   spinoff_create: { zh: "番外创作", en: "Side story" },
   imitation_create: { zh: "仿写创作", en: "Style imitation" },
   generate_cover: { zh: "生成封面", en: "Cover generation" },
+  write_truth_file: { zh: "写入正典", en: "Write truth file" },
   play_edit: { zh: "编辑互动世界", en: "Edit interactive world" },
   play_start: { zh: "启动互动世界", en: "Start interactive world" },
   play_revise: { zh: "重做互动回合", en: "Redo interactive turn" },
@@ -560,8 +565,15 @@ function resolveProjectTextArtifactFile(root: string, rawPath: string): { readon
 
 function isLikelyFailedToolResult(exec: CollectedToolExec): boolean {
   if (exec.status === "error") return true;
-  const text = `${exec.error ?? ""}\n${exec.result ?? ""}`.toLowerCase();
-  return /\bfailed\b|\berror\b|失败|异常|出错/.test(text);
+  if (exec.error) return true;
+  const result = (exec.result ?? "").trim();
+  if (!result) return false;
+  if (isBookWriteLockMessage(result)) return true;
+  // Only treat explicit tool-failure prefixes as failures. Scanning the whole
+  // result for "失败" / "error" mislabels successful reads whose file content
+  // happens to contain those words — authors then see 「读取文件 执行失败」.
+  return /^(write_truth_file failed:|rename_entity failed:|patch_chapter_text failed:)/i.test(result)
+    || /^[^:\n]+ 执行失败：/.test(result);
 }
 
 function hasSuccessfulSubAgentExec(
@@ -1041,6 +1053,13 @@ function validateAgentActionExecution(args: {
   const failedExec = args.collectedToolExecs.find(isLikelyFailedToolResult);
   if (failedExec) {
     const detail = failedExec.error ?? failedExec.result ?? pick(lang, "未知错误", "unknown error");
+    if (isBookWriteLockMessage(detail) || failedExec.details && typeof failedExec.details === "object" && (failedExec.details as { kind?: unknown }).kind === "book_busy") {
+      return pick(
+        lang,
+        `写入被占用：${detail}`,
+        `Write busy: ${detail}`,
+      );
+    }
     return pick(
       lang,
       `${failedExec.label} 执行失败：${detail}`,
@@ -1115,7 +1134,7 @@ type AgentFailureKind = "busy" | "llm" | "internal" | "unknown";
 function classifyAgentFailure(message: string): AgentFailureKind {
   const text = message.trim();
   if (!text) return "unknown";
-  if (/BookWriteLockError|locked by an active InkOS write|BOOK_BUSY/i.test(text)) {
+  if (isBookWriteLockMessage(text)) {
     return "busy";
   }
   if (
@@ -1137,7 +1156,10 @@ function formatAgentFailure(
 ): { readonly code: string; readonly message: string; readonly status: 409 | 500 | 502 } {
   const kind = classifyAgentFailure(message);
   if (kind === "busy") {
-    return { code: "BOOK_BUSY", message, status: 409 };
+    const localized = lang === "en" || message.includes("写入被占用")
+      ? message
+      : `写入被占用：${message}`;
+    return { code: "BOOK_BUSY", message: localized, status: 409 };
   }
   if (kind === "llm") {
     return { code: "AGENT_LLM_ERROR", message, status: 502 };
@@ -2681,6 +2703,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   // 中止在这个窗口内从磁盘读不到快照，必须先经内存 sessionId → taskId →
   // controller 找到刚启动的任务。
   const reservedProductionSessions = new Map<string, string>();
+  let schedulerInstance: Scheduler | null = null;
+  const PIPELINE_LOCK_STAGES = new Set([
+    "write-next",
+    "draft",
+    "import",
+    "revise",
+    "repair",
+    "resync",
+  ]);
+  setBookLockLivenessCheck((owner) => {
+    if (owner.taskId && activeConfirmedTasks.has(owner.taskId)) return true;
+    if (schedulerInstance?.isWritingBook(owner.bookId)) return true;
+    if (owner.stage && PIPELINE_LOCK_STAGES.has(owner.stage)) return true;
+    return false;
+  });
   // 已删除会话的 sessionId：删除会话时中止其生产任务，任务随后的错误持久化
   // 不能把快照文件重新写回来（给已删除的会话"还魂"）。同名会话重新创建时移除标记。
   const deletedSessionIds = new Set<string>();
@@ -2827,7 +2864,13 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   app.onError((error, c) => {
     if (error instanceof BookWriteLockError) {
       return c.json(
-        { error: { code: "BOOK_BUSY", message: error.message, owner: error.owner } },
+        {
+          error: {
+            code: "BOOK_BUSY",
+            message: formatBookWriteLockCopy(error, "zh"),
+            owner: error.owner,
+          },
+        },
         409,
       );
     }
@@ -3769,9 +3812,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   app.post("/api/v1/books/:id/truth-proposals/:proposalId/apply", async (c) => {
     const id = c.req.param("id");
     const proposalId = c.req.param("proposalId");
-    throwIfBookBusy(id);
     const staged = await loadTruthProposal(state.bookDir(id), proposalId);
-    const releaseLock = await state.acquireBookLock(id, { stage: "truth-proposal-apply" });
+    const releaseLock = await state.acquireBookLock(id, { stage: "truth-proposal-apply" }, {
+      waitMs: BOOK_LOCK_INTERACTIVE_WAIT_MS,
+      onWaiting: (_owner, waitedMs) => {
+        if (waitedMs > 0 && waitedMs % 2000 >= 250) return;
+        broadcast("log", {
+          bookId: id,
+          level: "info",
+          tag: "studio",
+          message: `写入被占用，正在等待当前写作任务释放锁…（已等待 ${Math.max(1, Math.round(waitedMs / 1000))} 秒）`,
+        });
+      },
+    });
     try {
       const proposal = await applyTruthProposal({
         bookDir: state.bookDir(id),
@@ -4803,8 +4856,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   });
 
   // --- Daemon control ---
-
-  let schedulerInstance: Scheduler | null = null;
 
   app.get("/api/v1/daemon", (c) => {
     return c.json({
@@ -6310,9 +6361,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     const id = c.req.param("id");
     const bookDir = state.bookDir(id);
     try {
+      const owner = await state.forceReleaseBookLock(id, { graceMs: 0 });
       const { rm } = await import("node:fs/promises");
       await rm(bookDir, { recursive: true, force: true });
-      broadcast("book:deleted", { bookId: id });
+      broadcast("book:deleted", { bookId: id, lockReleased: Boolean(owner) });
       return c.json({ ok: true, bookId: id });
     } catch (e) {
       return c.json({ error: String(e) }, 500);

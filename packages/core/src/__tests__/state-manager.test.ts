@@ -863,6 +863,73 @@ describe("StateManager", () => {
       }
     });
 
+    it("waits for a live lock then acquires after the holder releases", async () => {
+      await mkdir(manager.bookDir("lock-book-wait"), { recursive: true });
+      const release = await manager.acquireBookLock("lock-book-wait");
+      const waited: number[] = [];
+      const pending = manager.acquireBookLock("lock-book-wait", { stage: "write-truth" }, {
+        waitMs: 400,
+        pollMs: 40,
+        onWaiting: (_owner, waitedMs) => {
+          waited.push(waitedMs);
+        },
+      });
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 80));
+      await release();
+      const next = await pending;
+      expect(waited.length).toBeGreaterThan(0);
+      await next();
+    });
+
+    it("times out a wait and keeps the live holder", async () => {
+      await mkdir(manager.bookDir("lock-book-wait-timeout"), { recursive: true });
+      const release = await manager.acquireBookLock("lock-book-wait-timeout", {
+        taskId: "pipeline",
+        stage: "write-next",
+      });
+      try {
+        await expect(
+          manager.acquireBookLock("lock-book-wait-timeout", undefined, { waitMs: 60, pollMs: 20 }),
+        ).rejects.toMatchObject({ code: "BOOK_BUSY" });
+        expect(manager.inspectBookLock("lock-book-wait-timeout")?.taskId).toBe("pipeline");
+      } finally {
+        await release();
+      }
+    });
+
+    it("auto-clears an in-process lock after the book directory is deleted", async () => {
+      await mkdir(manager.bookDir("lock-book-deleted"), { recursive: true });
+      const leftover = await manager.acquireBookLock("lock-book-deleted", {
+        taskId: "old-session",
+        stage: "write-next",
+      });
+      await rm(manager.bookDir("lock-book-deleted"), { recursive: true, force: true });
+      expect(manager.inspectBookLock("lock-book-deleted")).toBeNull();
+      await mkdir(manager.bookDir("lock-book-deleted"), { recursive: true });
+      const recovered = await manager.acquireBookLock("lock-book-deleted");
+      expect(typeof recovered).toBe("function");
+      await recovered();
+      await leftover();
+    });
+
+    it("auto-clears a same-engine lock with no live task", async () => {
+      const { ageInProcessBookLockForTest, setBookLockLivenessCheck } = await import("../state/manager.js");
+      await mkdir(manager.bookDir("lock-book-no-task"), { recursive: true });
+      setBookLockLivenessCheck(() => false);
+      const leftover = await manager.acquireBookLock("lock-book-no-task", {
+        stage: "interactive-edit",
+      });
+      try {
+        expect(ageInProcessBookLockForTest(tempDir, "lock-book-no-task", 9_000)).toBe(true);
+        const recovered = await manager.acquireBookLock("lock-book-no-task");
+        expect(typeof recovered).toBe("function");
+        await recovered();
+      } finally {
+        await leftover();
+        setBookLockLivenessCheck(undefined);
+      }
+    });
+
     it("refreshes the lease heartbeat while a write remains active", async () => {
       vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
       const bookId = "lock-book-heartbeat";

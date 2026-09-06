@@ -46,6 +46,7 @@ export class Scheduler {
   private dailyChapterCount = new Map<string, number>();
 
   private readonly log?: Logger;
+  private readonly writingBooks = new Set<string>();
 
   constructor(config: SchedulerConfig) {
     this.config = config;
@@ -98,6 +99,10 @@ export class Scheduler {
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  isWritingBook(bookId: string): boolean {
+    return this.writingBooks.has(bookId);
   }
 
   private async triggerWriteCycle(): Promise<void> {
@@ -196,29 +201,34 @@ export class Scheduler {
 
   /** Process a single book: write chaptersPerCycle chapters with retry + cooldown. */
   private async processBook(bookId: string, bookConfig: BookConfig): Promise<void> {
-    for (let i = 0; i < this.config.chaptersPerCycle; i++) {
-      if (!this.running) return;
-      if (this.isDailyCapReached()) return;
-      if (this.pausedBooks.has(bookId)) return;
+    this.writingBooks.add(bookId);
+    try {
+      for (let i = 0; i < this.config.chaptersPerCycle; i++) {
+        if (!this.running) return;
+        if (this.isDailyCapReached()) return;
+        if (this.pausedBooks.has(bookId)) return;
 
-      // Cooldown between chapters (skip for the first one)
-      if (i > 0 && this.config.cooldownAfterChapterMs > 0) {
-        await this.sleep(this.config.cooldownAfterChapterMs);
-      }
+        // Cooldown between chapters (skip for the first one)
+        if (i > 0 && this.config.cooldownAfterChapterMs > 0) {
+          await this.sleep(this.config.cooldownAfterChapterMs);
+        }
 
-      const success = await this.writeOneChapter(bookId, bookConfig);
-      if (!success) {
-        // Immediate retry with delay (if within retry limit)
-        const failures = this.consecutiveFailures.get(bookId) ?? 0;
-        if (failures <= this.gates.maxAuditRetries && this.config.retryDelayMs > 0) {
-          this.log?.warn(`${bookId} retrying in ${this.config.retryDelayMs}ms`);
-          await this.sleep(this.config.retryDelayMs);
-          const retrySuccess = await this.writeOneChapter(bookId, bookConfig);
-          if (!retrySuccess) break; // Stop this book's cycle on second failure
-        } else {
-          break; // Stop this book's cycle
+        const success = await this.writeOneChapter(bookId, bookConfig);
+        if (!success) {
+          // Immediate retry with delay (if within retry limit)
+          const failures = this.consecutiveFailures.get(bookId) ?? 0;
+          if (failures <= this.gates.maxAuditRetries && this.config.retryDelayMs > 0) {
+            this.log?.warn(`${bookId} retrying in ${this.config.retryDelayMs}ms`);
+            await this.sleep(this.config.retryDelayMs);
+            const retrySuccess = await this.writeOneChapter(bookId, bookConfig);
+            if (!retrySuccess) break;
+          } else {
+            break;
+          }
         }
       }
+    } finally {
+      this.writingBooks.delete(bookId);
     }
   }
 

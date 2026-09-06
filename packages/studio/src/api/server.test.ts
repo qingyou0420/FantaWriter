@@ -235,6 +235,14 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
       return async () => undefined;
     }
 
+    inspectBookLock(): null {
+      return null;
+    }
+
+    async forceReleaseBookLock(): Promise<null> {
+      return null;
+    }
+
     async getNextChapterNumber(_bookId?: string): Promise<number> {
       return 1;
     }
@@ -312,10 +320,24 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     get isRunning(): boolean {
       return this.running;
     }
+
+    isWritingBook(_bookId: string): boolean {
+      return false;
+    }
   }
 
   return {
     StateManager: MockStateManager,
+    BookWriteLockError: actual.BookWriteLockError,
+    WritePreflightError: actual.WritePreflightError,
+    ApproveBlockedError: actual.ApproveBlockedError,
+    TruthRevisionConflictError: actual.TruthRevisionConflictError,
+    TruthProposalNotFoundError: actual.TruthProposalNotFoundError,
+    BOOK_LOCK_INTERACTIVE_WAIT_MS: actual.BOOK_LOCK_INTERACTIVE_WAIT_MS,
+    formatBookWriteLockCopy: actual.formatBookWriteLockCopy,
+    isBookWriteLockMessage: actual.isBookWriteLockMessage,
+    setBookLockLivenessCheck: actual.setBookLockLivenessCheck,
+    evaluateWritePreflight: vi.fn(async () => ({ ok: true, reasons: [] })),
     PipelineRunner: MockPipelineRunner,
     Scheduler: MockScheduler,
     createLLMClient: createLLMClientMock,
@@ -534,7 +556,7 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "ready-for-review",
       auditResult: { passed: true, issues: [], summary: "repaired" },
     });
-    reviseFoundationMock.mockResolvedValue(undefined);
+    reviseFoundationMock.mockResolvedValue({ proposals: [] });
     initSpinoffBookMock.mockResolvedValue(undefined);
     initImitationBookMock.mockResolvedValue(undefined);
     consolidateMock.mockResolvedValue({ archivedVolumes: 1, retainedChapters: 8 });
@@ -5108,10 +5130,11 @@ describe("createStudioServer daemon lifecycle", () => {
     });
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "BOOK_BUSY", message: lockError },
-      response: lockError,
-    });
+    const json = await response.json() as { error: { code: string; message: string }; response: string };
+    expect(json.error.code).toBe("BOOK_BUSY");
+    expect(json.error.message).toContain("写入被占用");
+    expect(json.error.message).toContain(lockError);
+    expect(json.response).toBe(json.error.message);
   });
 
   it("runs quick-action write-next through the background task system with persisted snapshots", async () => {
@@ -6393,10 +6416,11 @@ describe("createStudioServer daemon lifecycle", () => {
     });
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
-      error: { code: "BOOK_BUSY", message: lockError },
-      response: lockError,
-    });
+    const json = await response.json() as { error: { code: string; message: string }; response: string };
+    expect(json.error.code).toBe("BOOK_BUSY");
+    expect(json.error.message).toContain("写入被占用");
+    expect(json.error.message).toContain(lockError);
+    expect(json.response).toBe(json.error.message);
     expect(chatCompletionMock).not.toHaveBeenCalled();
   });
 

@@ -45,4 +45,14 @@ describe("localizeKnownRuntimeMessage", () => {
     expect(message).toContain("流式兼容性");
     expect(message).not.toMatch(/produced no token/i);
   });
+
+  it("localizes in-process write locks as 写入被占用, not a read failure", () => {
+    const message = localizeKnownRuntimeMessage(
+      'Book "醉词" is locked by an active write (pid:123 started:2026-09-06T00:00:00.000Z). This in-process lock is not recovered automatically while the holder is still alive. Abort the running task or POST /api/v1/books/:id/lock/force-release, then retry.',
+    );
+    expect(message).toContain("写入被占用");
+    expect(message).toContain("醉词");
+    expect(message).not.toContain("读取");
+    expect(message).not.toContain("force-release");
+  });
 });

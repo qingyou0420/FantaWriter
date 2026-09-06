@@ -31,6 +31,7 @@ const TOOL_LABELS: Record<string, readonly [string, string]> = {
   propose_action: ["确认动作", "Confirm action"],
   short_fiction_run: ["短篇生产", "Short fiction run"],
   generate_cover: ["生成封面", "Generate cover"],
+  write_truth_file: ["写入正典", "Write truth file"],
   script_create: ["剧本创作", "Create script"],
   storyboard_create: ["分镜创作", "Create storyboard"],
   interactive_film_create: ["互动影游", "Interactive film"],

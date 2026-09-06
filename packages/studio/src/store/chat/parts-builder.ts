@@ -44,6 +44,7 @@ const TOOL_LABELS: Record<string, readonly [string, string]> = {
   propose_action: ["确认动作", "Confirm action"],
   short_fiction_run: ["短篇生产", "Short fiction run"],
   generate_cover: ["生成封面", "Generate cover"],
+  write_truth_file: ["写入正典", "Write truth file"],
   play_edit: ["编辑互动世界", "Edit interactive world"],
   play_start: ["启动互动世界", "Start interactive world"],
   play_revise: ["重做互动回合", "Redo play turn"],

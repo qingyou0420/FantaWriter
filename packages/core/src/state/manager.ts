@@ -1,7 +1,12 @@
 /**
  * FantaWriter 2.0 P0 (2026-09-01): in-process lock TTL, inspect/force-release,
  * honest BOOK_BUSY copy. Upstream: InkOS v1.8.0 StateManager.
+ *
+ * 2026-09-06: interactive writers can wait/retry; orphan in-process entries
+ * (deleted book dir, vanished lock file, aborted/dead holder, no live task)
+ * auto-clear so chat truth edits are not stuck behind a leftover lock.
  */
+import { existsSync } from "node:fs";
 import { readFile, writeFile, mkdir, readdir, rm, stat, unlink, open } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
@@ -12,12 +17,28 @@ import { bootstrapStructuredStateFromMarkdown, resolveDurableStoryProgress } fro
 const BOOK_LOCK_HEARTBEAT_MS = 30_000;
 const BOOK_LOCK_LEASE_MS = 3 * 60_000;
 const BOOK_LOCK_RELEASE_RETRIES = 4;
+/** Lock file missing while book dir exists: still-acquiring vs leftover after delete. */
+const BOOK_LOCK_ORPHAN_FILE_MS = 2_000;
+/** Same-engine entry with no abort and no independently observed live task. */
+const BOOK_LOCK_ORPHAN_HOLD_MS = 8_000;
+export const BOOK_LOCK_INTERACTIVE_WAIT_MS = 90_000;
+export const BOOK_LOCK_INTERACTIVE_POLL_MS = 250;
 
 export interface BookLockHolder {
   readonly taskId?: string;
   readonly stage?: string;
   readonly abort?: AbortController;
+  /** Return false when the caller's work has ended but release was skipped. */
+  readonly isAlive?: () => boolean;
 }
+
+export interface AcquireBookLockOptions {
+  readonly waitMs?: number;
+  readonly pollMs?: number;
+  readonly onWaiting?: (owner: BookLockOwnerInfo | undefined, waitedMs: number) => void;
+}
+
+export type BookLockLivenessCheck = (owner: BookLockOwnerInfo) => boolean;
 
 interface BookLockMetadata {
   readonly version: 1;
@@ -51,10 +72,38 @@ export interface BookLockOwnerInfo {
 // Studio creates a PipelineRunner per request. Lock ownership therefore has to
 // be shared by every StateManager in this process, not stored on one instance.
 const processBookLocks = new Map<string, ProcessBookLock>();
+let bookLockLivenessCheck: BookLockLivenessCheck | undefined;
 
 function normalizeLockKey(lockPath: string): string {
   const absolute = resolve(lockPath);
   return process.platform === "win32" ? absolute.toLowerCase() : absolute;
+}
+
+/**
+ * Optional Studio hook: true when an independently observed task still owns
+ * this book (confirmed production task, scheduler write, …). Used to recover
+ * leftover in-process entries that have no abort and no live work.
+ */
+export function setBookLockLivenessCheck(check?: BookLockLivenessCheck): void {
+  bookLockLivenessCheck = check;
+}
+
+/** Test-only: drop every in-process lock and the liveness hook. */
+export function resetProcessBookLocksForTest(): void {
+  for (const owner of processBookLocks.values()) {
+    if (owner.heartbeatTimer) clearInterval(owner.heartbeatTimer);
+  }
+  processBookLocks.clear();
+  bookLockLivenessCheck = undefined;
+}
+
+/** Test-only: rewind startedAt while keeping the heartbeat fresh (orphan-hold tests). */
+export function ageInProcessBookLockForTest(projectRoot: string, bookId: string, heldMs: number): boolean {
+  const lockPath = join(projectRoot, "books", bookId, ".write.lock");
+  const owner = processBookLocks.get(normalizeLockKey(lockPath));
+  if (!owner) return false;
+  (owner.metadata as { startedAt: number }).startedAt = Date.now() - heldMs;
+  return true;
 }
 
 /** Test-only: stop heartbeat and rewind lease so the next acquire recovers the in-process entry. */
@@ -88,6 +137,37 @@ export class BookWriteLockError extends Error {
     this.name = "BookWriteLockError";
     this.owner = owner;
   }
+}
+
+export function isBookWriteLockError(error: unknown): error is BookWriteLockError {
+  return error instanceof BookWriteLockError
+    || (error instanceof Error && (error as { code?: unknown }).code === "BOOK_BUSY");
+}
+
+export function isBookWriteLockMessage(text: string): boolean {
+  return /BookWriteLockError|locked by an active (InkOS )?write|BOOK_BUSY|写入被占用/i.test(text);
+}
+
+export function formatBookWriteLockCopy(
+  error: Pick<BookWriteLockError, "bookId" | "owner" | "message">,
+  language: "zh" | "en" = "zh",
+): string {
+  if (language === "en") return error.message;
+  const stage = error.owner?.stage;
+  const taskId = error.owner?.taskId;
+  const heldMs = error.owner?.heldMs;
+  const held = typeof heldMs === "number" && heldMs >= 0
+    ? heldMs < 60_000
+      ? `${Math.max(1, Math.round(heldMs / 1000))} 秒`
+      : `${Math.round(heldMs / 60_000)} 分钟`
+    : undefined;
+  const extras = [
+    stage ? `阶段 ${stage}` : undefined,
+    taskId ? `任务 ${taskId}` : undefined,
+    held ? `已持续 ${held}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+  const detail = extras.length > 0 ? `（${extras.join("，")}）` : "";
+  return `写入被占用：书「${error.bookId}」正在被写作任务写入${detail}。请等待当前任务结束，或确认没有进行中的任务后使用「强制释放」。`;
 }
 
 export class StateManager {
@@ -184,7 +264,12 @@ export class StateManager {
     const lockPath = join(this.bookDir(bookId), ".write.lock");
     const lockKey = this.normalizeLockKey(lockPath);
     const existing = processBookLocks.get(lockKey);
-    return existing ? this.toOwnerInfo(bookId, lockPath, existing) : null;
+    if (!existing) return null;
+    if (this.isStaleProcessLock(existing, lockPath, bookId)) {
+      this.abandonProcessLockSync(lockKey, existing, lockPath);
+      return null;
+    }
+    return this.toOwnerInfo(bookId, lockPath, existing);
   }
 
   async forceReleaseBookLock(
@@ -221,13 +306,34 @@ export class StateManager {
     return info;
   }
 
-  async acquireBookLock(bookId: string, holder?: BookLockHolder): Promise<() => Promise<void>> {
+  async acquireBookLock(
+    bookId: string,
+    holder?: BookLockHolder,
+    options?: AcquireBookLockOptions,
+  ): Promise<() => Promise<void>> {
+    const waitMs = Math.max(0, options?.waitMs ?? 0);
+    const pollMs = Math.max(50, options?.pollMs ?? BOOK_LOCK_INTERACTIVE_POLL_MS);
+    const started = Date.now();
+    for (;;) {
+      try {
+        return await this.tryAcquireBookLock(bookId, holder);
+      } catch (error) {
+        if (!(error instanceof BookWriteLockError) || Date.now() - started >= waitMs) {
+          throw error;
+        }
+        options?.onWaiting?.(error.owner, Date.now() - started);
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, pollMs));
+      }
+    }
+  }
+
+  private async tryAcquireBookLock(bookId: string, holder?: BookLockHolder): Promise<() => Promise<void>> {
     await mkdir(this.bookDir(bookId), { recursive: true });
     const lockPath = join(this.bookDir(bookId), ".write.lock");
     const lockKey = this.normalizeLockKey(lockPath);
     const existingOwner = processBookLocks.get(lockKey);
     if (existingOwner) {
-      if (this.isStaleProcessLock(existingOwner)) {
+      if (this.isStaleProcessLock(existingOwner, lockPath, bookId)) {
         await this.recoverProcessLock(lockKey, existingOwner, lockPath);
       } else {
         throw new BookWriteLockError(
@@ -380,9 +486,35 @@ export class StateManager {
     };
   }
 
-  private isStaleProcessLock(owner: ProcessBookLock): boolean {
+  private isStaleProcessLock(owner: ProcessBookLock, lockPath: string, bookId: string): boolean {
     if (owner.holder?.abort?.signal.aborted) return true;
-    return Date.now() - owner.metadata.heartbeatAt > BOOK_LOCK_LEASE_MS;
+    if (owner.holder?.isAlive && !owner.holder.isAlive()) return true;
+    if (Date.now() - owner.metadata.heartbeatAt > BOOK_LOCK_LEASE_MS) return true;
+    const bookDir = join(lockPath, "..");
+    if (!existsSync(bookDir)) return true;
+    if (!existsSync(lockPath) && Date.now() - owner.metadata.startedAt > BOOK_LOCK_ORPHAN_FILE_MS) {
+      return true;
+    }
+    if (!owner.holder?.abort && bookLockLivenessCheck) {
+      const info = this.toOwnerInfo(bookId, lockPath, owner);
+      if (!bookLockLivenessCheck(info) && Date.now() - owner.metadata.startedAt > BOOK_LOCK_ORPHAN_HOLD_MS) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private abandonProcessLockSync(lockKey: string, owner: ProcessBookLock, lockPath: string): void {
+    if (owner.heartbeatTimer) clearInterval(owner.heartbeatTimer);
+    owner.heartbeatTimer = undefined;
+    if (processBookLocks.get(lockKey)?.metadata.token === owner.metadata.token) {
+      processBookLocks.delete(lockKey);
+    }
+    void this.unlinkWithRetry(lockPath).catch((error) => {
+      if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+        console.warn(`[inkos] Failed to abandon stale book lock ${lockPath}: ${String(error)}`);
+      }
+    });
   }
 
   private async recoverProcessLock(

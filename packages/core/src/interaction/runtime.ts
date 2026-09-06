@@ -67,7 +67,15 @@ export interface InteractionRuntimeTools {
   ) => Promise<unknown>;
   readonly updateCurrentFocus: (bookId: string, content: string) => Promise<unknown>;
   readonly updateAuthorIntent: (bookId: string, content: string) => Promise<unknown>;
-  readonly writeTruthFile: (bookId: string, fileName: string, content: string) => Promise<unknown>;
+  readonly writeTruthFile: (
+    bookId: string,
+    fileName: string,
+    content: string,
+    options?: {
+      readonly waitMs?: number;
+      readonly onWaiting?: (owner: { readonly bookId: string; readonly stage?: string } | undefined, waitedMs: number) => void;
+    },
+  ) => Promise<unknown>;
 }
 
 export interface InteractionRuntimeResult {

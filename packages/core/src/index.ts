@@ -716,8 +716,16 @@ export { ScriptCreationAgent, StoryboardCreationAgent, InteractiveFilmCreationAg
 // State
 export {
   BookWriteLockError,
+  BOOK_LOCK_INTERACTIVE_POLL_MS,
+  BOOK_LOCK_INTERACTIVE_WAIT_MS,
+  formatBookWriteLockCopy,
+  isBookWriteLockError,
+  isBookWriteLockMessage,
+  setBookLockLivenessCheck,
   StateManager,
+  type AcquireBookLockOptions,
   type BookLockHolder,
+  type BookLockLivenessCheck,
   type BookLockOwnerInfo,
 } from "./state/manager.js";
 export { syncChapterWordCounts, type ChapterWordCountChange, type ChapterWordSyncDeps, type ChapterWordSyncResult } from "./state/chapter-word-sync.js";
