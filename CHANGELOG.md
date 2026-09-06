@@ -4,10 +4,15 @@
 
 ## [未发布]
 
+## [2.0.15] - 2026-09-06
+
+Windows 补丁安装包：`FantaWriter-Setup-2.0.15.exe`。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。
+
 ### 修复
 
-- 书聊改正典：`write_truth_file` 对大纲/骨架/角色卡只写提案，不再和管线抢同一把写锁；真正落盘（确认提案、改 runtime 真相）会自动等待并显示「写入被占用」，不再把成功的读取误报成「读取执行失败」。
-- 书被删除或重建后，旧书身份留下的进程内写锁会自动清掉；没有活动任务的同引擎残留锁也会自愈，不必再手动 force-release。
+- 书籍写入锁卡住对话改设定。
+- 过期锁自动清理。
+- 占用时中文提示为写入被占用而非读取失败。
 
 ## [2.0.14] - 2026-09-04
 
@@ -382,6 +387,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.0.15]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.15
 [2.0.14]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.14
 [2.0.13]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.13
 [2.0.12]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.12

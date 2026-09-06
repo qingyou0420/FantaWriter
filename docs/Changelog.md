@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.0.15
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.15.exe`（#90 修复书籍写入锁卡住对话改设定；过期锁自动清理；占用时中文提示为写入被占用而非读取失败）。
+
 ## 2.0.14
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 补丁安装包 `FantaWriter-Setup-2.0.14.exe`（#88 侧栏按开始创作/我的创作/会话记录/工具/系统重排；去掉互动影游与导入入口；题材模板挪到工具；修复短篇删除后「我的创作」残影）。
