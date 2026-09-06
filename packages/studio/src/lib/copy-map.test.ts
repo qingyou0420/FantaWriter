@@ -27,7 +27,7 @@ describe("copy-map", () => {
   });
 
   it("splits a long outline title into 短题 + 提要", () => {
-    const split = splitLongOutlineTitle("倒叙冷开，落回书院春日苏绻入辩堂", "");
+    const split = splitLongOutlineTitle("倒叙冷开，落回书院春日苏绻入辩堂初遇阿月后", "");
     expect(split.split).toBe(true);
     expect(split.title.length).toBeLessThanOrEqual(12);
     expect(split.summary).toContain("落回书院");

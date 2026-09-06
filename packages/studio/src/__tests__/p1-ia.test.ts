@@ -36,7 +36,7 @@ describe("P1-1 sidebar + author", () => {
   it("persists author under explicit project root, not cwd", () => {
     const io = read("src/lib/author-io.ts");
     expect(io).toMatch(/\.inkos\/author\.json/);
-    expect(io).not.toMatch(/process\.cwd\(\)/);
+    expect(io.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")).not.toMatch(/process\.cwd/);
     const server = read("src/api/server.ts");
     expect(server).toMatch(/\/api\/v1\/author/);
     expect(server).toMatch(/\/api\/v1\/author\/avatar/);

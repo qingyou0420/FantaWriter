@@ -3093,9 +3093,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   app.get("/api/v1/author/avatar", async (c) => {
     const file = await readAuthorAvatar(root);
     if (!file) return c.body(null, 404);
-    c.header("Content-Type", file.contentType);
-    c.header("Cache-Control", "no-cache");
-    return c.body(file.bytes);
+    return new Response(new Uint8Array(file.bytes), {
+      headers: {
+        "Content-Type": file.contentType,
+        "Cache-Control": "no-cache",
+      },
+    });
   });
 
   app.post("/api/v1/author/avatar", async (c) => {
