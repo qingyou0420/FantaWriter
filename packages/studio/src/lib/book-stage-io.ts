@@ -20,7 +20,7 @@ import {
   type BookStageFacts,
   type BookStageSnapshot,
   type BookWorkflowJson,
-} from "./book-stage";
+} from "./book-stage.js";
 
 export interface BookStagePayload extends BookStageSnapshot {
   readonly workflow: BookWorkflowJson;
