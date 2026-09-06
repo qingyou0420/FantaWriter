@@ -3,9 +3,8 @@ import { useState, useEffect, useCallback } from "react";
 export type HashRoute =
   | { page: "dashboard" }
   | { page: "chat" }
-  | { page: "book"; bookId: string; chatOpen?: boolean }
+  | { page: "book"; bookId: string }
   | { page: "book-outline"; bookId: string }
-  | { page: "book-chat"; bookId: string }
   | { page: "book-settings"; bookId: string }
   | { page: "book-ask"; bookId: string }
   | { page: "book-ground"; bookId: string }
@@ -63,7 +62,7 @@ function parseHash(hash: string): HashRoute {
   if (path === "daemon") return { page: "daemon" };
 
   const bookAskMatch = path.match(/^book\/([^/]+)\/ask$/);
-  if (bookAskMatch) return { page: "book", bookId: decodePart(bookAskMatch[1]), chatOpen: true };
+  if (bookAskMatch) return { page: "book-ask", bookId: decodePart(bookAskMatch[1]) };
 
   const bookGroundMatch = path.match(/^book\/([^/]+)\/ground$/);
   if (bookGroundMatch) return { page: "book-ground", bookId: decodePart(bookGroundMatch[1]) };
@@ -75,7 +74,7 @@ function parseHash(hash: string): HashRoute {
   if (bookWriteMatch) return { page: "book-write", bookId: decodePart(bookWriteMatch[1]) };
 
   const bookChatMatch = path.match(/^book\/([^/]+)\/chat$/);
-  if (bookChatMatch) return { page: "book", bookId: decodePart(bookChatMatch[1]), chatOpen: true };
+  if (bookChatMatch) return { page: "book-ask", bookId: decodePart(bookChatMatch[1]) };
 
   const bookMatch = path.match(/^book\/([^/]+)$/);
   if (bookMatch) return { page: "book", bookId: decodePart(bookMatch[1]) };
@@ -112,12 +111,9 @@ function routeToHash(route: HashRoute): string {
     case "dashboard": return "#/";
     case "author": return "#/author";
     case "chat": return "#/chat";
-    case "book": return route.chatOpen
-      ? `#/book/${encodeURIComponent(route.bookId)}/chat`
-      : `#/book/${encodeURIComponent(route.bookId)}`;
+    case "book": return `#/book/${encodeURIComponent(route.bookId)}`;
     case "book-outline":
     case "book-weave": return `#/book/${encodeURIComponent(route.bookId)}/weave`;
-    case "book-chat": return `#/book/${encodeURIComponent(route.bookId)}/chat`;
     case "book-settings":
     case "book-write": return `#/book/${encodeURIComponent(route.bookId)}/write`;
     case "logs": return "#/logs";
@@ -146,7 +142,7 @@ function routeToHash(route: HashRoute): string {
 export { parseHash, routeToHash }; // for testing
 
 const HASH_PAGES = new Set([
-  "dashboard", "author", "chat", "book", "book-outline", "book-chat", "book-settings",
+  "dashboard", "author", "chat", "book", "book-outline", "book-settings",
   "book-ask", "book-ground", "book-weave", "book-write", "book-create",
   "services", "project-settings", "service-detail", "translation", "import",
   "update", "play", "film", "flow", "film-author", "film-studio",
@@ -161,6 +157,13 @@ export function useHashRoute() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    const canonical = routeToHash(route);
+    if (canonical && window.location.hash !== canonical) {
+      window.history.replaceState(null, "", canonical);
+    }
+  }, [route]);
 
   const setRoute = useCallback((newRoute: HashRoute) => {
     // 先同步 React state：无论目标页面是否写 URL，保证页面立刻切换。

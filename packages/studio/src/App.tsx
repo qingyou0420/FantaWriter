@@ -10,8 +10,8 @@ import { BookStudy } from "./pages/BookStudy";
 import { AuthorPage } from "./pages/AuthorPage";
 import { OutlineWorkspace } from "./pages/OutlineWorkspace";
 import { BookGround } from "./pages/BookGround";
-import { AskDrawerTitle, BookAskDrawerChrome } from "./components/BookAskDrawerChrome";
 import { AskCreateRail } from "./components/AskCreateRail";
+import { BookAskPage } from "./pages/BookAskPage";
 import { ToastHost } from "./components/ToastHost";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
@@ -72,7 +72,6 @@ export function App() {
   const { data: project, error: projectError, refetch: refetchProject } = useApi<{ language: string; languageExplicit: boolean }>("/project");
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [ready, setReady] = useState(false);
-  const [bookChatOpen, setBookChatOpen] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -101,42 +100,17 @@ export function App() {
 
   useSessionEvents(sse, route, setRoute);
 
-  useEffect(() => {
-    if ((route.page === "book" && route.chatOpen) || route.page === "book-chat" || route.page === "book-ask") {
-      setBookChatOpen(true);
-    }
-  }, [route]);
-
-  const closeAskDrawer = () => {
-    setBookChatOpen(false);
-    if ((route.page === "book" && route.chatOpen) || route.page === "book-chat" || route.page === "book-ask") {
-      setRoute({ page: "book", bookId: route.bookId });
-    }
-  };
-
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
     toAuthor: () => setRoute({ page: "author" }),
     toChat: () => setRoute({ page: "chat" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
-    toAsk: (bookId: string) => {
-      setBookChatOpen(true);
-      setRoute({ page: "book", bookId, chatOpen: true });
-    },
+    toAsk: (bookId: string) => setRoute({ page: "book-ask", bookId }),
     toGround: (bookId: string) => setRoute({ page: "book-ground", bookId }),
     toWeave: (bookId: string) => setRoute({ page: "book-weave", bookId }),
     toWrite: (bookId: string) => setRoute({ page: "book-write", bookId }),
     toOutline: (bookId: string) => setRoute({ page: "book-weave", bookId }),
-    toBookChat: (bookId: string) => {
-      setBookChatOpen(true);
-      setRoute({ page: "book", bookId, chatOpen: true });
-    },
     toBookSettings: (bookId: string) => setRoute({ page: "book-write", bookId }),
-    onToggleChat: () => {
-      if (bookChatOpen) closeAskDrawer();
-      else setBookChatOpen(true);
-    },
-    chatOpen: bookChatOpen,
     toBookCreate: () => setRoute({ page: "book-create" }),
     toChapter: (bookId: string, chapterNumber: number) =>
       setRoute({ page: "chapter", bookId, chapterNumber }),
@@ -303,9 +277,21 @@ export function App() {
               />
             </div>
           )}
-          {(route.page === "book" || route.page === "book-chat" || route.page === "book-ask") && (
+          {route.page === "book" && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <BookStudy bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
+            </div>
+          )}
+          {route.page === "book-ask" && (
+            <div className="absolute inset-0 flex min-w-0 flex-col" data-testid="book-ask-page">
+              <BookAskPage
+                bookId={route.bookId}
+                nav={nav}
+                theme={theme}
+                t={t}
+                sse={sse}
+                isZh={currentLang !== "en"}
+              />
             </div>
           )}
           {route.page === "book-ground" && (
@@ -432,36 +418,6 @@ export function App() {
           )}
         </main>
       </div>
-      {activeBookId && bookChatOpen && (
-        <aside
-          className="flex h-full w-[min(420px,100vw)] shrink-0 flex-col border-l border-border bg-background"
-          data-testid="book-talk-drawer"
-        >
-          <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-            <span className="text-sm font-medium">
-              <AskDrawerTitle bookId={activeBookId} isZh={currentLang !== "en"} />
-            </span>
-            <button
-              type="button"
-              onClick={closeAskDrawer}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              {currentLang === "en" ? "Close" : "关闭"}
-            </button>
-          </div>
-          <BookAskDrawerChrome bookId={activeBookId} isZh={currentLang !== "en"} />
-          <div className="flex min-h-0 flex-1">
-            <ChatPage
-              activeBookId={activeBookId}
-              mode="book"
-              nav={nav}
-              theme={theme}
-              t={t}
-              sse={sse}
-            />
-          </div>
-        </aside>
-      )}
       <BookBusyCard />
       <ToastHost />
     </div>

@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+P0-5：问心改为独立页 `#/book/:id/ask`（`/chat` 重定向到 `/ask`）；删除问心抽屉；书内 chrome 左【书房】右 问心·研墨·织卷·落笔；侧栏问心记录进问心页。不 bump。
+
 ## 2.1.2
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.2.exe`（#101 P0-4：问心抽屉不再被 BookSidebar 挤没；AI 动态改实时动态并去掉状态点；资料设置与项目设置对调；去掉我的书目与首页「在创」；封面三行信息卡；新开会话文案）。

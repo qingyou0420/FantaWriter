@@ -37,7 +37,7 @@ import type { BookStageSnapshot } from "../lib/book-stage";
 import { TruthProposalCard, type PendingTruthProposal } from "../components/TruthProposalCard";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
-import { ChevronLeft, Feather, MoreHorizontal } from "lucide-react";
+import { Feather, MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -336,19 +336,11 @@ export function OutlineWorkspace({
 
   return (
     <div className="space-y-5 fade-in" data-testid="outline-workspace">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-          <button type="button" onClick={nav.toDashboard} className="hover:text-primary flex items-center gap-1">
-            <ChevronLeft size={14} />
-            {t("bread.books")}
-          </button>
-          <span className="text-border">/</span>
-          <button type="button" onClick={() => nav.toBook(bookId)} className="hover:text-primary">{data.book.title}</button>
-          <span className="text-border">/</span>
-          <span className="text-foreground">{isZh ? "织卷" : "Weave"}</span>
-        </nav>
-        <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} t={t} />
-      </div>
+      <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} t={t} />
+      <header className="space-y-1">
+        <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${data.book.title}》` : data.book.title}</p>
+        <h1 className="font-serif text-[32px]">{isZh ? "织卷" : "Weave"}</h1>
+      </header>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-muted-foreground" data-testid="outline-stats">

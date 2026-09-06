@@ -5,7 +5,6 @@ describe("deriveActiveBookId", () => {
   it("returns the current book across book-centered routes", () => {
     expect(deriveActiveBookId({ page: "book", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "book-outline", bookId: "alpha" })).toBe("alpha");
-    expect(deriveActiveBookId({ page: "book-chat", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "book-ask", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "book-ground", bookId: "alpha" })).toBe("alpha");
     expect(deriveActiveBookId({ page: "book-weave", bookId: "alpha" })).toBe("alpha");

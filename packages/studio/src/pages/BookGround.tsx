@@ -186,18 +186,10 @@ export function BookGround({
 
   return (
     <div className="space-y-6 fade-in" data-testid="book-ground-page">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-          <button type="button" onClick={nav.toDashboard} className="hover:text-primary">{t("bread.books")}</button>
-          <span className="text-border">/</span>
-          <button type="button" onClick={() => nav.toBook(bookId)} className="hover:text-primary">{title}</button>
-          <span className="text-border">/</span>
-          <span className="text-foreground">{isZh ? "研墨" : "Ground"}</span>
-        </nav>
-        <BookWorkspaceNav bookId={bookId} active="ground" nav={nav} isZh={isZh} chatOpen={Boolean(nav.chatOpen)} t={t} />
-      </div>
+      <BookWorkspaceNav bookId={bookId} active="ground" nav={nav} isZh={isZh} t={t} />
 
       <header className="space-y-2">
+        <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${title}》` : title}</p>
         <h1 className="font-serif text-[40px]">{isZh ? "研墨" : "Ground"}</h1>
         <p className="text-[15px] leading-7 text-muted-foreground">
           {isZh ? "把世界与人磨实。定稿后才能织卷；之后仍可改，但会提示影响。" : "Settle the world and people before weaving volumes."}

@@ -1,7 +1,7 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import { SerialCockpitStrip, startDraft, startWriteNext } from "../components/SerialCockpitStrip";
-import { BookWorkspaceNav } from "../components/BookWorkspaceNav";
+import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -17,7 +17,6 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import {
-  ChevronLeft,
   Feather,
   FileText,
   Download,
@@ -56,12 +55,8 @@ interface BookData {
 type ReviseMode = "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect";
 type ExportFormat = "txt" | "md" | "epub";
 
-interface Nav {
+interface Nav extends BookWorkspaceNavTarget {
   toDashboard: () => void;
-  toBook: (bookId: string) => void;
-  toOutline: (bookId: string) => void;
-  toBookChat: (bookId: string) => void;
-  toBookSettings: (bookId: string) => void;
   toChapter: (bookId: string, num: number) => void;
   toAnalytics: (bookId: string) => void;
   toTruth: (bookId: string) => void;
@@ -358,29 +353,13 @@ export function BookDetail({
 
   return (
     <div className="space-y-8 fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-      <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-        <button
-          onClick={nav.toDashboard}
-          className="hover:text-primary transition-colors flex items-center gap-1"
-        >
-          <ChevronLeft size={14} />
-          {t("bread.books")}
-        </button>
-        <span className="text-border">/</span>
-        <button type="button" onClick={() => nav.toBook(bookId)} className="hover:text-primary">
-          {book.title}
-        </button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{isZh ? "落笔" : "Write"}</span>
-      </nav>
       <BookWorkspaceNav bookId={bookId} active="write" nav={nav} isZh={isZh} t={t} />
-      </div>
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border/40 pb-8">
         <div className="space-y-2">
+          <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${book.title}》` : book.title}</p>
           <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-serif font-medium">{book.title}</h1>
+            <h1 className="text-4xl font-serif font-medium">{isZh ? "落笔" : "Write"}</h1>
             {book.language === "en" && (
               <span className="px-1.5 py-0.5 rounded border border-primary/20 text-primary text-[10px] font-bold">EN</span>
             )}
