@@ -65,7 +65,7 @@ export function LanguageSelector({ onSelect }: { onSelect: (lang: "zh" | "en") =
       </div>
 
       <div className="text-sm text-muted-foreground">
-        可在设置中更改 · Can be changed in Settings
+        可在「项目设置 → 创作语言」中更改 · Change later in Project Settings → Writing language
       </div>
     </div>
   );

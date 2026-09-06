@@ -77,7 +77,7 @@ function goStage(
   bookId: string,
   target: "ask" | "ground" | "weave" | "write",
 ): void {
-  if (target === "ask") (nav.toAsk ?? nav.toBook)(bookId);
+  if (target === "ask") (nav.onToggleChat ?? nav.toBookChat ?? nav.toAsk ?? nav.toBook)(bookId);
   else if (target === "ground") (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId);
   else if (target === "weave") (nav.toWeave ?? nav.toOutline)(bookId);
   else (nav.toWrite ?? nav.toBookSettings)(bookId);

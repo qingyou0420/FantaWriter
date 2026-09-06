@@ -40,7 +40,7 @@ describe("sidebar create items", () => {
   });
 
   it("binds tools and system items in 清游 order", () => {
-    expect([...SIDEBAR_SECTION_ORDER]).toEqual(["author", "active-works", "create", "sessions", "tools", "system"]);
+    expect([...SIDEBAR_SECTION_ORDER]).toEqual(["author", "create", "sessions", "tools", "system"]);
     expect([...SIDEBAR_TOOL_ITEM_KEYS]).toEqual(["nav.style", "nav.genreTemplates"]);
     expect([...SIDEBAR_SYSTEM_ITEM_KEYS]).toEqual([
       "nav.config",
@@ -48,6 +48,7 @@ describe("sidebar create items", () => {
       "nav.checkUpdate",
       "nav.daemon",
       "nav.logs",
+      "nav.authorProfile",
     ]);
   });
 });

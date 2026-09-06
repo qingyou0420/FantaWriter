@@ -24,7 +24,7 @@ describe("hash route", () => {
     });
 
     it("parses four-step aliases and redirects old hashes", () => {
-      expect(parseHash("#/book/my-novel/ask")).toEqual({ page: "book-ask", bookId: "my-novel" });
+      expect(parseHash("#/book/my-novel/ask")).toEqual({ page: "book", bookId: "my-novel", chatOpen: true });
       expect(parseHash("#/book/my-novel/ground")).toEqual({ page: "book-ground", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/weave")).toEqual({ page: "book-weave", bookId: "my-novel" });
       expect(parseHash("#/book/my-novel/write")).toEqual({ page: "book-write", bookId: "my-novel" });
@@ -80,6 +80,10 @@ describe("hash route", () => {
     it("parses short settings and analytics routes", () => {
       expect(parseHash("#/short/明日来信/settings")).toEqual({ page: "short-settings", storyId: "明日来信" });
       expect(parseHash("#/short/明日来信/analytics")).toEqual({ page: "short-analytics", storyId: "明日来信" });
+    });
+
+    it("parses #/logs as the AI activity page", () => {
+      expect(parseHash("#/logs")).toEqual({ page: "logs" });
     });
 
     it("falls back to dashboard for unknown hash", () => {
@@ -164,9 +168,9 @@ describe("hash route", () => {
       expect(decodeURIComponent(hash)).toContain("自定义");
     });
 
-    it("non-hash pages return empty string", () => {
-      expect(routeToHash({ page: "daemon" })).toBe("");
-      expect(routeToHash({ page: "logs" })).toBe("");
+    it("logs and daemon have stable hashes", () => {
+      expect(routeToHash({ page: "logs" })).toBe("#/logs");
+      expect(routeToHash({ page: "daemon" })).toBe("#/daemon");
     });
   });
 });

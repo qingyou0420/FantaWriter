@@ -1,5 +1,5 @@
 /**
- * Book chrome: 书房 + 问心 · 研墨 · 织卷 · 落笔 + 对谈 + ⋯
+ * Book chrome: 书房 + 问心 · 研墨 · 织卷 · 落笔 + ⋯
  *
  * SPDX-License-Identifier: AGPL-3.0-only
  */
@@ -111,7 +111,7 @@ export function BookWorkspaceNav({
     };
   }, [bookId, stage]);
 
-  const goAsk = () => (nav.toAsk ?? nav.toBook)(bookId);
+  const goAsk = () => (nav.onToggleChat ?? nav.toBookChat ?? nav.toAsk ?? nav.toBook)(bookId);
   const goGround = () => (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId);
   const goWeave = () => (nav.toWeave ?? nav.toOutline)(bookId);
   const goWrite = () => (nav.toWrite ?? nav.toBookSettings)(bookId);
@@ -140,7 +140,7 @@ export function BookWorkspaceNav({
       <ol className="flex items-center gap-1" data-testid="book-stage-strip">
         {STEPS.map((step, index) => {
           const state = loaded?.steps[step.id] ?? (current === step.id ? "current" : "todo");
-          const highlighted = current === step.id;
+          const highlighted = step.id === "ask" ? talkOpen || current === "ask" : current === step.id;
           return (
             <li key={step.id} className="flex items-center gap-1">
               {index > 0 && <span className="h-px w-3 bg-border" aria-hidden="true" />}
@@ -163,19 +163,6 @@ export function BookWorkspaceNav({
           );
         })}
       </ol>
-
-      <button
-        type="button"
-        data-testid="book-tab-talk"
-        onClick={() => (nav.onToggleChat ?? nav.toBookChat)(bookId)}
-        className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
-          talkOpen
-            ? "bg-primary text-primary-foreground"
-            : "bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        }`}
-      >
-        {isZh ? "对谈" : "Talk"}
-      </button>
 
       <DropdownMenu>
         <DropdownMenuTrigger
