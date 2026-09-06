@@ -5,6 +5,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
+import { showToast } from "../lib/toast";
 
 interface Nav {
   toDashboard: () => void;
@@ -31,7 +32,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       await postApi("/daemon/start");
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed");
+      showToast(e instanceof Error ? e.message : "Failed", "error");
     } finally {
       setLoading(false);
     }
@@ -43,7 +44,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       await postApi("/daemon/stop");
       refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed");
+      showToast(e instanceof Error ? e.message : "Failed", "error");
     } finally {
       setLoading(false);
     }

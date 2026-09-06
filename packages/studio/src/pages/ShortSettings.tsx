@@ -73,7 +73,7 @@ export function ShortSettings({ storyId, nav, t }: {
 
       <div className="paper-sheet rounded-2xl border border-border/40 p-6 space-y-5">
         <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{t("create.bookTitle")}</label>
+          <label className="literary-kicker">{t("create.bookTitle")}</label>
           <input
             data-testid="short-settings-title"
             value={title}
@@ -82,7 +82,7 @@ export function ShortSettings({ storyId, nav, t }: {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{t("create.targetChapters")}</label>
+          <label className="literary-kicker">{t("create.targetChapters")}</label>
           <input
             data-testid="short-settings-chapters"
             type="number"
@@ -93,7 +93,7 @@ export function ShortSettings({ storyId, nav, t }: {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{t("short.direction")}</label>
+          <label className="literary-kicker">{t("short.direction")}</label>
           <textarea
             data-testid="short-settings-direction"
             value={direction}

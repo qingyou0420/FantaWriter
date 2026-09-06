@@ -1,0 +1,5 @@
+霞鹜文楷 / LXGW WenKai
+License: SIL Open Font License 1.1 (OFL)
+Upstream: https://github.com/lxgw/LxgwWenKai
+Bundled as a woff2 subset at packages/studio/public/fonts/lxgw-wenkai-subset.woff2
+for offline Electron titles. Full font and OFL text: see the upstream repository.

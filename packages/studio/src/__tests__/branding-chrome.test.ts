@@ -54,6 +54,10 @@ describe("studio product chrome branding", () => {
     expect(indexHtml).toMatch(/墨生万象 \/ Inkborne/);
     expect(indexHtml).not.toMatch(/InkOS/);
     expect(indexHtml).toMatch(/inkborne-mark\.png/);
+
+    const css = read("src/index.css");
+    expect(css).not.toMatch(/fonts\.googleapis\.com/);
+    expect(css).toMatch(/LXGW WenKai/);
   });
 
   it("keeps user-facing i18n free of the old product name and cockpit label", () => {

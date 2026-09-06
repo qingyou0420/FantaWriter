@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, X } from "lucide-react";
 
@@ -9,6 +9,7 @@ interface ConfirmDialogProps {
   readonly confirmLabel: string;
   readonly cancelLabel: string;
   readonly variant?: "danger" | "default";
+  readonly children?: ReactNode;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
 }
@@ -20,6 +21,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   variant = "default",
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -67,6 +69,7 @@ export function ConfirmDialog({
         {/* Body */}
         <div className="px-6 py-4">
           <p className="text-sm text-muted-foreground leading-relaxed">{message}</p>
+          {children}
         </div>
 
         {/* Footer */}
@@ -79,7 +82,7 @@ export function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2.5 text-sm font-bold rounded-xl transition-all hover:scale-105 active:scale-95 shadow-sm ${
+            className={`px-4 py-2.5 text-sm font-bold rounded-xl transition-colors shadow-sm ${
               isDanger
                 ? "bg-destructive text-white hover:shadow-destructive/20"
                 : "bg-primary text-primary-foreground hover:shadow-primary/20"

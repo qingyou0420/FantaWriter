@@ -17,6 +17,12 @@ const {
 };
 
 describe("versionFromSetupName (group 1 = semver)", () => {
+  it("parses Inkborne-Setup-2.0.15.exe as 2.0.15", () => {
+    const m = "Inkborne-Setup-2.0.15.exe".match(SETUP_RE);
+    expect(m?.[1]).toBe("2.0.15");
+    expect(versionFromSetupName("Inkborne-Setup-2.0.15.exe")).toBe("2.0.15");
+  });
+
   it("parses FantaWriter-Setup-1.4.1.exe as 1.4.1", () => {
     const m = "FantaWriter-Setup-1.4.1.exe".match(SETUP_RE);
     expect(m?.[1]).toBe("1.4.1");
@@ -52,14 +58,17 @@ describe("versionFromSetupName (group 1 = semver)", () => {
 });
 
 describe("current installer filename", () => {
-  it("builds FantaWriter-Setup-${version}.exe", () => {
-    expect(CURRENT_SETUP_PREFIX).toBe("FantaWriter-Setup");
-    expect(setupFileNameForVersion("1.4.1")).toBe("FantaWriter-Setup-1.4.1.exe");
-    expect(setupFileNameForVersion("v1.4.1")).toBe("FantaWriter-Setup-1.4.1.exe");
-    expect(versionFromSetupName(setupFileNameForVersion("1.4.1"))).toBe("1.4.1");
+  it("builds Inkborne-Setup-${version}.exe", () => {
+    expect(CURRENT_SETUP_PREFIX).toBe("Inkborne-Setup");
+    expect(setupFileNameForVersion("2.0.15")).toBe("Inkborne-Setup-2.0.15.exe");
+    expect(setupFileNameForVersion("v2.0.15")).toBe("Inkborne-Setup-2.0.15.exe");
+    expect(versionFromSetupName(setupFileNameForVersion("2.0.15"))).toBe("2.0.15");
   });
 
-  it("ranks the new prefix ahead of the shipped 1.4.0 name", () => {
+  it("ranks Inkborne ahead of FantaWriter and the shipped 1.4.0 name", () => {
+    expect(preferSetupRank("Inkborne-Setup-2.0.15.exe")).toBeLessThan(
+      preferSetupRank("FantaWriter-Setup-2.0.15.exe")
+    );
     expect(preferSetupRank("FantaWriter-Setup-1.4.1.exe")).toBeLessThan(
       preferSetupRank("Fantasy-Writer-Setup-1.4.0.exe")
     );

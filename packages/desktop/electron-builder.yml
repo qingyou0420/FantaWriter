@@ -1,6 +1,6 @@
 appId: com.fantawriter.app
-productName: FantaWriter
-copyright: Copyright © 2026 FantaWriter / 幻想作家. InkOS © upstream authors.
+productName: Inkborne
+copyright: Copyright © 2026 Inkborne / 墨生万象（原名幻想作家）. InkOS © upstream authors.
 afterPack: ./scripts/after-pack.cjs
 electronVersion: 37.10.3
 npmRebuild: false
@@ -28,7 +28,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: FantaWriter-Setup-${version}.${ext}
+  artifactName: Inkborne-Setup-${version}.${ext}
   signAndEditExecutable: false
 nsis:
   oneClick: false
@@ -37,8 +37,8 @@ nsis:
   allowElevation: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: FantaWriter
-  uninstallDisplayName: FantaWriter
+  shortcutName: 墨生万象 Inkborne
+  uninstallDisplayName: 墨生万象 Inkborne
   installerLanguages:
     - zh_CN
     - en_US

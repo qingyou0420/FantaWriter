@@ -14,6 +14,8 @@ const NORMALIZED_TRUTH_FILES = new Set([
   "current_state.md",
   "pending_hooks.md",
   "chapter_summaries.md",
+  "story_card.md",
+  "open_questions.md",
 ]);
 
 export function normalizeTruthFileName(fileName: string): string {
@@ -37,7 +39,10 @@ export function classifyTruthAuthority(fileName: string): TruthAuthority {
   switch (normalizeTruthFileName(fileName)) {
     case "author_intent.md":
     case "current_focus.md":
+    case "story_card.md":
       return "direction";
+    case "open_questions.md":
+      return "memory";
     case "story_bible.md":
     case "volume_outline.md":
     case "story_frame.md":

@@ -601,7 +601,11 @@ function getUpdateSearchDirs(kind) {
     exeUpdates: path.join(path.dirname(app.getPath("exe")), "updates"),
     userDataUpdates: path.join(app.getPath("userData"), "updates"),
     desktopUpdatesFolder: desktop
-      ? [path.join(desktop, "FantaWriter-Updates"), path.join(desktop, "Fantasy-Writer-Updates")]
+      ? [
+          path.join(desktop, "Inkborne-Updates"),
+          path.join(desktop, "FantaWriter-Updates"),
+          path.join(desktop, "Fantasy-Writer-Updates"),
+        ]
       : [],
     desktop,
     downloads: tryAppPath("downloads"),
@@ -771,7 +775,7 @@ async function checkGithubLatest(current) {
   const token = getGithubUpdateToken();
   const data = await fetchJson(githubLatestApiUrl(repo), githubApiHeaders(token));
   const parsed = parseGithubLatestRelease(data);
-  if (!parsed) throw new Error("latest release 没有 FantaWriter-Setup-x.y.z.exe 安装包");
+  if (!parsed) throw new Error("latest release 没有 Inkborne-Setup-x.y.z.exe / FantaWriter-Setup-x.y.z.exe 安装包");
   const hasUpdate = compareVersions(parsed.version, current) > 0;
   return {
     ok: true,
@@ -975,8 +979,8 @@ function registerIpc() {
     const url = String(opts.assetApiUrl || opts.downloadUrl || "").trim();
     if (!url || !isAllowedFeedDownloadUrl(url)) return { ok: false, message: "没有可下载的安装包地址" };
     const fileName = setupFileNameFromUrl(url) || (opts.version ? setupFileNameForVersion(opts.version) : null);
-    if (!fileName || !versionFromSetupName(fileName)) return { ok: false, message: "安装包文件名不符合 FantaWriter-Setup-x.y.z.exe" };
-    const destDir = path.join(app.getPath("temp"), "FantaWriter-Updates");
+    if (!fileName || !versionFromSetupName(fileName)) return { ok: false, message: "安装包文件名不符合 Inkborne-Setup-x.y.z.exe 或 FantaWriter-Setup-x.y.z.exe" };
+    const destDir = path.join(app.getPath("temp"), "Inkborne-Updates");
     ensureDir(destDir);
     const dest = path.join(destDir, fileName);
     await downloadFile(url, dest, githubAssetHeaders(token));

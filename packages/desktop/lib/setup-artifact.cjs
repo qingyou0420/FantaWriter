@@ -1,12 +1,12 @@
 /**
  * 安装包文件名合同：品牌前缀非捕获，group 1 永远是 semver。
- * 新前缀 FantaWriter-Setup；仍识别已发布的 Fantasy-Writer-Setup（含 1.4.0）。
+ * 新前缀 Inkborne-Setup；仍识别已发布的 FantaWriter-Setup 与 Fantasy-Writer-Setup。
  * 必须放在 packages/desktop/lib，以便打进 app.asar。
  */
-const CURRENT_SETUP_PREFIX = "FantaWriter-Setup";
+const CURRENT_SETUP_PREFIX = "Inkborne-Setup";
 
 const SETUP_RE =
-  /^(?:FantaWriter|Fantasy-Writer)-Setup-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.exe$/i;
+  /^(?:Inkborne|FantaWriter|Fantasy-Writer)-Setup-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.exe$/i;
 
 function versionFromSetupName(name) {
   const m = String(name).match(SETUP_RE);
@@ -18,9 +18,12 @@ function setupFileNameForVersion(version) {
   return `${CURRENT_SETUP_PREFIX}-${v}.exe`;
 }
 
-/** 同版本时优先新前缀（0 优于 1）。 */
+/** 同版本时优先新前缀（0 优于 1 优于 2）。 */
 function preferSetupRank(name) {
-  return /^FantaWriter-Setup-/i.test(String(name)) ? 0 : 1;
+  const n = String(name);
+  if (/^Inkborne-Setup-/i.test(n)) return 0;
+  if (/^FantaWriter-Setup-/i.test(n)) return 1;
+  return 2;
 }
 
 module.exports = {

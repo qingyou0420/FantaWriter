@@ -10,7 +10,9 @@ import { BookStudy } from "./pages/BookStudy";
 import { AuthorPage } from "./pages/AuthorPage";
 import { OutlineWorkspace } from "./pages/OutlineWorkspace";
 import { BookAskPage } from "./pages/BookAskPage";
-import { BookWorkspaceNav } from "./components/BookWorkspaceNav";
+import { BookGround } from "./pages/BookGround";
+import { AskCreateRail } from "./components/AskCreateRail";
+import { ToastHost } from "./components/ToastHost";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { ServiceListPage } from "./pages/ServiceListPage";
@@ -288,7 +290,7 @@ export function App() {
             </div>
           )}
           {isBookCreateChatRoute(route) && (
-            <div className="absolute inset-0 flex min-w-0">
+            <div className="absolute inset-0 flex min-w-0" data-testid="book-create-ask">
               <ChatPage
                 mode="book-create"
                 nav={nav}
@@ -296,6 +298,7 @@ export function App() {
                 t={t}
                 sse={sse}
               />
+              <AskCreateRail isZh={currentLang !== "en"} />
             </div>
           )}
           {route.page === "chat" && (
@@ -321,10 +324,7 @@ export function App() {
           )}
           {route.page === "book-ground" && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
-              <div className="mb-4 flex justify-end">
-                <BookWorkspaceNav bookId={route.bookId} active="ground" nav={nav} isZh={currentLang !== "en"} t={t} />
-              </div>
-              <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />
+              <BookGround bookId={route.bookId} nav={nav} theme={theme} t={t} isZh={currentLang !== "en"} />
             </div>
           )}
           {(route.page === "book-outline" || route.page === "book-weave") && (
@@ -476,6 +476,7 @@ export function App() {
         </aside>
       )}
       <BookBusyCard />
+      <ToastHost />
     </div>
   );
 }

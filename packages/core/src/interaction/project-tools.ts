@@ -37,6 +37,8 @@ const SAFE_TRUTH_FLAT_FILE_NAMES = new Set([
   "current_state.md",
   "pending_hooks.md",
   "chapter_summaries.md",
+  "story_card.md",
+  "open_questions.md",
 ]);
 
 const SAFE_TRUTH_OUTLINE_FILE_NAMES = new Set([

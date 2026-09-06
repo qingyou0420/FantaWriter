@@ -186,7 +186,10 @@ import {
   resolveAgentModelBinding,
 } from "./resolve-agent-model.js";
 import { buildStudioBookConfig } from "./book-create.js";
-import { resolveBookStage } from "../lib/book-stage-io.js";
+import { persistAskArtifacts } from "../lib/ask-artifacts.js";
+import { collectBookStageFacts, loadBookWorkflow, resolveBookStage } from "../lib/book-stage-io.js";
+import { validateGroundConfirm } from "../lib/ground-confirm.js";
+import { parseOpenQuestions, serializeOpenQuestions } from "../lib/open-questions.js";
 import {
   AUTHOR_AVATAR_MAX_BYTES,
   AUTHOR_AVATAR_TYPES,
@@ -3167,6 +3170,69 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
   });
 
+  app.post("/api/v1/books/:id/ground/confirm", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ continueWithOpen?: boolean }>().catch(() => ({ continueWithOpen: false }));
+    try {
+      const book = await state.loadBookConfig(id);
+      const chapters = await state.loadChapterIndex(id);
+      const nextChapter = await state.getNextChapterNumber(id);
+      const bookDir = state.bookDir(id);
+      const existing = await loadBookWorkflow(bookDir);
+      const facts = await collectBookStageFacts({
+        bookDir,
+        bookExists: true,
+        bookStatus: book.status,
+        targetChapters: book.targetChapters,
+        nextChapter,
+        chaptersWritten: chapters.length,
+        workflow: existing,
+      });
+      const { readFile, writeFile, mkdir } = await import("node:fs/promises");
+      const { join: joinPath } = await import("node:path");
+      let openRaw = "";
+      try {
+        openRaw = await readFile(joinPath(bookDir, "story", "open_questions.md"), "utf-8");
+      } catch {
+        openRaw = "";
+      }
+      let openQuestions = parseOpenQuestions(openRaw);
+      if (body.continueWithOpen) {
+        openQuestions = { ...openQuestions, continueWithOpen: true };
+        await mkdir(joinPath(bookDir, "story"), { recursive: true });
+        await writeFile(joinPath(bookDir, "story", "open_questions.md"), serializeOpenQuestions(openQuestions), "utf-8");
+      }
+      const lang = book.language === "en" ? "en" : "zh";
+      const checked = validateGroundConfirm({
+        storyFrameFourSections: facts.storyFrameFourSectionsNonEmpty,
+        majorRoleCount: facts.majorRoleCount,
+        openQuestions,
+      }, lang !== "en");
+      if (!checked.ok) {
+        return c.json({ error: checked.missing.join("；"), missing: checked.missing }, 400);
+      }
+      const nowIso = new Date().toISOString();
+      const workflow = {
+        ...existing,
+        groundConfirmedAt: nowIso,
+        lastStage: "weave" as const,
+      };
+      await mkdir(joinPath(bookDir, "story"), { recursive: true });
+      await writeFile(joinPath(bookDir, "story", "workflow.json"), `${JSON.stringify(workflow, null, 2)}\n`, "utf-8");
+      const payload = await resolveBookStage({
+        bookDir,
+        bookExists: true,
+        bookStatus: book.status,
+        targetChapters: book.targetChapters,
+        nextChapter,
+        chaptersWritten: chapters.length,
+      });
+      return c.json({ ok: true, ...payload });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
   // --- Genres ---
 
   app.get("/api/v1/genres", async (c) => {
@@ -3247,6 +3313,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           return;
         }
         const book = await loadStudioBookListSummary(state, createdBookId).catch(() => undefined);
+        try {
+          await persistAskArtifacts({
+            bookDir: join(root, "books", createdBookId),
+            card: {
+              workingTitle: body.title,
+              oneLine: "",
+              synopsis: body.blurb ?? "",
+              genre: body.genre,
+            },
+            language: body.language === "en" ? "en" : "zh",
+            instruction: body.blurb,
+          });
+        } catch {
+          // Story card is optional on the REST create path.
+        }
         bookCreateStatus.delete(createdBookId);
         broadcast("book:created", { bookId: createdBookId, ...(book ? { book } : {}) });
       },
@@ -3519,6 +3600,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     "particle_ledger.md", "pending_hooks.md", "chapter_summaries.md",
     "subplot_board.md", "emotional_arcs.md", "character_matrix.md",
     "style_guide.md", "parent_canon.md", "fanfic_canon.md",
+    "story_card.md", "open_questions.md",
   ];
 
   // Authoritative Phase 5 paths — prose outline + role sheets live under
@@ -5679,6 +5761,23 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
               }
               const book = await loadStudioBookListSummary(state, createdBookId).catch(() => undefined);
               bookCreateStatus.delete(createdBookId);
+              const createPayload = actionPayload?.createBook;
+              try {
+                await persistAskArtifacts({
+                  bookDir: join(root, "books", createdBookId),
+                  card: {
+                    workingTitle: createPayload?.title ?? book?.title ?? createdBookId,
+                    oneLine: createPayload?.oneLine ?? "",
+                    synopsis: createPayload?.synopsis ?? "",
+                    genre: createPayload?.genre,
+                    tone: createPayload?.tone,
+                  },
+                  language: createPayload?.language === "en" ? "en" : "zh",
+                  instruction,
+                });
+              } catch {
+                // Story card is presentation-only; book creation must still succeed.
+              }
               broadcast("book:created", {
                 bookId: createdBookId,
                 sessionId: bookSession.sessionId,
@@ -6483,6 +6582,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   app.put("/api/v1/books/:id", async (c) => {
     const id = c.req.param("id");
     const updates = await c.req.json<{
+      title?: string;
       chapterWordCount?: number;
       targetChapters?: number;
       status?: string;
@@ -6493,6 +6593,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       const book = await state.loadBookConfig(id);
       const updated = {
         ...book,
+        ...(updates.title?.trim() ? { title: updates.title.trim() } : {}),
         ...(updates.chapterWordCount !== undefined ? { chapterWordCount: Number(updates.chapterWordCount) } : {}),
         ...(updates.targetChapters !== undefined ? { targetChapters: Number(updates.targetChapters) } : {}),
         ...(updates.status !== undefined ? { status: updates.status as typeof book.status } : {}),

@@ -18,7 +18,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import {
   ChevronLeft,
-  Zap,
+  Feather,
   FileText,
   Download,
   Eye,
@@ -392,7 +392,7 @@ export function BookDetail({
               <span>{chapters.length} {t("dash.chapters")}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <Zap size={14} />
+              <Feather size={14} />
               <span>{totalWords.toLocaleString()} {t("book.words")}</span>
             </div>
           </div>
@@ -450,7 +450,7 @@ export function BookDetail({
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold disabled:opacity-50"
               data-testid="write-next-primary"
             >
-              {writing ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Zap size={16} />}
+              {writing ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Feather size={16} />}
               {writing ? t("dash.writing") : t("cockpit.writeNext")}
             </button>
             <DropdownMenu>
@@ -531,11 +531,11 @@ export function BookDetail({
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-muted/30 border-b border-border/50">
-                <th className="text-left px-6 py-4 font-bold text-[11px] uppercase tracking-widest text-muted-foreground w-16">#</th>
-                <th className="text-left px-6 py-4 font-bold text-[11px] uppercase tracking-widest text-muted-foreground">{t("book.manuscriptTitle")}</th>
-                <th className="text-left px-6 py-4 font-bold text-[11px] uppercase tracking-widest text-muted-foreground w-28">{t("book.words")}</th>
-                <th className="text-left px-6 py-4 font-bold text-[11px] uppercase tracking-widest text-muted-foreground w-36">{t("book.status")}</th>
-                <th className="text-right px-6 py-4 font-bold text-[11px] uppercase tracking-widest text-muted-foreground">{t("book.curate")}</th>
+                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground w-16">#</th>
+                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground">{t("book.manuscriptTitle")}</th>
+                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground w-28">{t("book.words")}</th>
+                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground w-36">{t("book.status")}</th>
+                <th className="text-right px-6 py-4 font-bold text-[11px]  text-muted-foreground">{t("book.curate")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30">

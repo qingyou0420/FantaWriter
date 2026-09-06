@@ -1,9 +1,35 @@
 /*
-  墨生万象 / Inkborne — Atmospheric Literary Workbench
-  Fonts: Instrument Serif (Headings/Literary), DM Sans (UI), JetBrains Mono (Data)
-  Chinese serif choice for P2-3 local packaging: 霞鹜文楷 LXGW WenKai (OFL). This P0 PR does not bundle font files.
+  墨生万象 / Inkborne — pine green / paper / gold.
+  Fonts are local: 霞鹜文楷 LXGW WenKai + Instrument Serif. No Google Fonts CDN.
 */
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@font-face {
+  font-family: "LXGW WenKai";
+  src: url("/fonts/lxgw-wenkai-subset.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/instrument-serif-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/instrument-serif-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+}
 
 @import "tailwindcss";
 
@@ -38,9 +64,9 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  --font-serif: 'Instrument Serif', Georgia, serif;
-  --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-serif: "LXGW WenKai", "Instrument Serif", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -50,82 +76,70 @@
   --shadow-3d-hover: 0 20px 40px -15px oklch(0 0 0 / 0.2), 0 8px 16px -8px oklch(0 0 0 / 0.15);
 }
 
-/* ── Light Mode: Warm Parchment & Ink ── */
+/* ── Light Mode: pine green on paper ── */
 :root {
-  --radius: 0.6rem;
+  --radius: 0.75rem;
 
-  /* Background: Warm, aged paper with subtle radial light */
-  --background: oklch(0.985 0.005 80);
-  --background-radial: radial-gradient(circle at 50% 0%, oklch(0.995 0.002 85) 0%, oklch(0.985 0.005 80) 100%);
-  --foreground: oklch(0.13 0.02 60);
+  --background: oklch(0.975 0.006 85);
+  --background-radial: radial-gradient(circle at 50% 0%, oklch(0.99 0.004 85) 0%, oklch(0.975 0.006 85) 100%);
+  --foreground: oklch(0.22 0.02 160);
 
-  /* Cards: Crisp sheets on paper */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.015 60);
+  --card: oklch(0.995 0.003 85);
+  --card-foreground: oklch(0.22 0.02 160);
 
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.015 60);
+  --popover: oklch(0.995 0.003 85);
+  --popover-foreground: oklch(0.22 0.02 160);
 
-  /* Primary: Deep Oxblood / Ink */
-  --primary: oklch(0.45 0.12 25);
-  --primary-foreground: oklch(0.98 0.006 76);
+  --primary: oklch(0.36 0.07 160);
+  --primary-foreground: oklch(0.98 0.006 85);
 
-  /* Secondary: Soft paper shadow */
-  --secondary: oklch(0.94 0.01 76);
-  --secondary-foreground: oklch(0.25 0.015 60);
+  --secondary: oklch(0.93 0.012 90);
+  --secondary-foreground: oklch(0.22 0.02 160);
 
-  /* Muted: Faded ink */
-  --muted: oklch(0.94 0.008 76);
-  --muted-foreground: oklch(0.38 0.02 60);
+  --muted: oklch(0.93 0.012 90);
+  --muted-foreground: oklch(0.45 0.02 150);
 
-  /* Accent: Subtle gold leaf */
-  --accent: oklch(0.92 0.02 85);
-  --accent-foreground: oklch(0.25 0.05 60);
+  --accent: oklch(0.70 0.09 82);
+  --accent-foreground: oklch(0.22 0.02 160);
 
-  --destructive: oklch(0.55 0.18 25);
+  --destructive: oklch(0.50 0.14 30);
   --destructive-foreground: oklch(0.98 0 0);
 
-  --border: oklch(0.84 0.01 76);
-  --input: oklch(0.92 0.005 76);
-  --ring: oklch(0.45 0.12 25);
+  --border: oklch(0.87 0.012 95);
+  --input: oklch(0.93 0.012 90);
+  --ring: oklch(0.36 0.07 160);
 }
 
-/* ── Dark Mode: Obsidian & Candlelight ── */
+/* ── Dark Mode: pine night, gold CTA ── */
 .dark {
-  /* Background: Deep obsidian with soft top glow */
-  --background: oklch(0.12 0.01 250);
-  --background-radial: radial-gradient(circle at 50% 0%, oklch(0.16 0.015 250) 0%, oklch(0.12 0.01 250) 100%);
-  --foreground: oklch(0.97 0.005 250);
+  --background: oklch(0.17 0.012 160);
+  --background-radial: radial-gradient(circle at 50% 0%, oklch(0.21 0.014 160) 0%, oklch(0.17 0.012 160) 100%);
+  --foreground: oklch(0.94 0.008 85);
 
-  /* Cards: Floating graphite */
-  --card: oklch(0.18 0.015 250);
-  --card-foreground: oklch(0.95 0.005 250);
+  --card: oklch(0.21 0.014 160);
+  --card-foreground: oklch(0.94 0.008 85);
 
-  --popover: oklch(0.18 0.015 250);
-  --popover-foreground: oklch(0.95 0.005 250);
+  --popover: oklch(0.21 0.014 160);
+  --popover-foreground: oklch(0.94 0.008 85);
 
-  /* Primary: Warm Amber / Candlelight */
-  --primary: oklch(0.78 0.14 85);
-  --primary-foreground: oklch(0.12 0.01 250);
+  --primary: oklch(0.72 0.09 82);
+  --primary-foreground: oklch(0.17 0.012 160);
 
-  /* Secondary: Dark slate */
-  --secondary: oklch(0.22 0.02 250);
-  --secondary-foreground: oklch(0.92 0.005 250);
+  --secondary: oklch(0.26 0.016 160);
+  --secondary-foreground: oklch(0.94 0.008 85);
 
-  /* Muted: Dimmed graphite */
-  --muted: oklch(0.22 0.015 250);
-  --muted-foreground: oklch(0.78 0.005 250);
+  --muted: oklch(0.26 0.016 160);
+  --muted-foreground: oklch(0.72 0.01 120);
 
-  /* Accent: Muted gold */
-  --accent: oklch(0.28 0.04 85);
-  --accent-foreground: oklch(0.95 0.06 85);
+  --accent: oklch(0.70 0.09 82);
+  --accent-foreground: oklch(0.17 0.012 160);
 
-  --destructive: oklch(0.55 0.2 25);
+  --destructive: oklch(0.50 0.14 30);
   --destructive-foreground: oklch(0.98 0 0);
 
-  --border: oklch(0.30 0.02 250);
-  --input: oklch(0.25 0.02 250);
-  --ring: oklch(0.78 0.14 85);
+  --border: oklch(0.30 0.015 160);
+  --input: oklch(0.26 0.016 160);
+  --ring: oklch(0.72 0.09 82);
 }
 
 body {
@@ -170,16 +184,40 @@ button:not(:disabled):active {
   transition: transform 0.1s ease;
 }
 
-/* Subtle grain texture for physical feel */
+/* Subtle paper grain — 2% over the paper field */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 50;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.02;
+  background-image: url("/paper-grain.svg");
+  background-size: 160px 160px;
+  mix-blend-mode: multiply;
+}
+
+.dark body::before {
   mix-blend-mode: overlay;
+}
+
+.literary-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13px;
+  line-height: 1.25rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted-foreground);
+}
+
+.literary-kicker::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: var(--accent);
 }
 
 /* Serif headings with literary character */
@@ -189,7 +227,7 @@ h1, h2, h3, h4 {
   font-weight: 500;
 }
 
-h1 { font-size: 2.25rem; font-style: italic; }
+h1 { font-size: 2.25rem; }
 h2 { font-size: 1.75rem; }
 h3 { font-size: 1.25rem; }
 
@@ -245,14 +283,8 @@ h3 { font-size: 1.25rem; }
 .paper-sheet {
   background-color: var(--card);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-md);
-  transition: box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.paper-sheet:hover {
-  box-shadow: var(--shadow-3d-hover);
-  border-color: var(--primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
 }
 
 /* ── ChatPanel Animations ── */

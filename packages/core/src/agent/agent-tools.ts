@@ -378,6 +378,15 @@ const ProposeActionParams = Type.Object({
     chapterWordCount: Type.Optional(Type.Number({
       description: "Confirmed per-chapter length in the book's native unit.",
     })),
+    oneLine: Type.Optional(Type.String({
+      description: "One-sentence story line for story/story_card.md.",
+    })),
+    synopsis: Type.Optional(Type.String({
+      description: "Short synopsis (≤300 characters) for story/story_card.md.",
+    })),
+    tone: Type.Optional(Type.String({
+      description: "Working tone/mood for the story card.",
+    })),
   }, { description: "Structured execution args for action=create_book. Put platform/length here; do not leave them only in instruction text." })),
   shortRun: Type.Optional(Type.Object({
     title: Type.String({

@@ -53,7 +53,7 @@ import {
   Boxes,
   Wand2,
   RefreshCw,
-  Zap,
+  Feather,
   FolderOpen,
   ChevronRight,
   Loader2,
@@ -506,7 +506,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                         <DropdownMenuItem onClick={() => (
                           short.status === "completed" ? nav.toShort(short.id) : handleContinueShort(short)
                         )}>
-                          <Zap size={14} />
+                          <Feather size={14} />
                           <span>{short.status === "completed" ? t("short.finished") : t("dash.writeNext")}</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => nav.toShortAnalytics(short.id)}>
@@ -773,7 +773,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
         {/* Tools Section — 文风学习 / 题材模板 */}
         <div>
           <div className="px-3 mb-3">
-            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
+            <span className="literary-kicker">
               {t("nav.tools")}
             </span>
           </div>
@@ -798,7 +798,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
         {/* System Section */}
         <div>
           <div className="px-3 mb-3">
-            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
+            <span className="literary-kicker">
               {t("nav.system")}
             </span>
           </div>
@@ -826,7 +826,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
             />
             <SidebarItem
               label={t("nav.daemon")}
-              icon={<Zap size={16} />}
+              icon={<Feather size={16} />}
               active={activePage === "daemon"}
               onClick={nav.toDaemon}
               badge={daemon?.running ? t("nav.running") : undefined}

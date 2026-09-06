@@ -6,6 +6,7 @@ import { useI18n } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { showToast } from "../lib/toast";
 
 interface GenreInfo {
   readonly id: string;
@@ -221,7 +222,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
 
   const handleCopy = async (id: string) => {
     await postApi(`/genres/${id}/copy`);
-    alert(`Copied ${id} to project genres/`);
+    showToast(`Copied ${id} to project genres/`, "success");
     refetch();
   };
 
@@ -269,7 +270,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
       setSelected(form.id);
       await refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to create genre");
+      showToast(e instanceof Error ? e.message : "Failed to create genre", "error");
     }
   };
 
@@ -297,7 +298,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
       setFormMode("hidden");
       await refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update genre");
+      showToast(e instanceof Error ? e.message : "Failed to update genre", "error");
     }
   };
 
@@ -309,7 +310,7 @@ export function GenreManager({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFu
       setSelected(null);
       await refetch();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete genre");
+      showToast(e instanceof Error ? e.message : "Failed to delete genre", "error");
     }
   };
 
