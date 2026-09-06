@@ -1,5 +1,7 @@
 # 墨生万象（Inkborne）· UI 与四步流程重构方案
 
+> **修正说明（见《首页与侧栏收敛方案》）**：侧栏「在创」封面墙已删除，封面墙在首页；「对谈」统一为「问心」，抽屉由进程条第一步唤出，「对谈记录」改为「问心记录」；系统设置为模型配置 / 项目设置 / 检查更新 / 守护进程 / **AI 动态**（原日志记录，入口保留 `#/logs`）/ 作者资料。首页只读，`#/author` 为作者资料编辑页。守护进程默认与调度器语义**不改**（产品覆盖，2026-09-06）。`SIDEBAR_SECTION_ORDER` 为 `["author","create","sessions","tools","system"]`。`#/book/:id/ask` 与 `#/book/:id/chat` 均为书房 + 问心抽屉。
+
 > 状态：**规划文档，本 PR 只含本文件，不改任何业务/UI 源码、不 bump 版本、不改 Electron 打包。**
 > 面向读者：后续按本文改代码的编码代理（默认云端模型）与产品负责人。
 > 基线：`master` @ 2.0.15（Electron 壳 `packages/desktop` + InkOS fork `packages/core` / `packages/studio`）。

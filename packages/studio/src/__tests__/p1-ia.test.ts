@@ -19,18 +19,21 @@ function read(rel: string): string {
 }
 
 describe("P1-1 sidebar + author", () => {
-  it("orders author → in-progress covers → create → talks", () => {
-    expect([...SIDEBAR_SECTION_ORDER]).toEqual(["author", "active-works", "create", "sessions", "tools", "system"]);
+  it("orders author chip → create → 问心记录, and sends the author chip home", () => {
+    expect([...SIDEBAR_SECTION_ORDER]).toEqual(["author", "create", "sessions", "tools", "system"]);
     const sidebar = read("src/components/Sidebar.tsx");
-    expect(sidebar).toMatch(/toAuthor/);
+    const home = read("src/pages/Dashboard.tsx");
+    expect(sidebar).toMatch(/toDashboard/);
     expect(sidebar).toMatch(/sidebar-author/);
-    expect(sidebar).toMatch(/nav\.signYourName/);
-    expect(sidebar).toMatch(/sidebar-all-shelf/);
-    expect(sidebar).toMatch(/isInProgressBookStatus/);
+    expect(sidebar).toMatch(/toAuthor/);
+    expect(sidebar).not.toMatch(/sidebar-works-list/);
+    expect(sidebar).not.toMatch(/sidebar-all-shelf/);
     expect(sidebar).not.toMatch(/我的创作/);
-    expect(sidebar.indexOf("sidebar-author")).toBeLessThan(sidebar.indexOf("sidebar-works-list"));
-    expect(sidebar.indexOf("sidebar-works-list")).toBeLessThan(sidebar.indexOf("sidebar-create-list"));
+    expect(sidebar.indexOf("sidebar-author")).toBeLessThan(sidebar.indexOf("sidebar-create-list"));
     expect(sidebar.indexOf("sidebar-create-list")).toBeLessThan(sidebar.indexOf("sidebar-sessions"));
+    expect(home).toMatch(/nav\.signYourName/);
+    expect(home).toMatch(/isInProgressBookStatus/);
+    expect(home).toMatch(/home-edit-author/);
   });
 
   it("persists author under explicit project root, not cwd", () => {

@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchJson, useApi } from "../hooks/use-api";
+import { useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
 import {
   applyBookCollectionEvent,
-  applyShortCollectionEvent,
-  removeBookFromCollection,
-  removeShortFromCollection,
+  deriveActiveBookIds,
   shouldRefetchBookCollections,
   shouldRefetchDaemonStatus,
 } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
-import { selectWorksListShorts, type StudioShortSummary } from "../shared/short-works";
 import { tr } from "../lib/app-language";
 import {
   forgetBookCreateSessionIfMatches,
@@ -21,7 +18,6 @@ import {
 import { useChatStore } from "../store/chat";
 import { BrandMark } from "./BrandMark";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { DefaultCover } from "./DefaultCover";
 import { PRODUCT_VERSION } from "../lib/product-version";
 import {
   Dialog,
@@ -39,9 +35,6 @@ import {
 } from "./ui/dropdown-menu";
 import { SIDEBAR_CREATE_ITEM_KEYS } from "../lib/sidebar-create-items";
 import type { AuthorPublic } from "../lib/author-profile";
-import { isInProgressBookStatus, isInProgressShortStatus } from "../lib/stage-copy";
-import { deleteStudioShortWork } from "../lib/short-api";
-import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import {
   Settings,
   Terminal,
@@ -54,7 +47,6 @@ import {
   Wand2,
   RefreshCw,
   Feather,
-  FolderOpen,
   ChevronRight,
   Loader2,
   MoreHorizontal,
@@ -63,11 +55,9 @@ import {
   Clapperboard,
   Rows3,
   Film,
-  Download,
-  BarChart2,
+  User,
 } from "lucide-react";
 
-// 历史记录里的会话混装多种类型（chat / short / play / book-create），用图标区分。
 function SessionKindIcon({ kind, className }: { readonly kind?: string; readonly className?: string }) {
   const Icon =
     kind === "play" ? Gamepad2
@@ -86,10 +76,6 @@ interface BookSummary {
   readonly genre: string;
   readonly status: string;
   readonly chaptersWritten: number;
-  readonly targetChapters?: number;
-  readonly createdAt?: string;
-  readonly coverImagePath?: string;
-  readonly stage?: string;
 }
 
 interface Nav {
@@ -126,13 +112,11 @@ export function Sidebar({ nav, activePage, sse, t }: {
 }) {
   const { data: author } = useApi<AuthorPublic>("/author");
   const { data, refetch: refetchBooks, mutate: mutateBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
-  const { data: shortsData, refetch: refetchShorts, mutate: mutateShorts } = useApi<{ shorts: ReadonlyArray<StudioShortSummary> }>("/shorts");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
   const sessions = useChatStore((s) => s.sessions);
   const sessionIdsByBook = useChatStore((s) => s.sessionIdsByBook);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const bookDataVersion = useChatStore((s) => s.bookDataVersion);
-  const bumpBookDataVersion = useChatStore((s) => s.bumpBookDataVersion);
   const loadSessionList = useChatStore((s) => s.loadSessionList);
   const loadSessionDetail = useChatStore((s) => s.loadSessionDetail);
   const activateSession = useChatStore((s) => s.activateSession);
@@ -143,15 +127,11 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const [renameTarget, setRenameTarget] = useState<{ sessionId: string; currentTitle: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
-  const [deleteShortTarget, setDeleteShortTarget] = useState<{ id: string; title: string } | null>(null);
-  const [deleteBookTarget, setDeleteBookTarget] = useState<{ id: string; title: string } | null>(null);
   const [expandedTalkBooks, setExpandedTalkBooks] = useState<Set<string>>(new Set());
   const [projectChatExpanded, setProjectChatExpanded] = useState(false);
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
-  const [activeWorksExpanded, setActiveWorksExpanded] = useState(true);
 
   const books = data?.books ?? [];
-  const shorts = selectWorksListShorts(shortsData);
   const projectChatKey = "__null__";
   const projectChatSessions = useMemo(
     () =>
@@ -166,36 +146,28 @@ export function Sidebar({ nav, activePage, sse, t }: {
         }),
     [activeSessionId, sessionIdsByBook, sessions],
   );
+  const activityBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
+  const activityLive = activityBooks.size > 0;
 
   useEffect(() => {
     const recent = sse.messages.at(-1);
     if (!recent) return;
     if (shouldRefetchBookCollections(recent)) {
       let appliedBooks = false;
-      let appliedShorts = false;
       mutateBooks((current) => {
         const updatedBooks = applyBookCollectionEvent(current?.books ?? [], recent);
         if (!updatedBooks) return current;
         appliedBooks = true;
         return { books: updatedBooks };
       });
-      mutateShorts((current) => {
-        const updatedShorts = applyShortCollectionEvent(current?.shorts ?? [], recent);
-        if (!updatedShorts) return current;
-        appliedShorts = true;
-        return { shorts: updatedShorts };
-      });
       if (!appliedBooks) {
         refetchBooks();
-      }
-      if (!appliedShorts) {
-        void refetchShorts();
       }
     }
     if (shouldRefetchDaemonStatus(recent)) {
       refetchDaemon();
     }
-  }, [mutateBooks, mutateShorts, refetchBooks, refetchDaemon, refetchShorts, sse.messages]);
+  }, [mutateBooks, refetchBooks, refetchDaemon, sse.messages]);
 
   useEffect(() => {
     if (!sessionsExpanded) return;
@@ -208,8 +180,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   useEffect(() => {
     void refetchBooks();
-    void refetchShorts();
-  }, [bookDataVersion, refetchBooks, refetchShorts]);
+  }, [bookDataVersion, refetchBooks]);
 
   useEffect(() => {
     if (activePage === "chat") {
@@ -229,11 +200,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
       }
       return next;
     });
-  };
-
-  const openBook = (bookId: string) => {
-    setInput("");
-    nav.toBook(bookId);
   };
 
   const sessionsByBook = useMemo(
@@ -257,8 +223,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
   };
 
   const handleCreateSession = (bookId: string) => {
-    // 前端创建草稿会话：对话区立即变空，但 session 文件不落盘；
-    // 发第一条消息时 sendMessage 会调 POST /sessions 真正创建。
     setExpandedTalkBooks((prev) => new Set(prev).add(bookId));
     setSessionsExpanded(true);
     setInput("");
@@ -296,8 +260,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   const launchProjectMode = (kind: "short" | "play" | "script" | "storyboard" | "interactive-film", playMode?: "guided" | "open") => {
     setProjectChatExpanded(true);
-    // Play mode (分支互动 = guided / 自由互动 = open) is now decided here at the
-    // launcher, not via an in-chat button.
     const sessionId = createDraftSession(null, kind, playMode);
     setProjectChatSessionId(sessionId);
     setInput("");
@@ -321,249 +283,34 @@ export function Sidebar({ nav, activePage, sse, t }: {
     setDeleteTarget(null);
   };
 
-  const handleContinueShort = (short: StudioShortSummary) => {
-    const prompt = continueShortPrompt(short.title, short.id);
-    setProjectChatExpanded(true);
-    const sessionId = createDraftSession(null, "short");
-    setProjectChatSessionId(sessionId);
-    setInput(tr(prompt.zh, prompt.en));
-    nav.toChat();
-  };
-
-  const handleDeleteShortConfirm = async () => {
-    if (!deleteShortTarget) return;
-    const shortId = deleteShortTarget.id;
-    mutateShorts((current) => current
-      ? { shorts: removeShortFromCollection(current.shorts, shortId) }
-      : current);
-    setDeleteShortTarget(null);
-    if (activePage === `short:${shortId}`) {
-      nav.toDashboard();
-    }
-    try {
-      await deleteStudioShortWork(shortId);
-      bumpBookDataVersion();
-    } catch {
-      void refetchShorts();
-    }
-  };
-
-  const activeBooks = books.filter((book) => isInProgressBookStatus(book.status));
-  const activeShorts = shorts.filter((short) => isInProgressShortStatus(short.status));
   const authorLabel = author?.name?.trim() || t("nav.signYourName");
   const authorAvatar = author?.hasAvatar
     ? `/api/v1/author/avatar${author.updatedAt ? `?v=${encodeURIComponent(author.updatedAt)}` : ""}`
     : "";
 
-  const pauseBook = async (book: BookSummary) => {
-    try {
-      await fetchJson(`/books/${book.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "paused" }),
-      });
-      bumpBookDataVersion();
-      void refetchBooks();
-    } catch {
-      void refetchBooks();
-    }
-  };
-
-  const handleDeleteBookConfirm = async () => {
-    if (!deleteBookTarget) return;
-    const bookId = deleteBookTarget.id;
-    mutateBooks((current) => current
-      ? { books: removeBookFromCollection(current.books, bookId) }
-      : current);
-    setExpandedTalkBooks((prev) => {
-      const next = new Set(prev);
-      next.delete(bookId);
-      return next;
-    });
-    setDeleteBookTarget(null);
-    if (activePage === `book:${bookId}`) {
-      nav.toDashboard();
-    }
-    try {
-      await fetchJson(`/books/${encodeURIComponent(bookId)}`, { method: "DELETE" });
-      bumpBookDataVersion();
-    } catch {
-      void refetchBooks();
-    }
-  };
-
   return (
     <aside className="w-[260px] shrink-0 border-r border-border bg-background/80 backdrop-blur-md flex flex-col h-full overflow-hidden select-none">
-      {/* Main Navigation — author → in-progress covers → create → talks. */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         <button
           type="button"
           data-testid="sidebar-author"
-          onClick={nav.toAuthor}
+          onClick={nav.toDashboard}
           className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left ${
-            activePage === "author" ? "bg-secondary text-foreground" : "hover:bg-secondary/40"
+            activePage === "dashboard" ? "bg-secondary text-foreground" : "hover:bg-secondary/40"
           }`}
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.36_0.07_160)] text-sm text-[oklch(0.70_0.09_82)]">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.36_0.07_160)] text-sm text-[oklch(0.70_0.09_82)]">
             {authorAvatar
               ? <img src={authorAvatar} alt="" className="h-full w-full object-cover" />
               : (author?.name?.trim().slice(0, 1) || "墨")}
           </span>
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium">{authorLabel}</span>
-            {author?.bio?.trim() && (
-              <span className="block truncate text-[12px] text-muted-foreground">{author.bio}</span>
-            )}
           </span>
         </button>
 
         <div>
-          <SectionHeader label={t("nav.myBooks")} expanded={activeWorksExpanded} onToggle={() => setActiveWorksExpanded((v) => !v)} />
-          <Collapse open={activeWorksExpanded}>
-            <div className="space-y-2 pt-1" data-testid="sidebar-works-list">
-              <div className="grid grid-cols-2 gap-2 px-1">
-                {activeBooks.map((book) => (
-                  <div key={book.id} className="group/cover relative">
-                    <button
-                      type="button"
-                      data-testid={`sidebar-book-${book.id}`}
-                      onClick={() => openBook(book.id)}
-                      className="w-full text-left"
-                    >
-                      <DefaultCover
-                        title={book.title}
-                        createdAt={book.createdAt}
-                        written={book.chaptersWritten}
-                        target={book.targetChapters ?? 0}
-                        coverSrc={book.coverImagePath}
-                      />
-                      <span className="mt-1 block truncate px-0.5 text-[12px] leading-4">{book.title}</span>
-                      <span className="sr-only">{t("book.badgeLong")}</span>
-                    </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        data-testid={`sidebar-book-menu-${book.id}`}
-                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 opacity-0 group-hover/cover:opacity-100"
-                      >
-                        <MoreHorizontal size={14} />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right" align="start" className="w-40">
-                        <DropdownMenuItem onClick={() => openBook(book.id)}>
-                          <FolderOpen size={14} />
-                          <span>{t("cockpit.title")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            const link = document.createElement("a");
-                            link.href = bookManuscriptExportPath(book.id);
-                            link.download = "";
-                            link.click();
-                          }}
-                        >
-                          <Download size={14} />
-                          <span>{t("book.export")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => nav.toBookSettings(book.id)}>
-                          <Settings size={14} />
-                          <span>{t("book.settings")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => void pauseBook(book)}>
-                          <span>{tr("移入书架", "Move to shelf")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          data-testid={`sidebar-book-delete-${book.id}`}
-                          onClick={() => setDeleteBookTarget({ id: book.id, title: book.title })}
-                        >
-                          <Trash2 size={14} />
-                          <span>{t("book.deleteBook")}</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                ))}
-                {activeShorts.map((short) => (
-                  <div key={`short-${short.id}`} className="group/cover relative" data-testid={`sidebar-short-${short.id}`}>
-                    <button type="button" onClick={() => nav.toShort(short.id)} className="w-full text-left">
-                      <DefaultCover
-                        title={short.title}
-                        coverSrc={short.coverImagePath}
-                        written={short.chapterCount ?? 0}
-                        target={short.chapterCount ?? 1}
-                      />
-                      <span className="mt-1 block truncate px-0.5 text-[12px] leading-4">{short.title}</span>
-                      <span className="sr-only">{t("short.badge")}</span>
-                    </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        data-testid={`sidebar-short-menu-${short.id}`}
-                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 opacity-0 group-hover/cover:opacity-100"
-                      >
-                        <MoreHorizontal size={14} />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right" align="start" className="w-40">
-                        <DropdownMenuItem onClick={() => (
-                          short.status === "completed" ? nav.toShort(short.id) : handleContinueShort(short)
-                        )}>
-                          <Feather size={14} />
-                          <span>{short.status === "completed" ? t("short.finished") : t("dash.writeNext")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => nav.toShortAnalytics(short.id)}>
-                          <BarChart2 size={14} />
-                          <span>{t("dash.stats")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => nav.toShortSettings(short.id)}>
-                          <Settings size={14} />
-                          <span>{t("book.settings")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            const link = document.createElement("a");
-                            link.href = shortManuscriptExportPath(short.id);
-                            link.download = "";
-                            link.click();
-                          }}
-                        >
-                          <Download size={14} />
-                          <span>{t("book.export")}</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setDeleteShortTarget({ id: short.id, title: short.title })}
-                        >
-                          <Trash2 size={14} />
-                          <span>{t("book.deleteBook")}</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                ))}
-              </div>
-              {activeBooks.length === 0 && activeShorts.length === 0 && (
-                <div className="px-3 py-4 text-xs text-muted-foreground/50 italic text-center">
-                  {t("dash.noBooks")}
-                </div>
-              )}
-              <button
-                type="button"
-                data-testid="sidebar-all-shelf"
-                onClick={nav.toDashboard}
-                className="w-full px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:text-foreground"
-              >
-                {t("nav.allShelf")}
-              </button>
-            </div>
-          </Collapse>
-        </div>
-
-        <div>
-          <div className="px-3 mb-2.5">
-            <span className="text-[16px] leading-6 uppercase tracking-[0.1em] text-muted-foreground font-bold">
-              {t("nav.createSection")}
-            </span>
-          </div>
+          <SectionHeader label={t("nav.createSection")} />
           <div className="grid grid-cols-2 gap-1" data-testid="sidebar-create-list">
             {SIDEBAR_CREATE_ITEM_KEYS.map((key) => (
               key === "nav.createNovel" ? (
@@ -677,7 +424,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                           className="w-full flex items-center gap-2 pl-7 pr-2 py-1.5 text-[13px] text-muted-foreground/50 hover:text-foreground"
                         >
                           <Plus size={12} />
-                          <span>{tr("新建会话", "New session")}</span>
+                          <span>{t("nav.newAsk")}</span>
                         </button>
                       </div>
                     </Collapse>
@@ -697,7 +444,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                 className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[14px] text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight size={12} className={projectChatExpanded ? "rotate-90" : ""} />
-                <span>{tr("项目对谈", "Project talks")}</span>
+                <span>{t("nav.projectTalks")}</span>
               </button>
               <Collapse open={projectChatExpanded}>
                 <div>
@@ -762,7 +509,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                     className="w-full flex items-center gap-2 pl-7 pr-2 py-1.5 text-[13px] text-muted-foreground/50 hover:text-foreground"
                   >
                     <Plus size={12} />
-                    <span>{tr("新建会话", "New session")}</span>
+                    <span>{t("nav.newAsk")}</span>
                   </button>
                 </div>
               </Collapse>
@@ -770,22 +517,17 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </Collapse>
         </div>
 
-        {/* Tools Section — 文风学习 / 题材模板 */}
         <div>
-          <div className="px-3 mb-3">
-            <span className="literary-kicker">
-              {t("nav.tools")}
-            </span>
-          </div>
-          <div className="space-y-1" data-testid="sidebar-tools-list">
-            <SidebarItem
+          <SectionHeader label={t("nav.tools")} />
+          <div className="grid grid-cols-2 gap-1" data-testid="sidebar-tools-list">
+            <CreateItem
               label={t("nav.style")}
               icon={<Wand2 size={16} />}
               active={activePage === "style"}
               onClick={nav.toStyle}
               testId="sidebar-tool-style"
             />
-            <SidebarItem
+            <CreateItem
               label={t("nav.genreTemplates")}
               icon={<Boxes size={16} />}
               active={activePage === "genres"}
@@ -795,65 +537,56 @@ export function Sidebar({ nav, activePage, sse, t }: {
           </div>
         </div>
 
-        {/* System Section */}
         <div>
-          <div className="px-3 mb-3">
-            <span className="literary-kicker">
-              {t("nav.system")}
-            </span>
-          </div>
-          <div className="space-y-1" data-testid="sidebar-system-list">
-            <SidebarItem
+          <SectionHeader label={t("nav.system")} />
+          <div className="grid grid-cols-2 gap-1" data-testid="sidebar-system-list">
+            <CreateItem
               label={t("nav.config")}
               icon={<Settings size={16} />}
               active={activePage === "services"}
               onClick={nav.toServices}
               testId="sidebar-system-config"
             />
-            <SidebarItem
+            <CreateItem
               label={t("nav.projectSettings")}
               icon={<Settings size={16} />}
               active={activePage === "project-settings"}
               onClick={nav.toProjectSettings}
               testId="sidebar-system-project"
             />
-            <SidebarItem
+            <CreateItem
               label={t("nav.checkUpdate")}
               icon={<RefreshCw size={16} />}
               active={activePage === "update"}
               onClick={nav.toCheckUpdate}
               testId="nav-check-update"
             />
-            <SidebarItem
+            <CreateItem
               label={t("nav.daemon")}
               icon={<Feather size={16} />}
               active={activePage === "daemon"}
               onClick={nav.toDaemon}
-              badge={daemon?.running ? t("nav.running") : undefined}
-              badgeColor={daemon?.running ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}
+              dot={daemon?.running ? "active" : "idle"}
               testId="sidebar-system-daemon"
             />
-            <SidebarItem
+            <CreateItem
               label={t("nav.logs")}
               icon={<Terminal size={16} />}
               active={activePage === "logs"}
               onClick={nav.toLogs}
+              dot={activityLive ? "active" : "idle"}
               testId="sidebar-system-logs"
+            />
+            <CreateItem
+              label={t("nav.authorProfile")}
+              icon={<User size={16} />}
+              active={activePage === "author"}
+              onClick={nav.toAuthor}
+              testId="sidebar-system-author"
             />
           </div>
         </div>
       </div>
-
-      {daemon?.running && (
-        <div className="px-4 pt-2">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-card border border-border shadow-sm">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wider">
-              {t("nav.agentOnline")}
-            </span>
-          </div>
-        </div>
-      )}
 
       <div
         className="shrink-0 border-t border-border/40 px-4 py-2"
@@ -879,7 +612,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
           className="sm:max-w-[360px] p-4 gap-3"
         >
           <DialogHeader className="space-y-0 gap-0">
-            <DialogTitle className="font-sans text-sm font-medium">{tr("重命名会话", "Rename Session")}</DialogTitle>
+            <DialogTitle className="font-sans text-sm font-medium">{t("nav.renameAsk")}</DialogTitle>
           </DialogHeader>
           <input
             id="session-rename-input"
@@ -920,36 +653,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title={tr("删除会话", "Delete Session")}
-        message={tr(
-          `确认删除“${deleteTarget?.title ?? ""}”吗？该操作只删除这条会话，不影响书籍内容。`,
-          `Delete "${deleteTarget?.title ?? ""}"? This only removes the session; the book content is not affected.`,
-        )}
+        title={t("nav.deleteAsk")}
+        message={`${t("nav.deleteAskHint")}\n\n"${deleteTarget?.title ?? ""}"`}
         confirmLabel={tr("删除", "Delete")}
         cancelLabel={tr("取消", "Cancel")}
         variant="danger"
         onConfirm={() => void handleDeleteConfirm()}
         onCancel={() => setDeleteTarget(null)}
-      />
-      <ConfirmDialog
-        open={deleteShortTarget !== null}
-        title={t("short.delete")}
-        message={`${t("short.confirmDelete")}\n\n"${deleteShortTarget?.title ?? ""}"`}
-        confirmLabel={t("common.delete")}
-        cancelLabel={t("common.cancel")}
-        variant="danger"
-        onConfirm={() => void handleDeleteShortConfirm()}
-        onCancel={() => setDeleteShortTarget(null)}
-      />
-      <ConfirmDialog
-        open={deleteBookTarget !== null}
-        title={t("book.deleteBook")}
-        message={`${t("book.confirmDelete")}\n\n"${deleteBookTarget?.title ?? ""}"`}
-        confirmLabel={t("common.delete")}
-        cancelLabel={t("common.cancel")}
-        variant="danger"
-        onConfirm={() => void handleDeleteBookConfirm()}
-        onCancel={() => setDeleteBookTarget(null)}
       />
     </aside>
   );
@@ -957,14 +667,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
 function getSessionLabel(session: { sessionId: string; title: string | null; messages: ReadonlyArray<{ role: string; content: string }> }): string {
   if (session.title) return session.title;
-  // 后端会在第一条用户消息发送时立即把消息内容持久化为占位标题。
-  // 这里处理的是"已有消息但标题还没同步回来"的短暂中间态（乐观显示）。
   const firstUserMsg = session.messages.find((m) => m.role === "user")?.content?.trim();
   if (firstUserMsg) {
     const oneLine = firstUserMsg.replace(/\s+/g, " ");
     return oneLine.length > 20 ? `${oneLine.slice(0, 20)}…` : oneLine;
   }
-  return tr("新会话", "New session");
+  return tr("新的问心", "New ask");
 }
 
 function formatRelativeTime(sessionId: string): string {
@@ -982,7 +690,6 @@ function formatRelativeTime(sessionId: string): string {
   return tr(`${months} 个月`, `${months}mo`);
 }
 
-// Smooth collapse via grid-template-rows 0fr→1fr (content-height-agnostic, no JS measuring).
 function Collapse({ open, children }: { open: boolean; children: React.ReactNode }) {
   return (
     <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
@@ -993,9 +700,18 @@ function Collapse({ open, children }: { open: boolean; children: React.ReactNode
 
 function SectionHeader({ label, expanded, onToggle }: {
   label: string;
-  expanded: boolean;
-  onToggle: () => void;
+  expanded?: boolean;
+  onToggle?: () => void;
 }) {
+  if (!onToggle) {
+    return (
+      <div className="px-3 mb-2.5">
+        <span className="text-[16px] leading-6 uppercase tracking-[0.1em] text-muted-foreground font-bold">
+          {label}
+        </span>
+      </div>
+    );
+  }
   return (
     <button
       type="button"
@@ -1013,12 +729,13 @@ function SectionHeader({ label, expanded, onToggle }: {
   );
 }
 
-function CreateItem({ icon, label, active, onClick, testId }: {
+function CreateItem({ icon, label, active, onClick, testId, dot }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
   testId?: string;
+  dot?: "active" | "idle";
 }) {
   return (
     <button
@@ -1031,41 +748,15 @@ function CreateItem({ icon, label, active, onClick, testId }: {
           : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
       }`}
     >
+      {dot && (
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            dot === "active" ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"
+          }`}
+        />
+      )}
       <span className={`shrink-0 ${active ? "text-primary" : ""}`}>{icon}</span>
       <span className="truncate">{label}</span>
-    </button>
-  );
-}
-
-function SidebarItem({ label, icon, active, onClick, badge, badgeColor, testId }: {
-  label: string;
-  icon: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  badge?: string;
-  badgeColor?: string;
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      onClick={onClick}
-      className={`w-full group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-        active
-          ? "bg-secondary text-foreground font-medium shadow-sm border border-border"
-          : "text-foreground font-medium hover:text-foreground hover:bg-secondary/50"
-      }`}
-    >
-      <span className={`transition-colors ${active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
-        {icon}
-      </span>
-      <span className="flex-1 text-left">{label}</span>
-      {badge && (
-        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tight ${badgeColor}`}>
-          {badge}
-        </span>
-      )}
     </button>
   );
 }

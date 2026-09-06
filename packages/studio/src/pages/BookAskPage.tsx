@@ -97,7 +97,7 @@ export function BookAskPage({
       <header className="space-y-2">
         <h1 className="font-serif text-[40px]">{isZh ? "问心" : "Ask"}</h1>
         <p className="text-[15px] leading-7 text-muted-foreground">
-          {isZh ? "故事卡已落下。重开问心只开新对谈，不改已确认的正典。" : "The story card is set. Reopening Ask starts a new talk and leaves canon untouched."}
+          {isZh ? "故事卡已落下。重新推敲前提只开新一条问心，不改已确认的正典。" : "The story card is set. Revisiting the premise opens a new ask and leaves canon untouched."}
         </p>
       </header>
 
@@ -131,7 +131,7 @@ export function BookAskPage({
       ) : (
         <LiteraryEmpty
           title={isZh ? "故事卡还没落下" : "No story card yet"}
-          subtitle={isZh ? "从对谈里重开问心，把书名、一句话和梗概磨清。" : "Reopen Ask and settle the title, one-liner, and synopsis."}
+          subtitle={isZh ? "从问心里重新推敲前提，把书名、一句话和梗概磨清。" : "Revisit the premise and settle the title, one-liner, and synopsis."}
           action={isZh ? "重开问心" : "Reopen Ask"}
           onAction={reopen}
           testId="ask-empty"

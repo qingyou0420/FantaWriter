@@ -9,8 +9,8 @@ import { BookDetail } from "./pages/BookDetail";
 import { BookStudy } from "./pages/BookStudy";
 import { AuthorPage } from "./pages/AuthorPage";
 import { OutlineWorkspace } from "./pages/OutlineWorkspace";
-import { BookAskPage } from "./pages/BookAskPage";
 import { BookGround } from "./pages/BookGround";
+import { AskDrawerTitle, BookAskDrawerChrome } from "./components/BookAskDrawerChrome";
 import { AskCreateRail } from "./components/AskCreateRail";
 import { ToastHost } from "./components/ToastHost";
 import { ChapterReader } from "./pages/ChapterReader";
@@ -42,7 +42,7 @@ import { useSessionEvents } from "./hooks/use-session-events";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
 import { setAppLanguage, tr } from "./lib/app-language";
-import { postApi, putApi, useApi } from "./hooks/use-api";
+import { postApi, useApi } from "./hooks/use-api";
 import { Sun, Moon } from "lucide-react";
 import { House } from "lucide-react";
 
@@ -103,7 +103,7 @@ export function App() {
   useSessionEvents(sse, route, setRoute);
 
   useEffect(() => {
-    if ((route.page === "book" && route.chatOpen) || route.page === "book-chat") {
+    if ((route.page === "book" && route.chatOpen) || route.page === "book-chat" || route.page === "book-ask") {
       setBookChatOpen(true);
     }
   }, [route]);
@@ -113,7 +113,10 @@ export function App() {
     toAuthor: () => setRoute({ page: "author" }),
     toChat: () => setRoute({ page: "chat" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
-    toAsk: (bookId: string) => setRoute({ page: "book-ask", bookId }),
+    toAsk: (bookId: string) => {
+      setBookChatOpen(true);
+      setRoute({ page: "book", bookId, chatOpen: true });
+    },
     toGround: (bookId: string) => setRoute({ page: "book-ground", bookId }),
     toWeave: (bookId: string) => setRoute({ page: "book-weave", bookId }),
     toWrite: (bookId: string) => setRoute({ page: "book-write", bookId }),
@@ -232,27 +235,6 @@ export function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex gap-0.5 bg-muted/50 rounded-lg p-0.5">
-              <button
-                onClick={async () => {
-                  await putApi("/project", { language: "zh" });
-                  refetchProject();
-                }}
-                className={`px-2.5 py-1 text-[16px] font-medium rounded-md ${currentLang === "zh" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              >
-                中
-              </button>
-              <button
-                onClick={async () => {
-                  await putApi("/project", { language: "en" });
-                  refetchProject();
-                }}
-                className={`px-2.5 py-1 text-[16px] font-medium rounded-md ${currentLang === "en" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              >
-                EN
-              </button>
-            </div>
-
             <button
               onClick={() => setTheme(isDark ? "light" : "dark")}
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -265,7 +247,7 @@ export function App() {
         {/* Main Content Area */}
         <main className="flex-1 relative overflow-y-auto scroll-smooth">
           {route.page === "dashboard" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className="mx-auto w-full max-w-6xl px-6 py-12 md:px-12 lg:py-16 fade-in">
               <Dashboard nav={nav} sse={sse} theme={theme} t={t} />
             </div>
           )}
@@ -312,14 +294,9 @@ export function App() {
               />
             </div>
           )}
-          {(route.page === "book" || route.page === "book-chat") && (
+          {(route.page === "book" || route.page === "book-chat" || route.page === "book-ask") && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <BookStudy bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
-            </div>
-          )}
-          {route.page === "book-ask" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
-              <BookAskPage bookId={route.bookId} nav={nav} t={t} isZh={currentLang !== "en"} />
             </div>
           )}
           {route.page === "book-ground" && (
@@ -374,7 +351,7 @@ export function App() {
           )}
           {route.page === "logs" && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
-              <LogViewer nav={nav} theme={theme} t={t} />
+              <LogViewer nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "genres" && (
@@ -452,7 +429,9 @@ export function App() {
           data-testid="book-talk-drawer"
         >
           <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-            <span className="text-sm font-medium">{currentLang === "en" ? "Talk" : "对谈"}</span>
+            <span className="text-sm font-medium">
+              <AskDrawerTitle bookId={activeBookId} isZh={currentLang !== "en"} />
+            </span>
             <button
               type="button"
               onClick={() => setBookChatOpen(false)}
@@ -461,6 +440,7 @@ export function App() {
               {currentLang === "en" ? "Close" : "关闭"}
             </button>
           </div>
+          <BookAskDrawerChrome bookId={activeBookId} isZh={currentLang !== "en"} />
           <div className="flex min-h-0 flex-1">
             <ChatPage
               activeBookId={activeBookId}

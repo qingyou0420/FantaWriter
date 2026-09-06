@@ -19,9 +19,10 @@ function read(rel: string): string {
 describe("P2-1 问心", () => {
   it("writes story_card.md and gates 就此建书 on three fields", () => {
     const card = read("src/lib/story-card.ts");
-    const ask = read("src/pages/BookAskPage.tsx") + read("src/components/AskStoryCard.tsx");
+    const ask = read("src/components/BookAskDrawerChrome.tsx") + read("src/components/AskStoryCard.tsx") + read("src/pages/ChatPage.tsx");
     const rail = read("src/components/AskCreateRail.tsx") + read("src/components/AskStoryCard.tsx");
     const sidebar = read("src/components/Sidebar.tsx");
+    const nav = read("src/components/BookWorkspaceNav.tsx");
     expect(card).toMatch(/story_card\.md/);
     expect(card).toMatch(/workingTitle/);
     expect(card).toMatch(/oneLine/);
@@ -31,6 +32,7 @@ describe("P2-1 问心", () => {
     expect(ask).toMatch(/reopen-ask/);
     expect(ask).toMatch(/REOPEN_ASK_PROMPT/);
     expect(ask).not.toMatch(/wipe|rm\(.*story/);
+    expect(nav).not.toMatch(/book-tab-talk/);
     expect(sidebar).toMatch(/toBookCreate/);
     expect(sidebar).toMatch(/startFreshBookCreateSession/);
   });

@@ -50,6 +50,7 @@ import {
   MessageContent,
 } from "../components/ai-elements/message";
 import { AskGenreChips } from "../components/AskCreateRail";
+import { REOPEN_ASK_PROMPT } from "../lib/story-card";
 import {
   type ChatPageModelPreference,
   clearBookCreateSessionId,
@@ -311,6 +312,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
   const selectedService = useChatStore((s) => s.selectedService);
   // -- Store actions --
   const setInput = useChatStore((s) => s.setInput);
+  const createDraftSession = useChatStore((s) => s.createDraftSession);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const retryLastSend = useChatStore((s) => s.retryLastSend);
   const abortSession = useChatStore((s) => s.abortSession);
@@ -1104,6 +1106,22 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                   isZh={isZh}
                   onInsert={(text) => setInput(input ? `${input}\n${text}` : text)}
                 />
+              ) : null}
+              {mode === "book" && activeBookId ? (
+                <div className="flex flex-wrap gap-1.5 border-b border-border/20 px-3 py-2">
+                  <button
+                    type="button"
+                    data-testid="reopen-ask"
+                    title={isZh ? "只开新一条问心，不改已确认的正典" : "Opens a new ask without changing confirmed canon"}
+                    onClick={() => {
+                      createDraftSession(activeBookId, "book");
+                      setInput(isZh ? REOPEN_ASK_PROMPT.zh : REOPEN_ASK_PROMPT.en);
+                    }}
+                    className="rounded-full border border-border/60 bg-secondary/40 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {isZh ? "重新推敲前提" : "Revisit the premise"}
+                  </button>
+                </div>
               ) : null}
               {selectedSkills.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 border-b border-border/20 px-3 py-2">

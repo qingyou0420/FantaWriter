@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Bot, FileText, FolderUp, MessageSquare, Radar, RotateCcw, Search, Settings2, Plus, Trash2 } from "lucide-react";
+import { Bell, Bot, FileText, FolderUp, Globe, MessageSquare, Radar, RotateCcw, Search, Settings2, Plus, Trash2 } from "lucide-react";
 import { fetchJson, postApi, putApi, useApi } from "../hooks/use-api";
 import { usePreferencesStore } from "../store/preferences";
 import type { Theme } from "../hooks/use-theme";
@@ -93,6 +93,7 @@ const fieldClass = "w-full rounded-lg border border-border bg-secondary/30 px-3 
 export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
   const isZh = t("nav.connected") === "\u5DF2\u8FDE\u63A5";
+  const { data: projectData, refetch: refetchProject } = useApi<{ language?: string }>("/project");
   const { data: overridesData, refetch: refetchOverrides } = useApi<{ overrides: Record<string, unknown> }>("/project/model-overrides");
   const { data: defaultModelData, refetch: refetchDefaultModel } = useApi<{ service: string | null; defaultModel: string | null }>("/project/default-model");
   const { data: researchSearchData, refetch: refetchResearchSearch } = useApi<{ researchSearch: Partial<ResearchSearchDraft> }>("/project/research-search");
@@ -224,6 +225,28 @@ export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: 
           {notice.message}
         </div>
       )}
+
+      <SettingsCard title={t("settings.writingLanguage")} description={t("settings.writingLanguageHint")} icon={<Globe size={18} />}>
+        <div className="flex flex-wrap gap-2" data-testid="settings-writing-language">
+          {(["zh", "en"] as const).map((lang) => (
+            <button
+              key={lang}
+              type="button"
+              onClick={() => runSave("language", async () => {
+                await putApi("/project", { language: lang });
+                await refetchProject();
+              }, t("settings.saved"))}
+              className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                (projectData?.language === "en" ? "en" : "zh") === lang
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {lang === "zh" ? t("config.chinese") : t("config.english")}
+            </button>
+          ))}
+        </div>
+      </SettingsCard>
 
       {/* Chat UI preferences — applied immediately, persisted in this browser's localStorage */}
       <SettingsCard title={t("settings.chatUi")} description={t("settings.chatUiHint")} icon={<MessageSquare size={18} />}>

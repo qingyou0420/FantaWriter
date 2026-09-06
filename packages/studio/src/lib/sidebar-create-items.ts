@@ -3,8 +3,12 @@ export const SIDEBAR_CREATE_ITEM_KEYS = ["nav.createNovel", "nav.createShort"] a
 
 export type SidebarCreateItemKey = (typeof SIDEBAR_CREATE_ITEM_KEYS)[number];
 
-/** Left-nav section order: author → in-progress covers → create → talks → tools → system. */
-export const SIDEBAR_SECTION_ORDER = ["author", "active-works", "create", "sessions", "tools", "system"] as const;
+/**
+ * Left-nav section order: author chip → create → 问心记录 → tools → system.
+ * Menu buttons in create / tools / system use a 2-column CreateItem grid.
+ * 问心记录 stays a full-width expandable list (titles + relative time do not fit two columns).
+ */
+export const SIDEBAR_SECTION_ORDER = ["author", "create", "sessions", "tools", "system"] as const;
 
 export type SidebarSectionId = (typeof SIDEBAR_SECTION_ORDER)[number];
 
@@ -13,13 +17,17 @@ export const SIDEBAR_TOOL_ITEM_KEYS = ["nav.style", "nav.genreTemplates"] as con
 
 export type SidebarToolItemKey = (typeof SIDEBAR_TOOL_ITEM_KEYS)[number];
 
-/** System settings: 模型配置 / 项目设置 / 检查更新 / 守护进程 / 日志记录. */
+/**
+ * System settings (2-column grid): 模型配置 / 项目设置 / 检查更新 / 守护进程 / AI 动态 / 作者资料.
+ * 守护进程 is unchanged. AI 动态 is the former 日志记录 entry (`nav.logs` → `#/logs`).
+ */
 export const SIDEBAR_SYSTEM_ITEM_KEYS = [
   "nav.config",
   "nav.projectSettings",
   "nav.checkUpdate",
   "nav.daemon",
   "nav.logs",
+  "nav.authorProfile",
 ] as const;
 
 export type SidebarSystemItemKey = (typeof SIDEBAR_SYSTEM_ITEM_KEYS)[number];

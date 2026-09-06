@@ -59,8 +59,11 @@ function parseHash(hash: string): HashRoute {
   const serviceMatch = path.match(/^services\/([^/]+)$/);
   if (serviceMatch) return { page: "service-detail", serviceId: decodePart(serviceMatch[1]) };
 
+  if (path === "logs") return { page: "logs" };
+  if (path === "daemon") return { page: "daemon" };
+
   const bookAskMatch = path.match(/^book\/([^/]+)\/ask$/);
-  if (bookAskMatch) return { page: "book-ask", bookId: decodePart(bookAskMatch[1]) };
+  if (bookAskMatch) return { page: "book", bookId: decodePart(bookAskMatch[1]), chatOpen: true };
 
   const bookGroundMatch = path.match(/^book\/([^/]+)\/ground$/);
   if (bookGroundMatch) return { page: "book-ground", bookId: decodePart(bookGroundMatch[1]) };
@@ -117,6 +120,8 @@ function routeToHash(route: HashRoute): string {
     case "book-chat": return `#/book/${encodeURIComponent(route.bookId)}/chat`;
     case "book-settings":
     case "book-write": return `#/book/${encodeURIComponent(route.bookId)}/write`;
+    case "logs": return "#/logs";
+    case "daemon": return "#/daemon";
     case "book-ask": return `#/book/${encodeURIComponent(route.bookId)}/ask`;
     case "book-ground": return `#/book/${encodeURIComponent(route.bookId)}/ground`;
     case "book-create": return "#/book/new";
@@ -145,7 +150,7 @@ const HASH_PAGES = new Set([
   "book-ask", "book-ground", "book-weave", "book-write", "book-create",
   "services", "project-settings", "service-detail", "translation", "import",
   "update", "play", "film", "flow", "film-author", "film-studio",
-  "short", "short-settings", "short-analytics",
+  "short", "short-settings", "short-analytics", "logs", "daemon",
 ]);
 
 export function useHashRoute() {
