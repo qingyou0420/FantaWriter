@@ -1,21 +1,24 @@
 /**
- * 发版辅助：把主安装包 FantaWriter-Setup-<ver>.exe 与 .sha256
- * 复制为 Fantasy-Writer-Setup-<ver>.exe / .sha256。
- * 1.4.0 客户端只认旧前缀，latest Release 必须同时挂两套文件名。
+ * 发版辅助：把主安装包 Inkborne-Setup-<ver>.exe 与 .sha256
+ * 复制为 FantaWriter-Setup-<ver>.exe 与 Fantasy-Writer-Setup-<ver>.exe。
+ * 2.0.x 客户端认 FantaWriter-Setup；1.4.0 认 Fantasy-Writer-Setup。
+ * latest Release 必须同时挂三套文件名。
  */
 const fs = require("fs");
 const path = require("path");
 
-const CURRENT_SETUP_PREFIX = "FantaWriter-Setup";
-const LEGACY_SETUP_PREFIX = "Fantasy-Writer-Setup";
+const CURRENT_SETUP_PREFIX = "Inkborne-Setup";
+const LEGACY_SETUP_PREFIXES = ["FantaWriter-Setup", "Fantasy-Writer-Setup"];
 
 function setupNamesForVersion(version) {
   const v = String(version || "").replace(/^v/i, "");
   if (!v) throw new Error("缺少 version");
+  const aliases = LEGACY_SETUP_PREFIXES.map((prefix) => `${prefix}-${v}.exe`);
   return {
     version: v,
     primary: `${CURRENT_SETUP_PREFIX}-${v}.exe`,
-    legacy: `${LEGACY_SETUP_PREFIX}-${v}.exe`,
+    aliases,
+    legacy: aliases[0],
   };
 }
 
@@ -27,19 +30,19 @@ function hashFromSha256Sidecar(text) {
   return hash.toLowerCase();
 }
 
-function writeSha256Sidecar(filePath, hash) {
-  fs.writeFileSync(`${filePath}.sha256`, `${hash}  ${filePath}\n`);
+function writeSha256Sidecar(filePath, hash, listedName) {
+  const name = listedName || path.basename(filePath);
+  fs.writeFileSync(`${filePath}.sha256`, `${hash}  ${name}\n`);
 }
 
 /**
  * @param {{ distDir: string, version: string }} opts
- * @returns {{ primary: string, legacy: string, sha256: string }}
+ * @returns {{ primary: string, aliases: string[], legacy: string, sha256: string }}
  */
 function aliasLegacySetup(opts) {
   const distDir = path.resolve(opts.distDir);
   const names = setupNamesForVersion(opts.version);
   const primary = path.join(distDir, names.primary);
-  const legacy = path.join(distDir, names.legacy);
   if (!fs.existsSync(primary)) {
     throw new Error(`找不到安装包 ${primary}`);
   }
@@ -48,9 +51,13 @@ function aliasLegacySetup(opts) {
     throw new Error(`找不到校验文件 ${shaSrc}`);
   }
   const sha256 = hashFromSha256Sidecar(fs.readFileSync(shaSrc, "utf8"));
-  fs.copyFileSync(primary, legacy);
-  writeSha256Sidecar(legacy, sha256);
-  return { primary, legacy, sha256 };
+  const aliases = names.aliases.map((name) => {
+    const dest = path.join(distDir, name);
+    fs.copyFileSync(primary, dest);
+    writeSha256Sidecar(dest, sha256, name);
+    return dest;
+  });
+  return { primary, aliases, legacy: aliases[0], sha256 };
 }
 
 function main() {
@@ -58,7 +65,9 @@ function main() {
   const distDir = path.resolve(process.argv[3] || "dist-installer");
   const result = aliasLegacySetup({ distDir, version });
   console.log(`[alias-legacy-setup] ${result.primary}`);
-  console.log(`[alias-legacy-setup] → ${result.legacy}`);
+  for (const alias of result.aliases) {
+    console.log(`[alias-legacy-setup] → ${alias}`);
+  }
   console.log(`[alias-legacy-setup] sha256 ${result.sha256}`);
 }
 
@@ -73,7 +82,8 @@ if (require.main === module) {
 
 module.exports = {
   CURRENT_SETUP_PREFIX,
-  LEGACY_SETUP_PREFIX,
+  LEGACY_SETUP_PREFIXES,
+  LEGACY_SETUP_PREFIX: LEGACY_SETUP_PREFIXES[1],
   setupNamesForVersion,
   hashFromSha256Sidecar,
   aliasLegacySetup,

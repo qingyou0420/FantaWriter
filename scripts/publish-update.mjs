@@ -1,6 +1,6 @@
 /**
- * 打包完成后，把最新 FantaWriter-Setup（或旧名 Fantasy-Writer-Setup）复制到可扫描目录：
- * 1. 桌面/FantaWriter-Updates
+ * 打包完成后，把最新 Inkborne-Setup（或旧名 FantaWriter-Setup / Fantasy-Writer-Setup）复制到可扫描目录：
+ * 1. 桌面/Inkborne-Updates 与 FantaWriter-Updates
  * 2. %APPDATA%/fantawriter/updates（Electron userData）
  */
 import fs from "fs";
@@ -66,7 +66,7 @@ function findLatestSetup() {
     })
     .filter(Boolean);
   if (!files.length) {
-    console.error("[publish-update] 未找到 FantaWriter-Setup-*.exe");
+    console.error("[publish-update] 未找到 Inkborne-Setup-*.exe / FantaWriter-Setup-*.exe");
     process.exit(1);
   }
   files.sort((a, b) => {
@@ -95,9 +95,10 @@ for (const dir of targets) {
   try {
     const dest = copyTo(latest.path, dir);
     console.log(`  ✓ ${dest}`);
-    if (latest.name !== names.legacy) {
-      const legacyDest = copyTo(latest.path, dir, names.legacy);
-      console.log(`  ✓ ${legacyDest}`);
+    for (const aliasName of names.aliases) {
+      if (latest.name === aliasName) continue;
+      const aliasDest = copyTo(latest.path, dir, aliasName);
+      console.log(`  ✓ ${aliasDest}`);
     }
   } catch (e) {
     console.warn(`  ✗ ${dir}: ${e.message || e}`);
