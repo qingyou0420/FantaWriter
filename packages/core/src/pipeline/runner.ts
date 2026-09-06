@@ -1532,7 +1532,7 @@ export class PipelineRunner {
 
   /** Revise the latest (or specified) chapter based on audit issues. */
   async reviseDraft(bookId: string, chapterNumber?: number, mode: ReviseMode = DEFAULT_REVISE_MODE, externalContext?: string): Promise<ReviseResult> {
-    const releaseLock = await this.state.acquireBookLock(bookId);
+    const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("revise"));
     try {
       const book = await this.state.loadBookConfig(bookId);
       const bookDir = this.state.bookDir(bookId);
@@ -2098,7 +2098,7 @@ export class PipelineRunner {
   }
 
   async repairChapterState(bookId: string, chapterNumber?: number): Promise<ChapterPipelineResult> {
-    const releaseLock = await this.state.acquireBookLock(bookId);
+    const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("repair"));
     try {
       return await this._repairChapterStateLocked(bookId, chapterNumber);
     } finally {
@@ -2107,7 +2107,7 @@ export class PipelineRunner {
   }
 
   async resyncChapterArtifacts(bookId: string, chapterNumber?: number): Promise<ChapterPipelineResult> {
-    const releaseLock = await this.state.acquireBookLock(bookId);
+    const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("resync"));
     try {
       return await this._resyncChapterArtifactsLocked(bookId, chapterNumber);
     } finally {
@@ -2123,7 +2123,7 @@ export class PipelineRunner {
     readonly chapter: ChapterPipelineResult;
     readonly audit: AuditResult & { readonly chapterNumber: number };
   }> {
-    const releaseLock = await this.state.acquireBookLock(bookId);
+    const releaseLock = await this.state.acquireBookLock(bookId, this.writeLockHolder("resync"));
     try {
       const chapter = await this._resyncChapterArtifactsLocked(bookId, chapterNumber, options);
       const audit = await this.auditDraft(bookId, chapter.chapterNumber);
@@ -3273,7 +3273,7 @@ ${matrix}`,
    */
   async importChapters(input: ImportChaptersInput): Promise<ImportChaptersResult> {
     this.throwIfOperationAborted();
-    const releaseLock = await this.state.acquireBookLock(input.bookId);
+    const releaseLock = await this.state.acquireBookLock(input.bookId, this.writeLockHolder("import"));
     try {
       const book = await this.state.loadBookConfig(input.bookId);
       const bookDir = this.state.bookDir(input.bookId);

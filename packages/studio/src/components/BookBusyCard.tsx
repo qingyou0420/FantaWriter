@@ -31,14 +31,14 @@ export function BookBusyCard() {
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 backdrop-blur-sm">
       <div className="w-full max-w-lg mx-4 rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">本书正在被写入</h2>
+          <h2 className="text-lg font-semibold">写入被占用</h2>
           <p className="mt-2 text-sm text-muted-foreground break-words">{error.message}</p>
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
           <dt className="text-muted-foreground">书</dt>
           <dd>{bookId ?? "未知"}</dd>
           <dt className="text-muted-foreground">任务</dt>
-          <dd>{owner?.taskId ?? "未知"}</dd>
+          <dd>{owner?.taskId ?? "无活动任务"}</dd>
           <dt className="text-muted-foreground">阶段</dt>
           <dd>{owner?.stage ?? "未知"}</dd>
           <dt className="text-muted-foreground">已持续</dt>
@@ -73,7 +73,7 @@ export function BookBusyCard() {
               }
             }}
           >
-            {busy ? "释放中…" : "强制释放"}
+            {busy ? "释放中…" : (!owner?.taskId && owner?.inProcess ? "强制释放（当前引擎无活动任务）" : "强制释放")}
           </button>
         </div>
       </div>

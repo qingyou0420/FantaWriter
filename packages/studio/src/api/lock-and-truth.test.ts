@@ -85,7 +85,7 @@ describe("P0 lock + truth PUT", () => {
         error: { code: string; message: string; owner?: { taskId?: string } };
       };
       expect(body.error.code).toBe("BOOK_BUSY");
-      expect(body.error.message).toContain("not recovered automatically");
+      expect(body.error.message).toContain("写入被占用");
       expect(body.error.owner?.taskId).toBe("hung-write");
 
       const forced = await app.request("/api/v1/books/demo-book/truth/../lock".replace("truth/../", ""), {
@@ -133,7 +133,7 @@ describe("P0 lock + truth PUT", () => {
       expect(body.error.code).toBe("BOOK_BUSY");
       expect(body.error.owner?.taskId).toBe("other-write");
       expect(body.error.owner?.stage).toBe("draft");
-      expect(body.error.message).toContain("task:other-write");
+      expect(body.error.message).toContain("写入被占用");
     } finally {
       await release();
     }
@@ -159,7 +159,31 @@ describe("P0 lock + truth PUT", () => {
       expect(body.error.code).toBe("BOOK_BUSY");
       expect(body.error.owner?.taskId).toBe("other-draft");
       expect(body.error.owner?.stage).toBe("write-next");
-      expect(body.error.message).toContain("task:other-draft");
+      expect(body.error.message).toContain("写入被占用");
+    } finally {
+      await release();
+    }
+  });
+
+  it("clears leftover in-process lock on delete so a recreated book can write", async () => {
+    const app = createStudioServer(projectConfig, root);
+    const state = new StateManager(root);
+    const release = await state.acquireBookLock("demo-book", {
+      taskId: "leftover-after-delete",
+      stage: "write-next",
+    });
+    try {
+      const deleted = await app.request("/api/v1/books/demo-book", { method: "DELETE" });
+      expect(deleted.status).toBe(200);
+      expect(state.inspectBookLock("demo-book")).toBeNull();
+
+      await mkdir(join(root, "books", "demo-book", "story"), { recursive: true });
+      const retry = await app.request("/api/v1/books/demo-book/truth/author_intent.md", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "# after recreate\n" }),
+      });
+      expect(retry.status).toBe(200);
     } finally {
       await release();
     }

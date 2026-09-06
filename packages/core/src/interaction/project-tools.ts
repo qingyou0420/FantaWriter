@@ -14,7 +14,12 @@ import type { InteractionRuntimeTools } from "./runtime.js";
 import { writeExportArtifact } from "./export-artifact.js";
 import { deriveBookIdFromTitle } from "../utils/book-id.js";
 import { normalizePlatformOrOther } from "../models/book.js";
-import { commitOrStageTruthFile } from "./truth-proposals.js";
+import { commitOrStageTruthFile, requiresCanonDiffGate } from "./truth-proposals.js";
+import {
+  BOOK_LOCK_INTERACTIVE_WAIT_MS,
+  type AcquireBookLockOptions,
+  type BookLockHolder,
+} from "../state/manager.js";
 
 const SAFE_TRUTH_FLAT_FILE_NAMES = new Set([
   "author_intent.md",
@@ -136,8 +141,16 @@ async function withBookMutationLock<T>(
   state: StateLike,
   bookId: string,
   task: () => Promise<T>,
+  options?: {
+    readonly holder?: BookLockHolder;
+    readonly wait?: AcquireBookLockOptions;
+  },
 ): Promise<T> {
-  const releaseLock = await state.acquireBookLock(bookId);
+  const releaseLock = await state.acquireBookLock(
+    bookId,
+    options?.holder ?? { stage: "interactive-edit" },
+    options?.wait ?? { waitMs: BOOK_LOCK_INTERACTIVE_WAIT_MS },
+  );
   try {
     return await task();
   } finally {
@@ -517,7 +530,7 @@ export function createInteractionToolsFromDeps(
         },
       };
     }),
-    updateCurrentFocus: async (bookId, content) => withBookMutationLock(state, bookId, async () => {
+    updateCurrentFocus: async (bookId, content) => {
       await state.ensureControlDocuments(bookId);
       return commitOrStageTruthFile({
         bookDir: state.bookDir(bookId),
@@ -525,8 +538,8 @@ export function createInteractionToolsFromDeps(
         fileName: "current_focus.md",
         content,
       });
-    }),
-    updateAuthorIntent: async (bookId, content) => withBookMutationLock(state, bookId, async () => {
+    },
+    updateAuthorIntent: async (bookId, content) => {
       await state.ensureControlDocuments(bookId);
       return commitOrStageTruthFile({
         bookDir: state.bookDir(bookId),
@@ -534,33 +547,47 @@ export function createInteractionToolsFromDeps(
         fileName: "author_intent.md",
         content,
       });
-    }),
-    writeTruthFile: async (bookId, fileName, content) => withBookMutationLock(state, bookId, async () => {
+    },
+    writeTruthFile: async (bookId, fileName, content, options) => {
       await state.ensureControlDocuments(bookId);
       const safeFileName = assertSafeTruthFileName(fileName);
-      const result = await commitOrStageTruthFile({
-        bookDir: state.bookDir(bookId),
-        bookId,
-        fileName: safeFileName,
-        content,
-      });
-      if (result.kind !== "proposed") return result;
-      return {
-        ...result,
-        __interaction: {
-          responseText: `Staged canon change for "${safeFileName}". Waiting for confirm — the file was not written.`,
-          details: {
-            kind: "proposed_truth_diff",
-            proposalId: result.proposal.id,
-            bookId,
-            fileName: safeFileName,
-            baseRevision: result.proposal.baseRevision,
-            unifiedDiff: result.proposal.unifiedDiff,
-            title: `确认改正典 · ${safeFileName}`,
-            summary: `将改写 story/${safeFileName}。刷新后提案仍在 story/runtime/proposals/。`,
+      const commit = async () => {
+        const result = await commitOrStageTruthFile({
+          bookDir: state.bookDir(bookId),
+          bookId,
+          fileName: safeFileName,
+          content,
+        });
+        if (result.kind !== "proposed") return result;
+        return {
+          ...result,
+          __interaction: {
+            responseText: `Staged canon change for "${safeFileName}". Waiting for confirm — the file was not written.`,
+            details: {
+              kind: "proposed_truth_diff",
+              proposalId: result.proposal.id,
+              bookId,
+              fileName: safeFileName,
+              baseRevision: result.proposal.baseRevision,
+              unifiedDiff: result.proposal.unifiedDiff,
+              title: `确认改正典 · ${safeFileName}`,
+              summary: `将改写 story/${safeFileName}。刷新后提案仍在 story/runtime/proposals/。`,
+            },
           },
-        },
+        };
       };
-    }),
+      // Canon staging only writes story/runtime/proposals/. Taking the pipeline
+      // write lock here is what blocked 醉词 chat after successful reads.
+      if (requiresCanonDiffGate(safeFileName)) {
+        return commit();
+      }
+      return withBookMutationLock(state, bookId, commit, {
+        holder: { stage: "write-truth" },
+        wait: {
+          waitMs: options?.waitMs ?? BOOK_LOCK_INTERACTIVE_WAIT_MS,
+          onWaiting: options?.onWaiting,
+        },
+      });
+    },
   };
 }

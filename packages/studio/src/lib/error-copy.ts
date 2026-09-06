@@ -29,6 +29,10 @@ const KNOWN_RUNTIME_REPLACEMENTS: ReadonlyArray<{
     replacement: "INKOS_LLM_API_KEY 未设置。请运行 `inkos config set-global`，或在项目 .env 文件中添加它。",
   },
   {
+    pattern: /Book "([^"]+)" is locked by an active write(?: \([^)]+\))?\. .*/g,
+    replacement: "写入被占用：书「$1」正在被写作任务写入。请等待当前任务结束，或确认没有进行中的任务后使用「强制释放」。",
+  },
+  {
     pattern: /This in-process lock is not recovered automatically while the holder is still alive\. Abort the running task or POST \/api\/v1\/books\/:id\/lock\/force-release, then retry\./g,
     replacement: "进程内锁在持有者仍存活时不会自动恢复。请中止正在运行的任务，或使用「强制释放」，然后再试。",
   },
