@@ -7,6 +7,7 @@ import type { ChatAttachmentPayload } from "../store/chat/types";
 import { chatSelectors, useChatStore } from "../store/chat";
 import type { ChatSessionKind } from "../store/chat";
 import { useServiceStore } from "../store/service";
+import { showToast } from "../lib/toast";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -48,6 +49,7 @@ import {
   Message,
   MessageContent,
 } from "../components/ai-elements/message";
+import { AskGenreChips } from "../components/AskCreateRail";
 import {
   type ChatPageModelPreference,
   clearBookCreateSessionId,
@@ -749,7 +751,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
     try {
       await postApi(`/books/${details.bookId}/truth-proposals/${details.proposalId}/apply`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Apply failed");
+      showToast(error instanceof Error ? error.message : "Apply failed", "error");
     }
   };
 
@@ -1097,6 +1099,12 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                   event.currentTarget.value = "";
                 }}
               />
+              {mode === "book-create" ? (
+                <AskGenreChips
+                  isZh={isZh}
+                  onInsert={(text) => setInput(input ? `${input}\n${text}` : text)}
+                />
+              ) : null}
               {selectedSkills.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 border-b border-border/20 px-3 py-2">
                   {selectedSkills.map((skill) => (
@@ -1181,7 +1189,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                   type="button"
                   onClick={() => void onSend(input)}
                   disabled={(!input.trim() && attachedFiles.length === 0 && !loading) || !activeSessionId}
-                  className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shrink-0 hover:scale-105 active:scale-95 transition-all disabled:opacity-20 disabled:scale-100 shadow-sm shadow-primary/20"
+                  className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shrink-0 transition-colors disabled:opacity-20 shadow-sm shadow-primary/20"
                   title={loading && !input.trim() && attachedFiles.length === 0 ? (isZh ? "停止当前回复" : "Stop") : undefined}
                 >
                   {loading && !input.trim() && attachedFiles.length === 0

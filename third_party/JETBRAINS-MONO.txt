@@ -1,0 +1,5 @@
+JetBrains Mono
+License: SIL Open Font License 1.1 (OFL)
+Upstream: https://github.com/JetBrains/JetBrainsMono
+A small latin/digit subset is bundled at packages/studio/public/fonts/jetbrains-mono-latin.woff2
+for chapter counts and word stats only.

@@ -1,0 +1,5 @@
+Instrument Serif
+License: SIL Open Font License 1.1 (OFL)
+Upstream: https://github.com/googlefonts/instrument-serif
+Bundled locally at packages/studio/public/fonts/instrument-serif-*.woff2
+so Studio does not load fonts.googleapis.com.

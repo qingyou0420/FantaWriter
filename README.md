@@ -1,16 +1,16 @@
-# 幻想作家 / FantaWriter 2.0
+# 墨生万象 / Inkborne 2.0
 
-Windows 向的**本机桌面**长篇连载工作台。2.0 是一次**重建**：InkOS 内核 + Electron 壳，不是把 1.7.x Next.js Studio 迁过来。
+Windows 向的**本机桌面**长篇连载工作台（原名幻想作家 / FantaWriter）。2.0 是一次**重建**：InkOS 内核 + Electron 壳，不是把 1.7.x Next.js Studio 迁过来。
 
 内核与 Studio UI fork 自 [InkOS](https://github.com/Narcooo/inkos) v1.8.x（AGPL-3.0）。Electron 壳负责单实例、钉端口、窗口、首启向导和退出杀引擎。稿件落在你选的项目根目录（默认 `%USERPROFILE%\Documents\幻想作家\`），标准 InkOS 布局：`inkos.json`、`books/`、`.inkos/secrets.json`。密钥只写在本机项目里，**不进 git、不进安装包**。
 
-当前版本：**2.0.15**。安装包：`FantaWriter-Setup-2.0.15.exe`（[Releases](https://github.com/qingyou0420/FantaWriter/releases)）。
+当前版本：**2.0.15**。安装包：`Inkborne-Setup-2.0.15.exe`（旧版本检查更新仍识别 `FantaWriter-Setup-*`；[Releases](https://github.com/qingyou0420/FantaWriter/releases)）。
 
 **[更新日志](./CHANGELOG.md)** · **[2.0 蓝图](./docs/2.0重构蓝图-InkOS内核桌面重建方案.md)** · **[上游说明](./docs/UPSTREAM.md)**
 
 ## 2.0 对作者意味着什么
 
-- 打开书先进**连载驾驶舱**（今天写哪章、卷进度、到期/逾期伏笔），不再是 1.x Next 向导。
+- 打开书先进**连载书房**（今天写哪章、卷进度、到期/逾期伏笔），不再是 1.x Next 向导。
 - **防跑偏闸**：写前大纲、正典 diff、审稿队列、伏笔逾期。
 - 书锁卡死时可**强制释放**，不必为了一把锁重启整个应用。
 - 双击安装包即可用；从源码则走 `pnpm start`（Electron → InkOS Studio 引擎）。
@@ -46,7 +46,7 @@ pnpm engine:smoke
 pnpm dist:win
 ```
 
-产物在 `dist-installer/FantaWriter-Setup-2.0.15.exe`（另有 `Fantasy-Writer-Setup-2.0.15.exe` 别名）。打包前会预构建 Studio、`INKOS_DISABLE_VITE_BUILD=1`，把 `packages/studio/dist` + core 装进 extraResources，并拒绝把 `.env` / `secrets.json` 打进安装包。
+产物在 `dist-installer/Inkborne-Setup-2.0.15.exe`。更新扫描同时接受 `FantaWriter-Setup-*` 与旧 `Fantasy-Writer-Setup-*`。打包前会预构建 Studio、`INKOS_DISABLE_VITE_BUILD=1`，把 `packages/studio/dist` + core 装进 extraResources，并拒绝把 `.env` / `secrets.json` 打进安装包。
 
 调试 CLI（显式根，不要靠 cwd）：
 

@@ -3,8 +3,8 @@
   "version": "2.0.15",
   "private": true,
   "license": "AGPL-3.0-only",
-  "description": "FantaWriter / 幻想作家 desktop shell around the InkOS Studio engine",
-  "author": "FantaWriter",
+  "description": "Inkborne / 墨生万象 desktop shell around the InkOS Studio engine",
+  "author": "Inkborne",
   "main": "main.cjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { showToast } from "../lib/toast";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { StudioApiError } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
@@ -75,7 +76,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       refetch();
       setWorkspaceRevision((revision) => revision + 1);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Save failed");
+      showToast(e instanceof Error ? e.message : "Save failed", "error");
     } finally {
       setSaving(false);
     }
@@ -108,9 +109,9 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       nav.toBook(bookId);
     } catch (e) {
       const blocked = e instanceof StudioApiError && e.code === "APPROVE_BLOCKED";
-      alert(blocked
-        ? `${e.message}\n${e.details ? JSON.stringify(e.details) : ""}`
-        : (e instanceof Error ? e.message : "Approve failed"));
+      showToast(blocked
+        ? `${e.message} ${e.details ? JSON.stringify(e.details) : ""}`
+        : (e instanceof Error ? e.message : "Approve failed"), "error");
     }
   };
 
@@ -119,7 +120,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       await postApi(`/books/${bookId}/chapters/${chapterNumber}/reject`);
       nav.toBook(bookId);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Reject failed");
+      showToast(e instanceof Error ? e.message : "Reject failed", "error");
     }
   };
 
@@ -129,7 +130,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
       setPacketText(JSON.stringify(packet, null, 2));
       setPacketOpen(true);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "No packet snapshot");
+      showToast(e instanceof Error ? e.message : "No packet snapshot", "error");
     }
   };
 
@@ -175,7 +176,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:scale-105 active:scale-95 transition-all shadow-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl transition-colors shadow-sm disabled:opacity-50"
               >
                 {saving ? <div className="w-3.5 h-3.5 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Save size={14} />}
                 {saving ? t("book.saving") : t("book.save")}
@@ -297,7 +298,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
                <span>{Math.ceil(body.length / 500)} {t("reader.minRead")}</span>
              </div>
           </div>
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 font-bold">{t("reader.endOfChapter")}</p>
+          <p className="literary-kicker text-muted-foreground/70">{t("reader.endOfChapter")}</p>
         </footer>
       </div>
 

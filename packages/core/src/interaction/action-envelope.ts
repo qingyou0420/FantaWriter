@@ -45,6 +45,9 @@ export const CreateBookActionPayloadSchema = z.object({
   language: z.enum(["zh", "en"]).optional(),
   targetChapters: z.number().int().min(1).optional(),
   chapterWordCount: z.number().int().min(1).optional(),
+  oneLine: z.string().min(1).optional(),
+  synopsis: z.string().min(1).optional(),
+  tone: z.string().min(1).optional(),
 }).strict();
 
 export const WriteNextActionPayloadSchema = z.object({

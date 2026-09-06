@@ -75,7 +75,7 @@ export function storyFrameHasFourSections(markdown: string): boolean {
   );
 }
 
-function splitMarkdownSections(markdown: string): ReadonlyArray<{ heading: string; body: string }> {
+export function splitMarkdownSections(markdown: string): ReadonlyArray<{ heading: string; body: string }> {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const sections: Array<{ heading: string; body: string }> = [];
   let heading = "";

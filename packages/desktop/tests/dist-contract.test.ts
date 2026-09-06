@@ -23,10 +23,14 @@ describe("2.0.15 Windows installer contract", () => {
     expect(rootPkg.scripts["dist:win"]).not.toMatch(/exit 1/);
   });
 
-  it("names the NSIS artifact FantaWriter-Setup-2.0.15.exe", () => {
-    expect(setupFileNameForVersion(rootPkg.version)).toBe("FantaWriter-Setup-2.0.15.exe");
+  it("names the NSIS artifact Inkborne-Setup-2.0.15.exe and keeps appId", () => {
+    expect(setupFileNameForVersion(rootPkg.version)).toBe("Inkborne-Setup-2.0.15.exe");
     const yml = readFileSync(join(desktopDir, "electron-builder.yml"), "utf8");
-    expect(yml).toMatch(/artifactName:\s*FantaWriter-Setup-\$\{version\}\.\$\{ext\}/);
+    expect(yml).toMatch(/appId:\s*com\.fantawriter\.app/);
+    expect(yml).toMatch(/productName:\s*Inkborne/);
+    expect(yml).toMatch(/artifactName:\s*Inkborne-Setup-\$\{version\}\.\$\{ext\}/);
+    expect(yml).toMatch(/shortcutName:\s*墨生万象 Inkborne/);
+    expect(yml).toMatch(/uninstallDisplayName:\s*墨生万象 Inkborne/);
     expect(yml).toMatch(/from:\s*\.\.\/\.\.\/dist-engine/);
     expect(yml).toMatch(/to:\s*engine/);
     expect(yml).not.toMatch(/src\/app|next\.config/);
@@ -35,7 +39,7 @@ describe("2.0.15 Windows installer contract", () => {
   it("ships icon.ico so the Windows installer is not the default Electron icon", () => {
     const ico = join(repoRoot, "build", "icon.ico");
     const png = join(repoRoot, "build", "icon.png");
-    const mark = join(repoRoot, "build", "fantawriter-mark.png");
+    const mark = join(repoRoot, "build", "inkborne-mark.png");
     const yml = readFileSync(join(desktopDir, "electron-builder.yml"), "utf8");
     expect(existsSync(ico)).toBe(true);
     expect(existsSync(png)).toBe(true);

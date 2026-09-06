@@ -1,4 +1,5 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
+import { showToast } from "../lib/toast";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { setProjectChatSessionId, startFreshBookCreateSession } from "./chat-page-state";
 import { useChatStore } from "../store/chat";
@@ -13,11 +14,13 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { selectWorksListShorts, type StudioShortSummary } from "../shared/short-works";
 import { bookManuscriptExportPath, continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import { tr } from "../lib/app-language";
+import { shelfEmptyCopy } from "../lib/stage-copy";
+import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import {
   Plus,
   BookOpen,
   BarChart2,
-  Zap,
+  Feather,
   Clock,
   AlertCircle,
   MoreVertical,
@@ -86,7 +89,7 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete, onOpenChange }: {
     <div ref={menuRef} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="p-3 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+        className="p-3 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10  transition-all cursor-pointer"
       >
         <MoreVertical size={18} />
       </button>
@@ -170,7 +173,7 @@ function ShortMenu({ short, nav, t, onDelete, onOpenChange }: {
         type="button"
         data-testid={`short-menu-${short.id}`}
         onClick={() => setOpen(!open)}
-        className="p-3 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+        className="p-3 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10  transition-all cursor-pointer"
       >
         <MoreVertical size={18} />
       </button>
@@ -283,22 +286,16 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
   );
 
   if (!data?.books.length && shorts.length === 0) {
+    const empty = shelfEmptyCopy(t("nav.connected") === "已连接");
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center fade-in">
-        <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center mb-8">
-          <BookOpen size={40} className="text-primary/20" />
-        </div>
-        <h2 className="font-serif text-3xl italic text-foreground/80 mb-3">{t("dash.noBooks")}</h2>
-        <p className="text-sm text-muted-foreground max-w-xs leading-relaxed mb-10">
-          {t("dash.createFirst")}
-        </p>
-        <button
-          onClick={openFreshBookCreate}
-          className="group flex items-center gap-2 px-8 py-3.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
-        >
-          <Plus size={18} />
-          {t("nav.createSection")}
-        </button>
+      <div className="flex min-h-[60vh] items-center justify-center fade-in">
+        <LiteraryEmpty
+          title={empty.title}
+          subtitle={empty.subtitle}
+          action={empty.action}
+          onAction={openFreshBookCreate}
+          testId="shelf-empty"
+        />
       </div>
     );
   }
@@ -326,7 +323,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
         </div>
         <button
           onClick={openFreshBookCreate}
-          className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
+          className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground  transition-all shadow-lg shadow-primary/20"
         >
           <Plus size={16} />
           {t("nav.newBook")}
@@ -384,16 +381,16 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     onClick={() => (
                       short.status === "completed" ? nav.toShort(short.id) : openShortContinue(short)
                     )}
-                    className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:scale-105 active:scale-95 transition-all shadow-sm"
+                    className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:shadow-lg hover:shadow-primary/20  transition-all shadow-sm"
                   >
-                    <Zap size={16} />
+                    <Feather size={16} />
                     {short.status === "completed" ? t("short.finished") : t("dash.writeNext")}
                   </button>
                   <button
                     type="button"
                     data-testid={`short-stats-${short.id}`}
                     onClick={() => nav.toShortAnalytics(short.id)}
-                    className="p-3 rounded-xl bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/30 hover:shadow-md hover:scale-105 active:scale-95 transition-all border border-border/50 shadow-sm"
+                    className="p-3 rounded-xl bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/30 hover:shadow-md  transition-all border border-border/50 shadow-sm"
                     title={t("dash.stats")}
                   >
                     <BarChart2 size={18} />
@@ -471,7 +468,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                     )}
                     {book.fanficMode && (
                       <span className="flex items-center gap-1 text-purple-500">
-                        <Zap size={12} />
+                        <Feather size={12} />
                         <span className="italic">{book.fanficMode}</span>
                       </span>
                     )}
@@ -482,13 +479,13 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                   <button
                     onClick={async () => {
                       try { await postApi(`/books/${book.id}/write-next`); }
-                      catch (e) { alert(e instanceof Error ? e.message : "Write failed"); }
+                      catch (e) { showToast(e instanceof Error ? e.message : "Write failed", "error"); }
                     }}
                     disabled={isWriting}
                     className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${
                       isWriting
                         ? "bg-primary/20 text-primary cursor-wait animate-pulse"
-                        : "bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:scale-105 active:scale-95"
+                        : "bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:shadow-lg hover:shadow-primary/20 "
                     }`}
                   >
                     {isWriting ? (
@@ -498,14 +495,14 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                       </>
                     ) : (
                       <>
-                        <Zap size={16} />
+                        <Feather size={16} />
                         {t("dash.writeNext")}
                       </>
                     )}
                   </button>
                   <button
                     onClick={() => nav.toAnalytics(book.id)}
-                    className="p-3 rounded-xl bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/30 hover:shadow-md hover:scale-105 active:scale-95 transition-all border border-border/50 shadow-sm"
+                    className="p-3 rounded-xl bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/30 hover:shadow-md  transition-all border border-border/50 shadow-sm"
                     title={t("dash.stats")}
                   >
                     <BarChart2 size={18} />
@@ -546,7 +543,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                 <Flame size={18} className="animate-pulse" />
               </div>
               <div>
-                <h3 className="text-sm font-bold uppercase tracking-widest text-primary"> Manuscript Foundry</h3>
+                <h3 className="literary-kicker"> Manuscript Foundry</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">Real-time LLM generation tracking</p>
               </div>
             </div>
@@ -558,7 +555,7 @@ export function Dashboard({ nav, sse, theme, t }: { nav: Nav; sse: { messages: R
                 </div>
                 <div className="w-px h-3 bg-primary/20" />
                 <div className="flex items-center gap-2">
-                  <Zap size={12} />
+                  <Feather size={12} />
                   <span>{((progressEvent.data as { totalChars?: number })?.totalChars ?? 0).toLocaleString()} Chars</span>
                 </div>
               </div>

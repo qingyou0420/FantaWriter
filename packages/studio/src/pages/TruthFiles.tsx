@@ -4,6 +4,7 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { Pencil, Save, X } from "lucide-react";
+import { showToast } from "../lib/toast";
 
 interface TruthFile {
   readonly name: string;
@@ -95,7 +96,7 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
       setEditMode(false);
       refetchFile();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save");
+      showToast(e instanceof Error ? e.message : "Failed to save", "error");
     } finally {
       setSavingEdit(false);
     }

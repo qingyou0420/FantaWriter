@@ -5,6 +5,7 @@
  */
 
 import { postApi } from "../hooks/use-api";
+import { showToast } from "../lib/toast";
 import { useState } from "react";
 
 export interface PendingTruthProposal {
@@ -32,7 +33,7 @@ export function TruthProposalCard({
       await postApi(`/books/${bookId}/truth-proposals/${proposal.id}/${action}`);
       onResolved();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed");
+      showToast(error instanceof Error ? error.message : "Failed", "error");
     } finally {
       setPending(null);
     }

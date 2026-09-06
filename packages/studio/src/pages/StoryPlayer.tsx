@@ -104,7 +104,7 @@ export function StoryPlayer({
 
       {isEnding ? (
         <div className="border rounded-xl p-8 text-center space-y-4" data-testid="player-ending">
-          <div className="text-xs uppercase tracking-widest text-primary" data-testid="player-ending-type">
+          <div className="literary-kicker text-primary" data-testid="player-ending-type">
             {graph.endings.find((e) => e.nodeId === node.id)?.type ?? "ending"}
           </div>
           <div className="text-lg" data-testid="player-ending-title">

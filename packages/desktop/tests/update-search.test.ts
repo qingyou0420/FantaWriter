@@ -27,6 +27,7 @@ const PATHS = {
   exeUpdates: "/app/updates",
   userDataUpdates: "/data/updates",
   desktopUpdatesFolder: [
+    "/Users/me/Desktop/Inkborne-Updates",
     "/Users/me/Desktop/FantaWriter-Updates",
     "/Users/me/Desktop/Fantasy-Writer-Updates",
   ],

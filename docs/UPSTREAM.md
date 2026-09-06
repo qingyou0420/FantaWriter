@@ -16,7 +16,7 @@
 | `packages/core` | `packages/core`（`@actalk/inkos-core`） |
 | `packages/studio` | `packages/studio`（`@actalk/inkos-studio`） |
 | `packages/cli` | `packages/cli`（调试用 `inkos` CLI） |
-| `packages/desktop` | 新：幻想作家 Electron 壳 |
+| `packages/desktop` | 新：墨生万象 / Inkborne Electron 壳（原名幻想作家） |
 
 文件版权头保持 InkOS 原样。P0 对 fork 的功能性改动（锁 TTL / force-release、显式项目根、拒绝默认 4567、truth PUT 取锁）已在对应文件中实现，并在本仓 CHANGELOG 记录。
 
@@ -27,7 +27,11 @@ git remote add inkos-upstream https://github.com/Narcooo/inkos.git
 git fetch inkos-upstream v1.8.0
 ```
 
-后续按版本节奏择机合流。core 改动保持窄插口；UI 深改留给 P2。
+后续按版本节奏择机合流。core 改动保持窄插口。
+
+## 品牌更名
+
+面向作者的产品名是 **墨生万象 / Inkborne**（原名幻想作家 / FantaWriter）。内部 npm 包仍为 `@fantawriter/*`，`appId` 仍为 `com.fantawriter.app`，以免更新链路与 userData 路径断裂。安装包现名为 `Inkborne-Setup-x.y.z.exe`，检查更新同时识别旧的 `FantaWriter-Setup-*`。
 
 ## P0 hunches（2026-09-01 实测）
 
