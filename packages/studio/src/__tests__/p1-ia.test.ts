@@ -34,6 +34,9 @@ describe("P1-1 sidebar + author", () => {
     expect(home).toMatch(/nav\.signYourName/);
     expect(home).toMatch(/isInProgressBookStatus/);
     expect(home).toMatch(/home-edit-author/);
+    const author = read("src/pages/AuthorPage.tsx");
+    expect(author).not.toMatch(/useApi.*\/books/);
+    expect(author).not.toMatch(/author\.myBooks/);
   });
 
   it("persists author under explicit project root, not cwd", () => {

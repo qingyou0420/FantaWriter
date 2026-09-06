@@ -45,10 +45,10 @@ describe("sidebar create items", () => {
     expect([...SIDEBAR_SYSTEM_ITEM_KEYS]).toEqual([
       "nav.config",
       "nav.projectSettings",
-      "nav.checkUpdate",
+      "nav.authorProfile",
       "nav.daemon",
       "nav.logs",
-      "nav.authorProfile",
+      "nav.checkUpdate",
     ]);
   });
 });

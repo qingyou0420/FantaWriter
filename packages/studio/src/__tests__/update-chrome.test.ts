@@ -15,8 +15,8 @@ describe("studio in-app update chrome", () => {
     expect(sidebar).toMatch(/nav\.checkUpdate/);
     expect(sidebar).toMatch(/toCheckUpdate/);
     expect(sidebar).toMatch(/activePage === "update"/);
-    expect(sidebar.indexOf("nav.projectSettings")).toBeLessThan(sidebar.indexOf("nav.checkUpdate"));
-    expect(sidebar.indexOf("nav.checkUpdate")).toBeLessThan(sidebar.indexOf("nav.daemon"));
+    expect(sidebar.indexOf("nav.projectSettings")).toBeLessThan(sidebar.indexOf("nav.daemon"));
+    expect(sidebar.indexOf("nav.daemon")).toBeLessThan(sidebar.indexOf("nav.checkUpdate"));
     expect(sidebar).not.toMatch(/window\.fw[^a-zA-Z]/);
   });
 

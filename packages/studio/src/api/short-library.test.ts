@@ -32,6 +32,7 @@ describe("short library", () => {
       storyId: "elevator",
       title: "电梯多一层",
       chapterCount: 12,
+      createdAt: "2026-09-01T00:00:00.000Z",
     }), "utf-8");
     await writeFile(join(root, "shorts", "elevator", "status.json"), JSON.stringify({
       status: "needs-review",
@@ -45,6 +46,8 @@ describe("short library", () => {
       { id: "明日来信", status: "completed", kind: "short" },
     ]);
     expect(listed.find((item) => item.id === "明日来信")?.manuscriptPath).toBe("shorts/明日来信/final/full.md");
+    expect(listed.find((item) => item.id === "elevator")?.createdAt).toBe("2026-09-01T00:00:00.000Z");
+    expect(listed.every((item) => typeof item.createdAt === "string" && item.createdAt.length > 0)).toBe(true);
 
     const finished = await loadStudioShort(root, "明日来信");
     expect(finished).toMatchObject({

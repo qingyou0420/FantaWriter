@@ -56,10 +56,10 @@ describe("sidebar create block", () => {
     expect([...SIDEBAR_SYSTEM_ITEM_KEYS]).toEqual([
       "nav.config",
       "nav.projectSettings",
-      "nav.checkUpdate",
+      "nav.authorProfile",
       "nav.daemon",
       "nav.logs",
-      "nav.authorProfile",
+      "nav.checkUpdate",
     ]);
 
     const author = sectionIndex(sidebar, "sidebar-author");
@@ -80,8 +80,14 @@ describe("sidebar create block", () => {
     expect(i18n).toMatch(/"nav\.system": \{ zh: "系统设置"/);
     expect(i18n).toMatch(/"nav\.style": \{ zh: "文风学习"/);
     expect(i18n).toMatch(/"nav\.genreTemplates": \{ zh: "题材模板"/);
-    expect(i18n).toMatch(/"nav\.logs": \{ zh: "AI 动态"/);
+    expect(i18n).toMatch(/"nav\.logs": \{ zh: "实时动态"/);
     expect(i18n).toMatch(/"nav\.daemon": \{ zh: "守护进程"/);
+    expect(i18n).toMatch(/"nav\.authorProfile": \{ zh: "资料设置"/);
+    expect(i18n).toMatch(/"nav\.newAsk": \{ zh: "新开会话"/);
+    expect(i18n).toMatch(/"nav\.newAskPlaceholder": \{ zh: "新的会话"/);
+    expect(sidebar).toMatch(/nav\.newAskPlaceholder/);
+    expect(sidebar).not.toMatch(/\bdot=/);
+    expect(sidebar).toMatch(/Activity/);
     expect(sidebar).toMatch(/toDashboard/);
     expect(sidebar).not.toMatch(/sidebar-works-list/);
     expect(sidebar).not.toMatch(/nav\.myBooks/);
@@ -129,13 +135,13 @@ describe("sidebar create block", () => {
 });
 
 describe("works list long/short parity", () => {
-  it("labels longs as 长篇 and shorts as 短篇 on the home shelf", () => {
+  it("labels longs as 连载 and shorts as 短篇 on the home shelf", () => {
     const dashboard = read("src/pages/Dashboard.tsx");
     const i18n = read("src/hooks/use-i18n.ts");
 
-    expect(i18n).toMatch(/"book\.badgeLong": \{ zh: "长篇"/);
+    expect(i18n).toMatch(/"home\.typeSerial": \{ zh: "连载"/);
     expect(i18n).toMatch(/"short\.badge": \{ zh: "短篇"/);
-    expect(dashboard).toMatch(/book\.badgeLong/);
+    expect(dashboard).toMatch(/home\.typeSerial/);
     expect(dashboard).toMatch(/short\.badge/);
     expect(dashboard).toMatch(/dashboard-book-badge-/);
     expect(dashboard).toMatch(/dashboard-short-badge-/);

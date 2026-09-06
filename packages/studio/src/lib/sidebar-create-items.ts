@@ -18,16 +18,16 @@ export const SIDEBAR_TOOL_ITEM_KEYS = ["nav.style", "nav.genreTemplates"] as con
 export type SidebarToolItemKey = (typeof SIDEBAR_TOOL_ITEM_KEYS)[number];
 
 /**
- * System settings (2-column grid): 模型配置 / 项目设置 / 检查更新 / 守护进程 / AI 动态 / 作者资料.
- * 守护进程 is unchanged. AI 动态 is the former 日志记录 entry (`nav.logs` → `#/logs`).
+ * System settings (2-column grid): 模型配置 / 项目设置 / 资料设置 / 守护进程 / 实时动态 / 检查更新.
+ * `nav.logs` still routes to `#/logs`. `nav.authorProfile` still routes to `#/author`.
  */
 export const SIDEBAR_SYSTEM_ITEM_KEYS = [
   "nav.config",
   "nav.projectSettings",
-  "nav.checkUpdate",
+  "nav.authorProfile",
   "nav.daemon",
   "nav.logs",
-  "nav.authorProfile",
+  "nav.checkUpdate",
 ] as const;
 
 export type SidebarSystemItemKey = (typeof SIDEBAR_SYSTEM_ITEM_KEYS)[number];
