@@ -42,6 +42,8 @@ describe("desktop update chrome", () => {
     expect(main).toMatch(/openCheckUpdateUi/);
     expect(main).toMatch(/buttons: \["检查更新", "关闭"\]/);
     expect(main).toMatch(/update-panel\.html/);
+    expect(main).toMatch(/选择墨生万象安装包/);
+    expect(main).not.toMatch(/选择 FantaWriter 安装包/);
     const bootFn = main.match(/async function boot\(\) \{[\s\S]*?\nconst gotLock/);
     expect(bootFn?.[0] ?? "").not.toMatch(/checkUpdate\(|checkGithubLatest|findLatestInstaller/);
 

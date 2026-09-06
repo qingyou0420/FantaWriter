@@ -1002,7 +1002,7 @@ function registerIpc() {
   });
   ipcMain.handle("app:pickInstaller", async () => {
     const res = await dialog.showOpenDialog(mainWindow || undefined, {
-      title: "选择 FantaWriter 安装包",
+      title: "选择墨生万象安装包",
       filters: [{ name: "安装程序", extensions: ["exe"] }],
       properties: ["openFile"],
     });
