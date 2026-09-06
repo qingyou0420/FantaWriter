@@ -36,7 +36,6 @@ const FlowView = lazy(() => import("./pages/FlowView"));
 const FilmWizard = lazy(() => import("./pages/FilmWizard"));
 import { LanguageSelector } from "./pages/LanguageSelector";
 import { BookBusyCard } from "./components/BookBusyCard";
-import { BookSidebar, BookSidebarToggle } from "./components/chat/BookSidebar";
 import { useSSE } from "./hooks/use-sse";
 import { useSessionEvents } from "./hooks/use-session-events";
 import { useTheme } from "./hooks/use-theme";
@@ -108,6 +107,13 @@ export function App() {
     }
   }, [route]);
 
+  const closeAskDrawer = () => {
+    setBookChatOpen(false);
+    if ((route.page === "book" && route.chatOpen) || route.page === "book-chat" || route.page === "book-ask") {
+      setRoute({ page: "book", bookId: route.bookId });
+    }
+  };
+
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
     toAuthor: () => setRoute({ page: "author" }),
@@ -126,7 +132,10 @@ export function App() {
       setRoute({ page: "book", bookId, chatOpen: true });
     },
     toBookSettings: (bookId: string) => setRoute({ page: "book-write", bookId }),
-    onToggleChat: () => setBookChatOpen((open) => !open),
+    onToggleChat: () => {
+      if (bookChatOpen) closeAskDrawer();
+      else setBookChatOpen(true);
+    },
     chatOpen: bookChatOpen,
     toBookCreate: () => setRoute({ page: "book-create" }),
     toChapter: (bookId: string, chapterNumber: number) =>
@@ -434,7 +443,7 @@ export function App() {
             </span>
             <button
               type="button"
-              onClick={() => setBookChatOpen(false)}
+              onClick={closeAskDrawer}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               {currentLang === "en" ? "Close" : "关闭"}
@@ -450,8 +459,6 @@ export function App() {
               t={t}
               sse={sse}
             />
-            <BookSidebar bookId={activeBookId} theme={theme} t={t} sse={sse} />
-            <BookSidebarToggle bookId={activeBookId} theme={theme} t={t} sse={sse} />
           </div>
         </aside>
       )}

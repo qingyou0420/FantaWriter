@@ -1,4 +1,4 @@
-import { access, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { StudioShortContentKind, StudioShortDetail, StudioShortStatus, StudioShortSummary } from "../shared/short-works.js";
 import { manuscriptToPlainText } from "../lib/work-export.js";
@@ -80,6 +80,7 @@ async function loadShortSummary(root: string, storyId: string): Promise<StudioSh
   const coverImagePath = await fileExists(join(baseDir, coverRelative))
     ? `shorts/${storyId}/${coverRelative}`
     : undefined;
+  const createdAt = await resolveShortCreatedAt(brief, snapshot, baseDir);
 
   return {
     id: storyId,
@@ -90,8 +91,27 @@ async function loadShortSummary(root: string, storyId: string): Promise<StudioSh
     ...(stringField(brief, "direction") ? { direction: stringField(brief, "direction") } : {}),
     manuscriptPath: manuscript?.path ?? `shorts/${storyId}`,
     ...(coverImagePath ? { coverImagePath } : {}),
+    ...(createdAt ? { createdAt } : {}),
     kind: "short",
   };
+}
+
+async function resolveShortCreatedAt(
+  brief: Record<string, unknown> | undefined,
+  snapshot: Record<string, unknown> | undefined,
+  baseDir: string,
+): Promise<string | undefined> {
+  const fromBrief = stringField(brief, "createdAt");
+  if (fromBrief) return fromBrief;
+  const fromSnapshot = stringField(snapshot, "startedAt");
+  if (fromSnapshot) return fromSnapshot;
+  try {
+    const info = await stat(baseDir);
+    const stamp = info.birthtimeMs > 0 ? info.birthtime : info.mtime;
+    return stamp.toISOString();
+  } catch {
+    return undefined;
+  }
 }
 
 /** Disk-only: shorts/<id>/ directories. Session/task artifacts are not a source. */

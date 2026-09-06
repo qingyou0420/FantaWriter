@@ -108,6 +108,10 @@ describe("hash route", () => {
       expect(routeToHash({ page: "book", bookId: "novel-1" })).toBe("#/book/novel-1");
     });
 
+    it("book without chatOpen does not write /chat", () => {
+      expect(routeToHash({ page: "book", bookId: "novel-1" })).not.toContain("/chat");
+    });
+
     it("writes four-step hashes and aliases old page types", () => {
       expect(routeToHash({ page: "book-ask", bookId: "novel-1" })).toBe("#/book/novel-1/ask");
       expect(routeToHash({ page: "book-ground", bookId: "novel-1" })).toBe("#/book/novel-1/ground");

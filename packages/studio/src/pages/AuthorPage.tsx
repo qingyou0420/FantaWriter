@@ -8,13 +8,6 @@ import { useRef, useState } from "react";
 import { fetchJson, useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import { AUTHOR_BIO_MAX, AUTHOR_NAME_MAX, type AuthorPublic } from "../lib/author-profile";
-import { isInProgressBookStatus } from "../lib/stage-copy";
-
-interface BookSummary {
-  readonly id: string;
-  readonly title: string;
-  readonly status: string;
-}
 
 export function AuthorPage({
   nav,
@@ -26,7 +19,6 @@ export function AuthorPage({
   readonly isZh: boolean;
 }) {
   const { data, mutate } = useApi<AuthorPublic>("/author");
-  const { data: booksData } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const [name, setName] = useState<string | null>(null);
   const [bio, setBio] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -36,10 +28,6 @@ export function AuthorPage({
 
   const currentName = name ?? data?.name ?? "";
   const currentBio = bio ?? data?.bio ?? "";
-  const books = booksData?.books ?? [];
-  const inProgress = books.filter((book) => isInProgressBookStatus(book.status)).length;
-  const paused = books.filter((book) => book.status === "paused").length;
-  const completed = books.filter((book) => book.status === "completed").length;
   const avatarSrc = data?.hasAvatar && data.updatedAt
     ? `/api/v1/author/avatar?v=${encodeURIComponent(data.updatedAt)}`
     : data?.hasAvatar
@@ -172,14 +160,6 @@ export function AuthorPage({
         {saved && <span className="text-sm text-muted-foreground">{t("author.saved")}</span>}
       </div>
       {error && <p className="text-sm text-destructive" data-testid="author-error">{error}</p>}
-
-      <div className="border-t border-border/40 pt-6 space-y-2">
-        <div className="font-medium">{t("author.myBooks")}（{books.length}）</div>
-        <button type="button" onClick={nav.toDashboard} className="text-sm text-muted-foreground hover:text-foreground">
-          {isZh ? `在创 ${inProgress} · 暂停 ${paused} · 完结 ${completed}` : `${inProgress} active · ${paused} paused · ${completed} done`}
-          {" → "}{t("bread.home")}
-        </button>
-      </div>
     </div>
   );
 }

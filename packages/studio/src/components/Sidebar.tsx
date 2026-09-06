@@ -3,9 +3,7 @@ import { useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
 import {
   applyBookCollectionEvent,
-  deriveActiveBookIds,
   shouldRefetchBookCollections,
-  shouldRefetchDaemonStatus,
 } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
 import { tr } from "../lib/app-language";
@@ -37,7 +35,7 @@ import { SIDEBAR_CREATE_ITEM_KEYS } from "../lib/sidebar-create-items";
 import type { AuthorPublic } from "../lib/author-profile";
 import {
   Settings,
-  Terminal,
+  Activity,
   Plus,
   MessageSquare,
   Gamepad2,
@@ -112,7 +110,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
 }) {
   const { data: author } = useApi<AuthorPublic>("/author");
   const { data, refetch: refetchBooks, mutate: mutateBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
-  const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
   const sessions = useChatStore((s) => s.sessions);
   const sessionIdsByBook = useChatStore((s) => s.sessionIdsByBook);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
@@ -146,9 +143,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
         }),
     [activeSessionId, sessionIdsByBook, sessions],
   );
-  const activityBooks = useMemo(() => deriveActiveBookIds(sse.messages), [sse.messages]);
-  const activityLive = activityBooks.size > 0;
-
   useEffect(() => {
     const recent = sse.messages.at(-1);
     if (!recent) return;
@@ -164,10 +158,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
         refetchBooks();
       }
     }
-    if (shouldRefetchDaemonStatus(recent)) {
-      refetchDaemon();
-    }
-  }, [mutateBooks, refetchBooks, refetchDaemon, sse.messages]);
+  }, [mutateBooks, refetchBooks, sse.messages]);
 
   useEffect(() => {
     if (!sessionsExpanded) return;
@@ -369,7 +360,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                       <div>
                         {bookSessions.map((session) => {
                           const isActiveSession = activePage === `book:${book.id}` && activeSessionId === session.sessionId;
-                          const label = getSessionLabel(session);
+                          const label = getSessionLabel(session, t);
                           return (
                             <div
                               key={session.sessionId}
@@ -450,7 +441,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                 <div>
                   {projectChatSessions.map((session) => {
                     const isActiveSession = activePage === "chat" && activeSessionId === session.sessionId;
-                    const label = getSessionLabel(session);
+                    const label = getSessionLabel(session, t);
                     return (
                       <div
                         key={session.sessionId}
@@ -555,34 +546,32 @@ export function Sidebar({ nav, activePage, sse, t }: {
               testId="sidebar-system-project"
             />
             <CreateItem
-              label={t("nav.checkUpdate")}
-              icon={<RefreshCw size={16} />}
-              active={activePage === "update"}
-              onClick={nav.toCheckUpdate}
-              testId="nav-check-update"
+              label={t("nav.authorProfile")}
+              icon={<User size={16} />}
+              active={activePage === "author"}
+              onClick={nav.toAuthor}
+              testId="sidebar-system-author"
             />
             <CreateItem
               label={t("nav.daemon")}
               icon={<Feather size={16} />}
               active={activePage === "daemon"}
               onClick={nav.toDaemon}
-              dot={daemon?.running ? "active" : "idle"}
               testId="sidebar-system-daemon"
             />
             <CreateItem
               label={t("nav.logs")}
-              icon={<Terminal size={16} />}
+              icon={<Activity size={16} />}
               active={activePage === "logs"}
               onClick={nav.toLogs}
-              dot={activityLive ? "active" : "idle"}
               testId="sidebar-system-logs"
             />
             <CreateItem
-              label={t("nav.authorProfile")}
-              icon={<User size={16} />}
-              active={activePage === "author"}
-              onClick={nav.toAuthor}
-              testId="sidebar-system-author"
+              label={t("nav.checkUpdate")}
+              icon={<RefreshCw size={16} />}
+              active={activePage === "update"}
+              onClick={nav.toCheckUpdate}
+              testId="nav-check-update"
             />
           </div>
         </div>
@@ -665,14 +654,17 @@ export function Sidebar({ nav, activePage, sse, t }: {
   );
 }
 
-function getSessionLabel(session: { sessionId: string; title: string | null; messages: ReadonlyArray<{ role: string; content: string }> }): string {
+function getSessionLabel(
+  session: { sessionId: string; title: string | null; messages: ReadonlyArray<{ role: string; content: string }> },
+  t: TFunction,
+): string {
   if (session.title) return session.title;
   const firstUserMsg = session.messages.find((m) => m.role === "user")?.content?.trim();
   if (firstUserMsg) {
     const oneLine = firstUserMsg.replace(/\s+/g, " ");
     return oneLine.length > 20 ? `${oneLine.slice(0, 20)}…` : oneLine;
   }
-  return tr("新的问心", "New ask");
+  return t("nav.newAskPlaceholder");
 }
 
 function formatRelativeTime(sessionId: string): string {
@@ -729,13 +721,12 @@ function SectionHeader({ label, expanded, onToggle }: {
   );
 }
 
-function CreateItem({ icon, label, active, onClick, testId, dot }: {
+function CreateItem({ icon, label, active, onClick, testId }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
   testId?: string;
-  dot?: "active" | "idle";
 }) {
   return (
     <button
@@ -748,13 +739,6 @@ function CreateItem({ icon, label, active, onClick, testId, dot }: {
           : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
       }`}
     >
-      {dot && (
-        <span
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-            dot === "active" ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"
-          }`}
-        />
-      )}
       <span className={`shrink-0 ${active ? "text-primary" : ""}`}>{icon}</span>
       <span className="truncate">{label}</span>
     </button>

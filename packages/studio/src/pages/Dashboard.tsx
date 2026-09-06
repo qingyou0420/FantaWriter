@@ -18,7 +18,7 @@ import { DefaultCover } from "../components/DefaultCover";
 import { selectWorksListShorts, type StudioShortSummary } from "../shared/short-works";
 import { bookManuscriptExportPath, shortManuscriptExportPath } from "../lib/work-export";
 import type { AuthorPublic } from "../lib/author-profile";
-import { isInProgressBookStatus, isInProgressShortStatus, shelfEmptyCopy } from "../lib/stage-copy";
+import { formatStartedOn, isInProgressBookStatus, isInProgressShortStatus, shelfEmptyCopy } from "../lib/stage-copy";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import { Pencil, ChevronRight, MoreHorizontal, FolderOpen, Download, Settings, Trash2, BarChart2, Feather } from "lucide-react";
 import {
@@ -261,7 +261,6 @@ export function Dashboard({ nav, sse, t }: {
       ) : (
         <div className="space-y-8">
           <section className="space-y-4">
-            <h2 className="text-[16px] font-bold tracking-[0.1em] text-muted-foreground">{t("home.inProgress")}</h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="home-shelf-active">
               {inProgressBooks.map((book) => (
                 <HomeBookCard
@@ -280,6 +279,7 @@ export function Dashboard({ nav, sse, t }: {
                   short={short}
                   nav={nav}
                   t={t}
+                  isZh={isZh}
                   onDelete={() => setDeleteShortTarget({ id: short.id, title: short.title })}
                 />
               ))}
@@ -325,13 +325,14 @@ export function Dashboard({ nav, sse, t }: {
                     />
                   ))}
                   {doneShorts.map((short) => (
-                    <HomeShortCard
-                      key={`short-${short.id}`}
-                      short={short}
-                      nav={nav}
-                      t={t}
-                      onDelete={() => setDeleteShortTarget({ id: short.id, title: short.title })}
-                    />
+                  <HomeShortCard
+                    key={`short-${short.id}`}
+                    short={short}
+                    nav={nav}
+                    t={t}
+                    isZh={isZh}
+                    onDelete={() => setDeleteShortTarget({ id: short.id, title: short.title })}
+                  />
                   ))}
                 </div>
               )}
@@ -386,16 +387,15 @@ function HomeBookCard({
       <button type="button" onClick={() => nav.toBook(book.id)} className="w-full text-left">
         <DefaultCover
           title={book.title}
-          createdAt={book.createdAt}
-          written={book.chaptersWritten}
-          target={book.targetChapters ?? 0}
           coverSrc={book.coverImagePath}
         />
-        <span className="mt-1.5 block truncate text-[13px] leading-5">{book.title}</span>
-        <span className="text-[12px] tabular-nums text-muted-foreground">
-          {book.chaptersWritten}/{book.targetChapters ?? "—"}
-        </span>
-        <span data-testid={`dashboard-book-badge-${book.id}`} className="sr-only">{t("book.badgeLong")}</span>
+        <CoverMeta
+          typeLabel={t("home.typeSerial")}
+          typeTestId={`dashboard-book-badge-${book.id}`}
+          title={book.title}
+          startedOn={formatStartedOn(book.createdAt, isZh)}
+          chapterLine={serialChapterLine(book.chaptersWritten, book.targetChapters, isZh)}
+        />
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -442,7 +442,6 @@ function HomeBookCard({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span className="sr-only">{isZh ? "长篇" : "Long"}</span>
     </div>
   );
 }
@@ -451,11 +450,13 @@ function HomeShortCard({
   short,
   nav,
   t,
+  isZh,
   onDelete,
 }: {
   readonly short: StudioShortSummary;
   readonly nav: Nav;
   readonly t: TFunction;
+  readonly isZh: boolean;
   readonly onDelete: () => void;
 }) {
   return (
@@ -464,16 +465,14 @@ function HomeShortCard({
         <DefaultCover
           title={short.title}
           coverSrc={short.coverImagePath}
-          written={short.chapterCount ?? 0}
-          target={short.chapterCount ?? 1}
         />
-        <span className="mt-1.5 block truncate text-[13px] leading-5">{short.title}</span>
-        <span
-          data-testid={`dashboard-short-badge-${short.id}`}
-          className="absolute left-1 top-1 rounded bg-primary/90 px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
-        >
-          {t("short.badge")}
-        </span>
+        <CoverMeta
+          typeLabel={t("short.badge")}
+          typeTestId={`dashboard-short-badge-${short.id}`}
+          title={short.title}
+          startedOn={formatStartedOn(short.createdAt, isZh)}
+          chapterLine={shortChapterLine(short.chapterCount, isZh)}
+        />
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -516,4 +515,46 @@ function HomeShortCard({
       </DropdownMenu>
     </div>
   );
+}
+
+function CoverMeta({
+  typeLabel,
+  typeTestId,
+  title,
+  startedOn,
+  chapterLine,
+}: {
+  readonly typeLabel: string;
+  readonly typeTestId: string;
+  readonly title: string;
+  readonly startedOn: string;
+  readonly chapterLine?: string;
+}) {
+  return (
+    <div className="mt-1.5 space-y-0">
+      <div className="flex min-w-0 items-center gap-1 text-[12px] leading-5 text-muted-foreground">
+        <span
+          data-testid={typeTestId}
+          className="inline-flex shrink-0 rounded border border-border/60 px-1 text-[10px] leading-4 text-muted-foreground"
+        >
+          {typeLabel}
+        </span>
+        <span className="truncate text-[13px] leading-5 text-foreground">《{title}》</span>
+      </div>
+      {startedOn ? <div className="text-[12px] leading-5 text-muted-foreground">{startedOn}</div> : null}
+      {chapterLine ? <div className="text-[12px] leading-5 text-muted-foreground">{chapterLine}</div> : null}
+    </div>
+  );
+}
+
+function serialChapterLine(written: number, target: number | undefined, isZh: boolean): string {
+  if (target == null || target <= 0) {
+    return isZh ? `第 ${written} 章` : `Ch. ${written}`;
+  }
+  return isZh ? `第 ${written} 章/总 ${target} 章` : `Ch. ${written} / ${target}`;
+}
+
+function shortChapterLine(count: number | undefined, isZh: boolean): string | undefined {
+  if (count == null) return undefined;
+  return isZh ? `共 ${count} 章` : `${count} chapters`;
 }

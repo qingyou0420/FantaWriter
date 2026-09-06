@@ -10,6 +10,7 @@ export interface StudioShortSummary {
   readonly direction?: string;
   readonly manuscriptPath: string;
   readonly coverImagePath?: string;
+  readonly createdAt?: string;
   readonly kind: "short";
 }
 
