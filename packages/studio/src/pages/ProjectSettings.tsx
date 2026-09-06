@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Bot, FileText, FolderUp, Globe, MessageSquare, Radar, RotateCcw, Search, Settings2, Plus, Trash2 } from "lucide-react";
+import { Bell, Bot, FileText, FolderUp, Globe, MessageSquare, Radar, RotateCcw, Search, Plus, Trash2 } from "lucide-react";
 import { fetchJson, postApi, putApi, useApi } from "../hooks/use-api";
 import { usePreferencesStore } from "../store/preferences";
 import type { Theme } from "../hooks/use-theme";
@@ -198,15 +198,8 @@ export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: 
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("settings.title")}</span>
-      </div>
-
       <div className="space-y-2">
-        <h1 className="font-serif text-3xl flex items-center gap-3">
-          <Settings2 size={28} className="text-primary" />
+        <h1 className="font-serif text-[32px] font-medium leading-10">
           {t("settings.title")}
         </h1>
         <p className="text-sm text-muted-foreground">{t("settings.subtitle")}</p>

@@ -106,11 +106,13 @@ describe("P2-3 visual", () => {
 describe("P2-4 short study", () => {
   it("shows 创作书房, three steps, and a danger-zone delete", () => {
     const short = read("src/pages/ShortReader.tsx");
+    const settings = read("src/pages/ShortSettings.tsx");
     expect(short).toMatch(/创作书房/);
     expect(short).toMatch(/short-stage-strip/);
     expect(short).toMatch(/short-primary-cta/);
-    expect(short).toMatch(/short-danger-zone/);
+    expect(short).not.toMatch(/short-danger-zone/);
     expect(short).toMatch(/toShortSettings/);
     expect(short).toMatch(/toShortAnalytics/);
+    expect(settings).toMatch(/short-danger-zone/);
   });
 });

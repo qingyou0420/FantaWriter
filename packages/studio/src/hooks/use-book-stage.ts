@@ -1,6 +1,7 @@
 /**
  * Shared GET /books/:id/stage with a module-level cache so chrome and pages
- * share one request per book / data version.
+ * share one request per book / data version. SSE write/weave/book events
+ * drop the cache so the next hook read refetches.
  *
  * SPDX-License-Identifier: AGPL-3.0-only
  */
@@ -12,6 +13,27 @@ import { fetchJson } from "./use-api";
 
 const cache = new Map<string, { version: number; data: BookStageView }>();
 const inflight = new Map<string, Promise<BookStageView | null>>();
+let epoch = 0;
+const listeners = new Set<() => void>();
+
+export function shouldInvalidateBookStageEvent(event: string): boolean {
+  if (event === "weave:progress" || event === "book:creating") return false;
+  return /^(write|weave|book):/.test(event);
+}
+
+export function invalidateBookStage(bookId?: string): void {
+  if (bookId) {
+    cache.delete(bookId);
+    for (const key of [...inflight.keys()]) {
+      if (key.startsWith(`${bookId}@`)) inflight.delete(key);
+    }
+  } else {
+    cache.clear();
+    inflight.clear();
+  }
+  epoch += 1;
+  for (const notify of listeners) notify();
+}
 
 function loadStage(bookId: string, version: number): Promise<BookStageView | null> {
   const key = `${bookId}@${version}`;
@@ -36,6 +58,15 @@ export function useBookStage(bookId: string | undefined): BookStageView | null {
   const [data, setData] = useState<BookStageView | null>(
     cached && cached.version === version ? cached.data : null,
   );
+  const [tick, setTick] = useState(epoch);
+
+  useEffect(() => {
+    const onInvalidate = () => setTick(epoch);
+    listeners.add(onInvalidate);
+    return () => {
+      listeners.delete(onInvalidate);
+    };
+  }, []);
 
   useEffect(() => {
     if (!bookId) {
@@ -54,7 +85,7 @@ export function useBookStage(bookId: string | undefined): BookStageView | null {
     return () => {
       cancelled = true;
     };
-  }, [bookId, version]);
+  }, [bookId, version, tick]);
 
   return data;
 }

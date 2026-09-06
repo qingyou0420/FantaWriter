@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import { Pencil, Save, X } from "lucide-react";
 import { showToast } from "../lib/toast";
 
@@ -104,15 +105,7 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.books")}</button>
-        <span className="text-border">/</span>
-        <button onClick={() => nav.toBook(bookId)} className={c.link}>{bookId}</button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{t("truth.title")}</span>
-      </div>
-
-      <h1 className="font-serif text-3xl">{t("truth.title")}</h1>
+      <h1 className="font-serif text-[32px] font-medium leading-10">{t("truth.title")}</h1>
 
       <div className="grid grid-cols-[240px_1fr] gap-6">
         {/* File list */}
@@ -132,7 +125,12 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
             </button>
           ))}
           {(!data?.files || data.files.length === 0) && (
-            <div className="px-3 py-4 text-sm text-muted-foreground text-center">{t("truth.empty")}</div>
+            <LiteraryEmpty
+              title={t("truth.empty")}
+              action={t("cockpit.title")}
+              onAction={() => nav.toBook(bookId)}
+              testId="truth-empty"
+            />
           )}
         </div>
 

@@ -71,7 +71,7 @@ export function AskStoryCard({
           data-testid="create-book-from-card"
           disabled={!ready || !confirmEnabled || confirmPending}
           onClick={onConfirm}
-          className="mt-5 inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-40"
+          className="btn-primary mt-5"
         >
           {confirmPending ? (isZh ? "建书中…" : "Creating…") : (isZh ? "就此建书" : "Create book")}
         </button>

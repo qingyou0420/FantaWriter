@@ -3,7 +3,7 @@ import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { fetchJson } from "../hooks/use-api";
-import { TrendingUp, Loader2, Target, Clock } from "lucide-react";
+import { Loader2, Target, Clock } from "lucide-react";
 
 interface Recommendation {
   readonly confidence: number;
@@ -64,15 +64,8 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.home")}</button>
-        <span className="text-border">/</span>
-        <span>{t("nav.radar")}</span>
-      </div>
-
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-3xl flex items-center gap-3">
-          <TrendingUp size={28} className="text-primary" />
+        <h1 className="font-serif text-[32px] font-medium leading-10">
           {t("radar.title")}
         </h1>
         <button

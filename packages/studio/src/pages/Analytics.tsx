@@ -39,20 +39,7 @@ export function Analytics({ bookId, kind = "book", nav, theme, t }: {
 
   return (
     <div className="space-y-6">
-      <div className={`flex items-center gap-2 text-sm ${c.muted}`}>
-        <button onClick={nav.toDashboard} className={c.link}>{t("bread.books")}</button>
-        <span>/</span>
-        <button
-          onClick={() => (kind === "short" ? nav.toShort?.(bookId) : nav.toBook?.(bookId))}
-          className={c.link}
-        >
-          {bookId}
-        </button>
-        <span>/</span>
-        <span className={c.subtle}>{t("analytics.title")}</span>
-      </div>
-
-      <h1 className="text-2xl font-semibold">{t("analytics.title")}</h1>
+      <h1 className="font-serif text-[32px] font-medium leading-10">{t("analytics.title")}</h1>
 
       <div className="grid grid-cols-3 gap-4">
         <StatCard label={t("analytics.totalChapters")} value={data.totalChapters.toString()} c={c} />

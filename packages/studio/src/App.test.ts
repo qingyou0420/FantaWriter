@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveActiveBookId, deriveStartupGate, isBookCreateChatRoute } from "./App";
+import { deriveActiveBookId, deriveBookChromeTab, deriveStartupGate, isBookCreateChatRoute } from "./App";
 
 describe("deriveActiveBookId", () => {
   it("returns the current book across book-centered routes", () => {
@@ -24,6 +24,21 @@ describe("deriveActiveBookId", () => {
     expect(deriveActiveBookId({ page: "short-settings", storyId: "明日来信" })).toBeUndefined();
     expect(deriveActiveBookId({ page: "short-analytics", storyId: "明日来信" })).toBeUndefined();
     expect(deriveActiveBookId({ page: "author" })).toBeUndefined();
+  });
+});
+
+describe("deriveBookChromeTab", () => {
+  it("maps book-scoped routes to the shared chrome tab", () => {
+    expect(deriveBookChromeTab({ page: "book", bookId: "zui" })).toBe("study");
+    expect(deriveBookChromeTab({ page: "book-ask", bookId: "zui" })).toBe("ask");
+    expect(deriveBookChromeTab({ page: "book-ground", bookId: "zui" })).toBe("ground");
+    expect(deriveBookChromeTab({ page: "book-weave", bookId: "zui" })).toBe("weave");
+    expect(deriveBookChromeTab({ page: "book-write", bookId: "zui" })).toBe("write");
+    expect(deriveBookChromeTab({ page: "chapter", bookId: "zui", chapterNumber: 3 })).toBe("write");
+    expect(deriveBookChromeTab({ page: "truth", bookId: "zui" })).toBe("ground");
+    expect(deriveBookChromeTab({ page: "analytics", bookId: "zui" })).toBe("study");
+    expect(deriveBookChromeTab({ page: "dashboard" })).toBeNull();
+    expect(deriveBookChromeTab({ page: "author" })).toBeNull();
   });
 });
 

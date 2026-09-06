@@ -141,7 +141,7 @@ export function BookWorkspaceNav({
         <DropdownMenu>
           <DropdownMenuTrigger
             data-testid="book-tab-more"
-            className="inline-flex h-8 items-center rounded-lg px-2 text-[14px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="btn-ghost"
           >
             <MoreHorizontal size={14} />
             <span className="sr-only">{isZh ? "更多" : "More"}</span>

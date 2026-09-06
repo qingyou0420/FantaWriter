@@ -406,7 +406,7 @@ const strings = {
   "truth.save": { zh: "保存", en: "Save" },
   "truth.saving": { zh: "保存中…", en: "Saving..." },
   "truth.cancel": { zh: "取消", en: "Cancel" },
-  "truth.empty": { zh: "暂无文件", en: "No truth files" },
+  "truth.empty": { zh: "还没有真相文件", en: "No truth files yet" },
   "truth.noFiles": { zh: "暂无文件", en: "No truth files" },
   "truth.notFound": { zh: "文件未找到", en: "File not found" },
   "truth.selectFile": { zh: "选择文件查看内容", en: "Select a file to view" },

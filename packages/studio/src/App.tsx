@@ -1,6 +1,7 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useHashRoute } from "./hooks/use-hash-route";
 import type { HashRoute } from "./hooks/use-hash-route";
+import { BookWorkspaceNav, type BookWorkspaceTab } from "./components/BookWorkspaceNav";
 import { Sidebar } from "./components/Sidebar";
 import { BrandMark } from "./components/BrandMark";
 import { Dashboard } from "./pages/Dashboard";
@@ -36,7 +37,8 @@ const FlowView = lazy(() => import("./pages/FlowView"));
 const FilmWizard = lazy(() => import("./pages/FilmWizard"));
 import { LanguageSelector } from "./pages/LanguageSelector";
 import { BookBusyCard } from "./components/BookBusyCard";
-import { useSSE } from "./hooks/use-sse";
+import { useNewSSEMessages, useSSE } from "./hooks/use-sse";
+import { invalidateBookStage, shouldInvalidateBookStageEvent } from "./hooks/use-book-stage";
 import { useSessionEvents } from "./hooks/use-session-events";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
@@ -44,6 +46,32 @@ import { setAppLanguage, tr } from "./lib/app-language";
 import { postApi, useApi } from "./hooks/use-api";
 import { Sun, Moon } from "lucide-react";
 import { House } from "lucide-react";
+import { useChatStore } from "./store/chat";
+
+const PAGE_SHELL = "mx-auto w-full max-w-[880px] px-8 pt-10 pb-16 fade-in";
+const PAGE_SHELL_WIDE = "mx-auto w-full max-w-[1200px] px-8 pt-10 pb-16 fade-in";
+
+export function deriveBookChromeTab(route: HashRoute): BookWorkspaceTab | null {
+  switch (route.page) {
+    case "book":
+    case "analytics":
+      return "study";
+    case "book-ask":
+      return "ask";
+    case "book-ground":
+    case "truth":
+      return "ground";
+    case "book-weave":
+    case "book-outline":
+      return "weave";
+    case "book-write":
+    case "book-settings":
+    case "chapter":
+      return "write";
+    default:
+      return null;
+  }
+}
 
 export type { HashRoute as Route } from "./hooks/use-hash-route";
 
@@ -99,6 +127,7 @@ export function App() {
   }, [project]);
 
   useSessionEvents(sse, route, setRoute);
+  const bumpBookDataVersion = useChatStore((state) => state.bumpBookDataVersion);
 
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
@@ -139,6 +168,17 @@ export function App() {
   };
 
   const activeBookId = deriveActiveBookId(route);
+  const bookChromeTab = deriveBookChromeTab(route);
+  const showBookChrome = Boolean(activeBookId && bookChromeTab);
+
+  const onStageSse = useCallback((message: { event: string; data: unknown }) => {
+    if (!shouldInvalidateBookStageEvent(message.event)) return;
+    const data = message.data as { bookId?: string } | null;
+    invalidateBookStage(typeof data?.bookId === "string" ? data.bookId : activeBookId);
+    bumpBookDataVersion();
+  }, [activeBookId, bumpBookDataVersion]);
+  useNewSSEMessages(sse.messages, onStageSse);
+
   const activePage =
     activeBookId
       ? `book:${activeBookId}`
@@ -206,18 +246,32 @@ export function App() {
       {/* Center Content */}
       <div className="flex-1 flex flex-col min-w-0 bg-background/30 backdrop-blur-sm">
         {/* Header Strip */}
-        <header className="h-14 shrink-0 flex items-center justify-between px-8 border-b border-border/40">
-          <div className="flex items-center gap-2">
+        <header className="h-14 shrink-0 flex items-center justify-between gap-3 px-8 border-b border-border/40">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
              <button
                onClick={nav.toDashboard}
-               className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-card/70 px-3.5 py-2 text-[17px] font-semibold text-foreground hover:bg-secondary/50 transition-colors"
+               className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border/50 bg-card/70 px-3.5 py-2 text-[17px] font-semibold text-foreground hover:bg-secondary/50 transition-colors"
              >
                <House size={18} />
                <span>{t("bread.home")}</span>
              </button>
+             {showBookChrome && activeBookId && bookChromeTab ? (
+               <>
+                 <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+                 <div className="min-w-0 flex-1">
+                   <BookWorkspaceNav
+                     bookId={activeBookId}
+                     active={bookChromeTab}
+                     nav={nav}
+                     isZh={currentLang !== "en"}
+                     t={t}
+                   />
+                 </div>
+               </>
+             ) : null}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               onClick={() => setTheme(isDark ? "light" : "dark")}
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -235,22 +289,22 @@ export function App() {
             </div>
           )}
           {route.page === "author" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <AuthorPage nav={nav} t={t} isZh={currentLang !== "en"} />
             </div>
           )}
           {route.page === "short" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <ShortReader storyId={route.storyId} nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "short-settings" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <ShortSettings storyId={route.storyId} nav={nav} t={t} />
             </div>
           )}
           {route.page === "short-analytics" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL_WIDE}>
               <Analytics bookId={route.storyId} kind="short" nav={nav} theme={theme} t={t} />
             </div>
           )}
@@ -278,7 +332,7 @@ export function App() {
             </div>
           )}
           {route.page === "book" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <BookStudy bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
@@ -295,102 +349,102 @@ export function App() {
             </div>
           )}
           {route.page === "book-ground" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <BookGround bookId={route.bookId} nav={nav} theme={theme} t={t} isZh={currentLang !== "en"} />
             </div>
           )}
           {(route.page === "book-outline" || route.page === "book-weave") && (
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-12 sm:px-6 lg:px-10 lg:py-16 fade-in">
+            <div className={PAGE_SHELL_WIDE}>
               <OutlineWorkspace bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {(route.page === "book-settings" || route.page === "book-write") && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "chapter" && (
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-12 sm:px-6 lg:px-10 lg:py-16 2xl:px-12 fade-in">
+            <div className={PAGE_SHELL_WIDE}>
               <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "analytics" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL_WIDE}>
               <Analytics bookId={route.bookId} nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "services" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <ServiceListPage nav={nav} />
             </div>
           )}
           {route.page === "project-settings" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <ProjectSettings nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "service-detail" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <ServiceDetailPage serviceId={route.serviceId} nav={nav} />
             </div>
           )}
           {route.page === "truth" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <TruthFiles bookId={route.bookId} nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "daemon" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <DaemonControl nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "logs" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <LogViewer nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "genres" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <GenreManager nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "style" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <StyleManager nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "translation" && (
-            <div className="max-w-6xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL_WIDE}>
               <TranslationManager nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "import" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <ImportManager nav={nav} theme={theme} t={t} initialTab={route.tab} />
             </div>
           )}
           {route.page === "radar" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <RadarView nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "doctor" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <DoctorView nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "update" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <CheckUpdate nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "play" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <StoryPlayer projectId={route.projectId} nav={nav} theme={theme} t={t} />
             </div>
           )}
           {route.page === "film" && (
-            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+            <div className={PAGE_SHELL}>
               <StoryGraphTree projectId={route.projectId} nav={nav} theme={theme} t={t} />
             </div>
           )}

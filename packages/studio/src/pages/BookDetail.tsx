@@ -1,7 +1,8 @@
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import { SerialCockpitStrip, startDraft, startWriteNext } from "../components/SerialCockpitStrip";
-import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -353,12 +354,10 @@ export function BookDetail({
 
   return (
     <div className="space-y-8 fade-in">
-      <BookWorkspaceNav bookId={bookId} active="write" nav={nav} isZh={isZh} t={t} stage={stage} />
-
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border/40 pb-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2">
         <div className="space-y-2">
           <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${book.title}》` : book.title}</p>
-          <h1 className="text-4xl font-serif font-medium">{isZh ? "落笔" : "Write"}</h1>
+          <h1 className="font-serif text-[32px] font-medium leading-10">{isZh ? "落笔" : "Write"}</h1>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground font-medium">
             <span className="px-2 py-0.5 rounded bg-secondary/50 text-foreground/70 text-xs">{book.genre}</span>
             <div className="flex items-center gap-1.5">
@@ -421,7 +420,7 @@ export function BookDetail({
               type="button"
               onClick={handleWriteNext}
               disabled={writing || drafting || !preflightOk}
-              className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold disabled:opacity-50"
+              className="inline-flex h-10 items-center gap-2 px-5 text-[14px] font-medium disabled:opacity-40"
               data-testid="write-next-primary"
             >
               {writing ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Feather size={16} />}
@@ -656,27 +655,20 @@ export function BookDetail({
         </div>
 
         {chapters.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-center" data-testid="write-empty">
-            <p className="font-serif text-lg">{emptyCopy.title}</p>
-            <p className="mt-2 text-sm text-muted-foreground">{emptyCopy.subtitle}</p>
-            {emptyCopy.target === "weave" && (
-              <button type="button" onClick={() => nav.toOutline(bookId)} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
-                {emptyCopy.action}
-              </button>
-            )}
-            {emptyCopy.target === "write" && Boolean(showSkip) && (
-              <button
-                type="button"
-                onClick={() => {
-                  const chapter = preflight?.reasons.find((reason) => reason.chapterNumber)?.chapterNumber;
-                  if (chapter) nav.toChapter(bookId, chapter);
-                }}
-                className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-              >
-                {emptyCopy.action}
-              </button>
-            )}
-          </div>
+          <LiteraryEmpty
+            title={emptyCopy.title}
+            subtitle={emptyCopy.subtitle}
+            action={emptyCopy.target === "weave" || (emptyCopy.target === "write" && showSkip) ? emptyCopy.action : undefined}
+            onAction={() => {
+              if (emptyCopy.target === "weave") {
+                nav.toOutline(bookId);
+                return;
+              }
+              const chapter = preflight?.reasons.find((reason) => reason.chapterNumber)?.chapterNumber;
+              if (chapter) nav.toChapter(bookId, chapter);
+            }}
+            testId="write-empty"
+          />
         )}
       </div>
     </div>

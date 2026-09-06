@@ -5,7 +5,7 @@
  */
 
 import { AskStoryRail } from "../components/AskStoryRail";
-import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
 import { useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -39,21 +39,16 @@ export function BookAskPage({
   if (error) return <div className="text-destructive p-8">Error: {error}</div>;
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-border/40 px-6 py-3">
-        <BookWorkspaceNav bookId={bookId} active="ask" nav={nav} isZh={isZh} t={t} />
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <ChatPage
-          activeBookId={bookId}
-          mode="book"
-          nav={nav}
-          theme={theme}
-          t={t}
-          sse={sse}
-        />
-        <AskStoryRail bookId={bookId} isZh={isZh} />
-      </div>
+    <div className="flex h-full min-h-0 flex-1">
+      <ChatPage
+        activeBookId={bookId}
+        mode="book"
+        nav={nav}
+        theme={theme}
+        t={t}
+        sse={sse}
+      />
+      <AskStoryRail bookId={bookId} isZh={isZh} />
     </div>
   );
 }

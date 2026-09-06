@@ -6,9 +6,7 @@
 
 import { cjk } from "@streamdown/cjk";
 import { AlertCircle, ChevronLeft, Feather, Loader2, MoreHorizontal } from "lucide-react";
-import { useState } from "react";
 import { Streamdown } from "streamdown";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import { StageDot } from "../components/StageDot";
 import {
@@ -21,9 +19,7 @@ import { useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
 import { tr } from "../lib/app-language";
-import { deleteStudioShortWork } from "../lib/short-api";
 import { deriveShortStudy, shortStudyCtaLabel } from "../lib/short-study";
-import { showToast } from "../lib/toast";
 import { continueShortPrompt, shortManuscriptExportPath } from "../lib/work-export";
 import type { StudioShortDetail } from "../shared/short-works";
 import { useChatStore } from "../store/chat";
@@ -50,7 +46,6 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
   t: TFunction;
 }) {
   const { data, loading, error } = useApi<StudioShortDetail>(`/shorts/${encodeURIComponent(storyId)}`);
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const isZh = t("nav.connected") === "已连接";
   const study = data
     ? deriveShortStudy({
@@ -79,16 +74,6 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
       return;
     }
     continueTalk();
-  };
-
-  const handleDelete = async () => {
-    try {
-      await deleteStudioShortWork(storyId);
-      setDeleteOpen(false);
-      nav.toDashboard();
-    } catch (deleteError) {
-      showToast(deleteError instanceof Error ? deleteError.message : t("common.error"), "error");
-    }
   };
 
   return (
@@ -151,7 +136,7 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
           <header className="space-y-3">
             <div className="literary-kicker">{isZh ? "创作书房" : "Writing study"}</div>
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <h1 className="font-serif text-[40px]">{data.title}</h1>
+              <h1 className="font-serif text-[32px] font-medium leading-10">{data.title}</h1>
               {data.coverImagePath ? (
                 <img
                   src={data.coverImagePath}
@@ -164,7 +149,7 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
               type="button"
               data-testid="short-primary-cta"
               onClick={onPrimary}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground"
+              className="btn-primary"
             >
               <Feather size={16} />
               {shortStudyCtaLabel(study.primaryCta, isZh)}
@@ -185,30 +170,8 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
               testId="short-empty"
             />
           )}
-          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4" data-testid="short-danger-zone">
-            <div className="text-[13px] text-destructive">{isZh ? "危险区" : "Danger zone"}</div>
-            <button
-              type="button"
-              data-testid="short-delete"
-              onClick={() => setDeleteOpen(true)}
-              className="mt-2 rounded-xl bg-destructive px-4 py-2 text-sm text-primary-foreground"
-            >
-              {isZh ? "删除短篇" : "Delete short"}
-            </button>
-          </div>
         </>
       )}
-
-      <ConfirmDialog
-        open={deleteOpen}
-        title={isZh ? "删除这篇短篇？" : "Delete this short?"}
-        message={isZh ? "删除后无法恢复。" : "This cannot be undone."}
-        confirmLabel={isZh ? "删除" : "Delete"}
-        cancelLabel={t("common.cancel")}
-        variant="danger"
-        onCancel={() => setDeleteOpen(false)}
-        onConfirm={() => void handleDelete()}
-      />
     </div>
   );
 }

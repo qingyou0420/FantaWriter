@@ -332,19 +332,8 @@ export function ServiceListPage({ nav }: { nav: Nav }) {
   const showCustomSection = !loading && selectedGroups.size === 0 && (filteredCustom.length > 0 || canCreateCustom);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button
-          onClick={nav.toDashboard}
-          className="inline-flex items-center rounded-lg border border-border/50 bg-card/60 px-3 py-1.5 font-medium text-foreground hover:bg-secondary/50 transition-colors"
-        >
-          {tr("首页", "Home")}
-        </button>
-        <span className="text-border">/</span>
-        <span className="text-foreground">{tr("模型配置", "Model Config")}</span>
-      </div>
-
-      <h1 className="font-serif text-2xl">{tr("模型配置", "Model Config")}</h1>
+    <div className="space-y-6">
+      <h1 className="font-serif text-[32px] font-medium leading-10">{tr("模型配置", "Model Config")}</h1>
 
       <ServiceConfigSourceCard onChange={() => { void refreshServices(); }} />
 

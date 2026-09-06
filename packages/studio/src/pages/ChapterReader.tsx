@@ -15,7 +15,6 @@ import {
   BookOpen,
   CheckCircle2,
   XCircle,
-  Hash,
   Type,
   Clock,
   Pencil,
@@ -139,28 +138,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   return (
     <div className="w-full space-y-10 fade-in">
       {/* Navigation & Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <nav className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-          <button
-            onClick={nav.toDashboard}
-            className="hover:text-primary transition-colors flex items-center gap-1"
-          >
-            {t("bread.books")}
-          </button>
-          <span className="text-border">/</span>
-          <button
-            onClick={() => nav.toBook(bookId)}
-            className="hover:text-primary transition-colors truncate max-w-[120px]"
-          >
-            {bookId}
-          </button>
-          <span className="text-border">/</span>
-          <span className="text-foreground flex items-center gap-1">
-            <Hash size={12} />
-            {chapterNumber}
-          </span>
-        </nav>
-
+      <div className="flex flex-col md:flex-row md:items-center justify-end gap-6">
         <div className="flex gap-2">
           <button
             onClick={() => nav.toBook(bookId)}
@@ -260,7 +238,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
             <BookOpen size={20} />
             <div className="h-px w-12 bg-border/40" />
           </div>
-          <h1 className="text-4xl md:text-5xl font-serif font-medium italic text-foreground tracking-tight leading-tight">
+          <h1 className="font-serif text-[32px] font-medium leading-10 text-foreground">
             {title}
           </h1>
           <div className="mt-8 flex items-center justify-center gap-4 text-[13px] font-medium text-muted-foreground/60">
