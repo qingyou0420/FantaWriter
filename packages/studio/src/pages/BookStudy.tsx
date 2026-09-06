@@ -7,15 +7,17 @@
 import { fetchJson, useApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import { BookWorkspaceNav, type BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import { StageDot } from "../components/StageDot";
 import { startWriteNext } from "../components/SerialCockpitStrip";
 import type { WritePreflightEvaluation } from "../components/SerialCockpitStrip";
 import { TruthProposalCard, type PendingTruthProposal } from "../components/TruthProposalCard";
 import { assembleCockpitSnapshot, type CockpitDueHook, type CockpitReviewItem } from "../lib/serial-cockpit";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
+import { useBookStage } from "../hooks/use-book-stage";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
-import type { BookStageSnapshot } from "../lib/book-stage";
+import { parseStoryCard } from "../lib/story-card";
 import {
   formatVolumeArriveCopy,
   hasPreviousChapterUnapprovedReason,
@@ -25,10 +27,19 @@ import {
 import { formatStartedOn, studyGuideCopy } from "../lib/stage-copy";
 import { lockedNamedVolumeCount } from "../lib/volume-map-tree";
 import {
-  AlertTriangle,
   CheckCircle2,
   Feather,
 } from "lucide-react";
+
+function formatStudyWords(total: number, isZh: boolean): string {
+  if (!isZh) return `${total.toLocaleString()} words`;
+  if (total >= 10000) {
+    const wan = total / 10000;
+    const label = Number.isInteger(wan) ? String(wan) : wan.toFixed(1).replace(/\.0$/, "");
+    return `${label} 万字`;
+  }
+  return `${total.toLocaleString()} 字`;
+}
 
 interface ChapterMeta {
   readonly number: number;
@@ -65,7 +76,7 @@ function statusLabel(status: string, isZh: boolean): string {
     drafted: ["草稿", "drafted"],
     "needs-revision": ["需修订", "needs revision"],
     imported: ["已导入", "imported"],
-    "state-degraded": ["状态降级", "state degraded"],
+    "state-degraded": ["状态待修", "state needs repair"],
   };
   const pair = map[status];
   return pair ? (isZh ? pair[0] : pair[1]) : status;
@@ -103,9 +114,13 @@ export function BookStudy({
   const [proposals, setProposals] = useState<ReadonlyArray<PendingTruthProposal>>([]);
   const [volumeMap, setVolumeMap] = useState("");
   const [writePending, setWritePending] = useState(false);
-  const [stage, setStage] = useState<BookStageSnapshot | null>(null);
+  const stage = useBookStage(bookId);
   const [pageError, setPageError] = useState<string | null>(null);
   const [volumeExpanded, setVolumeExpanded] = useState(false);
+  const [canonOpen, setCanonOpen] = useState(false);
+  const [oneLine, setOneLine] = useState("");
+  const [roleCount, setRoleCount] = useState(0);
+  const [openCount, setOpenCount] = useState(0);
 
   const activity = useMemo(() => deriveBookActivity(sse.messages, bookId), [bookId, sse.messages]);
   const writing = writePending || activity.writing;
@@ -128,9 +143,21 @@ export function BookStudy({
     void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
       .then((body) => setVolumeMap(body.content ?? ""))
       .catch(() => setVolumeMap(""));
-    void fetchJson<BookStageSnapshot>(`/books/${bookId}/stage`)
-      .then(setStage)
-      .catch(() => setStage(null));
+    void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/story/story_card.md`)
+      .then((body) => setOneLine(parseStoryCard(body.content ?? "").oneLine))
+      .catch(() => setOneLine(""));
+    void fetchJson<{ files?: ReadonlyArray<{ name: string }> }>(`/books/${bookId}/truth`)
+      .then((body) => {
+        const files = body.files ?? [];
+        setRoleCount(files.filter((file) => file.name.startsWith("roles/")).length);
+      })
+      .catch(() => setRoleCount(0));
+    void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/open_questions.md`)
+      .then((body) => {
+        const items = (body.content ?? "").split("\n").filter((line) => /^[-*]\s+\S/.test(line));
+        setOpenCount(items.length);
+      })
+      .catch(() => setOpenCount(0));
   };
 
   useEffect(() => {
@@ -213,7 +240,10 @@ export function BookStudy({
   if (snapshot && snapshot.pendingProposalCount > 0) {
     attentionItems.push({
       key: "canon",
-      label: isZh ? `正典变更 ${snapshot.pendingProposalCount} 处` : `${snapshot.pendingProposalCount} canon changes`,
+      label: isZh
+        ? `正典变更 ${snapshot.pendingProposalCount} 处 → 查看`
+        : `${snapshot.pendingProposalCount} canon changes → view`,
+      onClick: () => setCanonOpen((open) => !open),
     });
   }
   for (const hook of snapshot?.overdueHooks ?? []) {
@@ -234,7 +264,7 @@ export function BookStudy({
 
   return (
     <div className="space-y-8 fade-in" data-testid="serial-cockpit-home">
-      <BookWorkspaceNav bookId={bookId} active="study" nav={nav} isZh={isZh} t={t} />
+      <BookWorkspaceNav bookId={bookId} active="study" nav={nav} isZh={isZh} t={t} stage={stage} />
 
       <header className="space-y-2">
         <h1 className="font-serif text-4xl font-medium">{book.title}</h1>
@@ -242,10 +272,7 @@ export function BookStudy({
           {[
             book.genre,
             formatStartedOn(book.createdAt, isZh),
-            isZh
-              ? `已写 ${data.chapters.length}${target ? ` / ${target}` : ""} 章`
-              : `${data.chapters.length}${target ? ` / ${target}` : ""} chapters`,
-            isZh ? `${totalWords.toLocaleString()} 字` : `${totalWords.toLocaleString()} words`,
+            formatStudyWords(totalWords, isZh),
           ].filter(Boolean).join(" · ")}
         </p>
       </header>
@@ -267,7 +294,7 @@ export function BookStudy({
           </button>
         </section>
       ) : (
-        <section className="rounded-2xl border border-primary/20 bg-primary/[0.04] px-5 py-5 space-y-3" data-testid="cockpit-next-chapter">
+        <section className="rounded-2xl border border-border border-l-2 border-l-seal bg-card px-5 py-5 space-y-3" data-testid="cockpit-next-chapter">
           <div className="text-[13px] text-muted-foreground">{canWrite ? t("study.today") : guide.title}</div>
           {canWrite && snapshot ? (
             <>
@@ -297,15 +324,17 @@ export function BookStudy({
               data-testid="cockpit-write-next-button"
             >
               {writing
-                ? <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" />
+                ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary-foreground ink-breath" />
                 : <Feather size={16} />}
               {writing ? t("dash.writing") : (isZh ? "落墨 · 写下一章" : "落墨 · Write next")}
             </button>
           ) : canWrite && snapshot && !snapshot.writeNext.enabled ? (
             <div className="space-y-2" data-testid="cockpit-write-next">
-              <ul className="space-y-1 text-sm text-destructive" data-testid="cockpit-g1-reasons">
+              <ul className="space-y-1 text-sm text-muted-foreground" data-testid="cockpit-g1-reasons">
                 {snapshot.writeNext.reasons.map((reason) => (
-                  <li key={reason.code}>
+                  <li key={reason.code} className="flex gap-2">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-seal" aria-hidden="true" />
+                    <span>
                     {isZh ? reason.messageZh : reason.message}
                     {reason.jumpTo === "outline" && (
                       <button type="button" className="ml-2 underline" onClick={() => goStage(nav, bookId, "weave")}>
@@ -322,6 +351,7 @@ export function BookStudy({
                         {isZh ? "去研墨" : "Open ground"}
                       </button>
                     )}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -400,7 +430,7 @@ export function BookStudy({
         </section>
       )}
 
-      {snapshot && snapshot.pendingProposalCount > 0 && (
+      {canonOpen && snapshot && snapshot.pendingProposalCount > 0 && (
         <section className="space-y-2" data-testid="cockpit-proposals">
           {snapshot.pendingProposals.map((proposal) => (
             <TruthProposalCard
@@ -414,54 +444,46 @@ export function BookStudy({
         </section>
       )}
 
-      {snapshot?.criticalReview && (
-        <button
-          type="button"
-          data-testid="cockpit-review-shortcut"
-          onClick={() => nav.toChapter(bookId, snapshot.criticalReview!.chapterNumber)}
-          className="flex w-full items-center justify-between rounded-2xl border border-destructive/30 bg-destructive/5 px-5 py-4 text-left"
-        >
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-destructive">
-            <AlertTriangle size={14} />
-            {isZh
-              ? `第 ${snapshot.criticalReview.chapterNumber} 章有须处理的问题`
-              : `Chapter ${snapshot.criticalReview.chapterNumber} has must-fix issues`}
-          </span>
-          <span className="text-xs font-bold text-destructive">{isZh ? "去审稿" : "Open"}</span>
-        </button>
-      )}
-
       <section className="space-y-3 border-t border-border/40 pt-6" data-testid="study-four-steps">
         <div className="text-sm font-medium">{isZh ? "四步一览" : "Four steps"}</div>
         <div className="grid gap-3 sm:grid-cols-2 text-sm">
-          <div>
-            {isZh ? "问心" : "Ask"} {stage?.steps.ask === "done" ? "✓" : "○"}
-            <span className="ml-2 text-muted-foreground">{book.genre}</span>
+          <div className="flex items-center gap-2">
+            {stage ? <StageDot state={stage.steps.ask} /> : null}
+            {isZh ? "问心" : "Ask"}
+            {oneLine ? <span className="text-muted-foreground truncate">「{oneLine}」</span> : null}
           </div>
-          <div>
-            {isZh ? "研墨" : "Ground"} {stage?.steps.ground === "done" ? "✓" : stage?.stage === "ground" ? "●" : "○"}
+          <div className="flex items-center gap-2">
+            {stage ? <StageDot state={stage.steps.ground} /> : null}
+            {isZh ? "研墨" : "Ground"}
+            <span className="text-muted-foreground">
+              {stage?.workflow?.groundConfirmedAt
+                ? (isZh ? `已定稿 · ${roleCount} 位人物` : `Grounded · ${roleCount} people`)
+                : (isZh ? `${roleCount} 位人物 · 待定 ${openCount}` : `${roleCount} people · ${openCount} open`)}
+            </span>
           </div>
-          <div>
-            {isZh ? "织卷" : "Weave"} {stage?.steps.weave === "done" ? "✓" : stage?.stage === "weave" ? "●" : "○"}
-            <span className="ml-2 text-muted-foreground">
+          <div className="flex items-center gap-2">
+            {stage ? <StageDot state={stage.steps.weave} /> : null}
+            {isZh ? "织卷" : "Weave"}
+            <span className="text-muted-foreground">
               {isZh
                 ? `已锁 ${lockedVolumes} 卷 · 细纲 ${planned}${target ? `/${target}` : ""}`
                 : `${lockedVolumes}/${volumeTotal} vol · ${planned}${target ? `/${target}` : ""} outlined`}
             </span>
           </div>
-          <div>
-            {isZh ? "落笔" : "Write"} {stage?.steps.write === "done" ? "✓" : canWrite ? "●" : "○"}
-            <span className="ml-2 text-muted-foreground">
-              {isZh ? `${data.chapters.length} 章` : `${data.chapters.length} chapters`}
+          <div className="flex items-center gap-2">
+            {stage ? <StageDot state={stage.steps.write} /> : null}
+            {isZh ? "落笔" : "Write"}
+            <span className="text-muted-foreground">
+              {isZh
+                ? `已写 ${data.chapters.length}${target ? ` / ${target}` : ""} 章`
+                : `${data.chapters.length}${target ? ` / ${target}` : ""} chapters`}
             </span>
           </div>
         </div>
       </section>
 
-      {(writing || activity.lastError || pageError) && (
-        <div className={`rounded-2xl border px-4 py-3 text-sm ${
-          activity.lastError || pageError ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-primary/20 bg-primary/[0.04]"
-        }`}>
+      {(activity.lastError || pageError) && (
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {pageError
             ?? (activity.lastError ? `${t("book.pipelineFailed")}: ${activity.lastError}` : t("book.pipelineWriting"))}
         </div>

@@ -143,7 +143,7 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
               {isLegacyShim && (
                 <div
                   data-testid="legacy-shim-warning"
-                  className="mb-3 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs leading-relaxed"
+                  className="mb-3 px-3 py-2 rounded-md border border-mark/30 bg-mark-soft text-mark-text dark:text-mark-text text-xs leading-relaxed"
                 >
                   <div className="font-medium">兼容层只读 / Read-only compat shim</div>
                   <div className="mt-1">
@@ -157,7 +157,7 @@ export function TruthFiles({ bookId, nav, theme, t }: { bookId: string; nav: Nav
               {isRuntimeDiagnostic && (
                 <div
                   data-testid="runtime-diagnostic-warning"
-                  className="mb-3 px-3 py-2 rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs leading-relaxed"
+                  className="mb-3 px-3 py-2 rounded-md border border-border bg-muted text-muted-foreground dark:text-muted-foreground text-xs leading-relaxed"
                 >
                   <div className="font-medium">运行时诊断文件 / Runtime diagnostic</div>
                   <div className="mt-1">

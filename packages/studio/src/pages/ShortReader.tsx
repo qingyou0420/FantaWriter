@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Streamdown } from "streamdown";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
+import { StageDot } from "../components/StageDot";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -108,7 +109,8 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
               return (
                 <li key={step.id} className="flex items-center gap-1 text-[13px]">
                   {index > 0 && <span className="h-px w-3 bg-border" aria-hidden="true" />}
-                  <span data-testid={`short-step-${step.id}`} data-state={state} className={state === "current" ? "font-semibold" : "text-muted-foreground"}>
+                  <span data-testid={`short-step-${step.id}`} data-state={state} className={`inline-flex items-center gap-1.5 ${state === "current" ? "font-semibold" : "text-muted-foreground"}`}>
+                    <StageDot state={state} />
                     {isZh ? step.zh : step.en}
                   </span>
                 </li>
@@ -189,7 +191,7 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
               type="button"
               data-testid="short-delete"
               onClick={() => setDeleteOpen(true)}
-              className="mt-2 rounded-xl bg-destructive px-4 py-2 text-sm text-white"
+              className="mt-2 rounded-xl bg-destructive px-4 py-2 text-sm text-primary-foreground"
             >
               {isZh ? "删除短篇" : "Delete short"}
             </button>

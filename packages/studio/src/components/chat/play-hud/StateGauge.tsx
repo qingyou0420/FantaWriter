@@ -18,7 +18,7 @@ export function StateGauge({ row }: { readonly row: HudRow }) {
           </span>
         ) : null}
         {isPressurePill ? (
-          <span className="ml-auto rounded-full bg-amber-500/15 px-2 py-0.5 text-[14px] leading-5 font-semibold text-amber-300">⚠ {row.value}</span>
+          <span className="ml-auto rounded-full bg-mark-soft px-2 py-0.5 text-[14px] leading-5 font-semibold text-mark-text">⚠ {row.value}</span>
         ) : row.value ? (
           <span className="ml-auto text-[15px] leading-6 font-semibold text-primary">{row.value}</span>
         ) : null}

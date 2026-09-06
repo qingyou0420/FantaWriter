@@ -63,7 +63,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-3xl">{t("daemon.title")}</h1>
         <div className="flex items-center gap-3">
-          <span className={`text-sm uppercase tracking-wide font-medium ${isRunning ? "text-emerald-500" : "text-muted-foreground"}`}>
+          <span className={`text-sm font-medium ${isRunning ? "text-foreground" : "text-muted-foreground"}`}>
             {isRunning ? t("daemon.running") : t("daemon.stopped")}
           </span>
           {isRunning ? (
@@ -89,7 +89,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       {/* Daemon event log */}
       <div className={`border ${c.cardStatic} rounded-lg`}>
         <div className="px-5 py-3.5 border-b border-border">
-          <span className="text-sm uppercase tracking-wide text-muted-foreground font-medium">{t("daemon.eventLog")}</span>
+          <span className="text-sm text-muted-foreground font-medium">{t("daemon.eventLog")}</span>
         </div>
         <div className="p-4 max-h-[500px] overflow-y-auto">
           {daemonEvents.length > 0 ? (

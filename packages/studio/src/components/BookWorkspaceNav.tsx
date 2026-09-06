@@ -5,13 +5,14 @@
  */
 
 import { MoreHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
-import { fetchJson } from "../hooks/use-api";
+import { useState } from "react";
+import { useBookStage } from "../hooks/use-book-stage";
 import type { TFunction } from "../hooks/use-i18n";
-import type { BookStageId, BookStageSnapshot, BookStepState } from "../lib/book-stage";
+import type { BookStageId, BookStepState } from "../lib/book-stage";
 import { useChatStore } from "../store/chat";
 import { BookSettingsDrawer } from "./BookSettingsDrawer";
 import { BookToolsDrawer } from "./BookToolsDrawer";
+import { StageDot, stageStateLabel } from "./StageDot";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,18 +59,10 @@ export function normalizeBookWorkspaceTab(active: BookWorkspaceTab): BookStageId
   return active;
 }
 
-function stepDotClass(state: BookStepState): string {
-  if (state === "current") {
-    return "border-accent bg-background shadow-[0_0_0_2px_oklch(0.70_0.09_82)]";
-  }
-  if (state === "done") return "border-primary bg-primary";
-  return "border-border bg-background";
-}
-
 function currentPageClass(active: boolean): string {
   return active
-    ? "bg-primary text-primary-foreground"
-    : "bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary";
+    ? "is-current-page bg-primary text-primary-foreground"
+    : "text-muted-foreground hover:bg-accent hover:text-foreground";
 }
 
 export function BookWorkspaceNav({
@@ -84,33 +77,16 @@ export function BookWorkspaceNav({
   readonly active: BookWorkspaceTab;
   readonly nav: BookWorkspaceNavTarget;
   readonly isZh: boolean;
-  readonly stage?: BookStageSnapshot;
+  readonly stage?: { readonly steps: Record<BookStageId, BookStepState> } | null;
   readonly t?: TFunction;
 }) {
   const current = normalizeBookWorkspaceTab(active);
-  const [loaded, setLoaded] = useState<BookStageSnapshot | null>(stage ?? null);
+  const fetched = useBookStage(stage ? undefined : bookId);
+  const loaded = stage ?? fetched;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const bumpBookDataVersion = useChatStore((state) => state.bumpBookDataVersion);
   const copy = t ?? ((key: string) => key);
-
-  useEffect(() => {
-    if (stage) {
-      setLoaded(stage);
-      return;
-    }
-    let cancelled = false;
-    void fetchJson<BookStageSnapshot>(`/books/${encodeURIComponent(bookId)}/stage`)
-      .then((body) => {
-        if (!cancelled) setLoaded(body);
-      })
-      .catch(() => {
-        if (!cancelled) setLoaded(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [bookId, stage]);
 
   const goAsk = () => nav.toAsk(bookId);
   const goGround = () => (nav.toGround ?? nav.toTruth ?? nav.toBook)(bookId);
@@ -129,7 +105,7 @@ export function BookWorkspaceNav({
         type="button"
         data-testid="book-tab-study"
         onClick={() => nav.toBook(bookId)}
-        className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${currentPageClass(current === "study")}`}
+        className={`inline-flex h-8 items-center rounded-lg px-3 text-[14px] font-medium transition-colors ${currentPageClass(current === "study")}`}
       >
         {isZh ? "书房" : "Study"}
       </button>
@@ -137,23 +113,25 @@ export function BookWorkspaceNav({
       <div className="flex items-center gap-1">
         <ol className="flex items-center gap-1" data-testid="book-stage-strip">
           {STEPS.map((step, index) => {
-            const state = loaded?.steps[step.id] ?? (current === step.id ? "current" : "todo");
+            const state = loaded?.steps[step.id];
             const highlighted = current === step.id;
+            const label = isZh ? step.zh : step.en;
+            const hint = state
+              ? `${label} · ${stageStateLabel(state, isZh, step.id === "write")}`
+              : label;
             return (
               <li key={step.id} className="flex items-center gap-1">
-                {index > 0 && <span className="h-px w-3 bg-border" aria-hidden="true" />}
+                {index > 0 && <span className="h-px w-4 bg-border" aria-hidden="true" />}
                 <button
                   type="button"
                   data-testid={`book-step-${step.id}`}
-                  data-state={state}
+                  data-state={state ?? "todo"}
+                  title={hint}
                   onClick={() => goStep(step.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold transition-colors ${currentPageClass(highlighted)}`}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[14px] font-medium transition-colors ${currentPageClass(highlighted)}`}
                 >
-                  <span
-                    className={`inline-block h-2.5 w-2.5 rounded-full border ${stepDotClass(state)}`}
-                    aria-hidden="true"
-                  />
-                  {isZh ? step.zh : step.en}
+                  {state ? <StageDot state={state} /> : null}
+                  {label}
                 </button>
               </li>
             );
@@ -163,7 +141,7 @@ export function BookWorkspaceNav({
         <DropdownMenu>
           <DropdownMenuTrigger
             data-testid="book-tab-more"
-            className="inline-flex items-center rounded-lg bg-secondary/50 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary"
+            className="inline-flex h-8 items-center rounded-lg px-2 text-[14px] text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <MoreHorizontal size={14} />
             <span className="sr-only">{isZh ? "更多" : "More"}</span>

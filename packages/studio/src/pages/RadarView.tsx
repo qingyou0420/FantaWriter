@@ -104,8 +104,8 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
                     {rec.platform} · {rec.genre}
                   </span>
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    rec.confidence >= 0.7 ? "bg-emerald-500/10 text-emerald-600" :
-                    rec.confidence >= 0.4 ? "bg-amber-500/10 text-amber-600" :
+                    rec.confidence >= 0.7 ? "bg-ok/15 text-foreground" :
+                    rec.confidence >= 0.4 ? "bg-mark-soft text-mark-text" :
                     "bg-muted text-muted-foreground"
                   }`}>
                     {(rec.confidence * 100).toFixed(0)}%

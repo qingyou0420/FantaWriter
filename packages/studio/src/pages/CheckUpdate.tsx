@@ -186,7 +186,7 @@ export function CheckUpdate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFun
       {note && (
         <div className={`rounded-lg px-4 py-3 text-sm ${
           tone === "err" ? "bg-destructive/10 text-destructive"
-            : tone === "ok" ? "bg-emerald-500/10 text-emerald-600"
+            : tone === "ok" ? "bg-ok/15 text-foreground"
               : "bg-primary/8 text-primary"
         }`}>
           {note}

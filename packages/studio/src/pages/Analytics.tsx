@@ -31,7 +31,7 @@ export function Analytics({ bookId, kind = "book", nav, theme, t }: {
   const { data, loading, error } = useApi<AnalyticsData>(path);
 
   if (loading) return <div className={c.muted}>{t("common.loading")}</div>;
-  if (error) return <div className="text-red-400">{t("common.error")}: {error}</div>;
+  if (error) return <div className="text-destructive">{t("common.error")}: {error}</div>;
   if (!data) return null;
 
   const statuses = Object.entries(data.statusDistribution);
@@ -72,7 +72,7 @@ export function Analytics({ bookId, kind = "book", nav, theme, t }: {
                 </div>
                 <div className={`h-2 ${c.btnSecondary} rounded-full overflow-hidden`}>
                   <div
-                    className="h-full bg-zinc-500 rounded-full transition-all"
+                    className="h-full bg-muted-foreground rounded-full transition-all"
                     style={{ width: `${totalFromDist > 0 ? (count / totalFromDist) * 100 : 0}%` }}
                   />
                 </div>

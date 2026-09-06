@@ -9,7 +9,7 @@ import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-act
 import { bookManuscriptExportPath } from "../lib/work-export";
 import { hasPreviousChapterUnapprovedReason, isMustFixSeverity, mapAuditCategory, mapAuditSeverity } from "../lib/copy-map";
 import { writeEmptyCopy } from "../lib/stage-copy";
-import type { BookStageSnapshot } from "../lib/book-stage";
+import { useBookStage } from "../hooks/use-book-stage";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,16 +70,19 @@ function translateChapterStatus(status: string, t: TFunction): string {
     "needs-revision": () => t("chapter.needsRevision"),
     "imported": () => t("chapter.imported"),
     "audit-failed": () => t("chapter.auditFailed"),
+    "state-degraded": () => t("chapter.stateDegraded"),
   };
   return map[status]?.() ?? status;
 }
 
 const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = {
-  "ready-for-review": { color: "text-amber-500 bg-amber-500/10", icon: <Eye size={12} /> },
-  approved: { color: "text-emerald-500 bg-emerald-500/10", icon: <Check size={12} /> },
+  "ready-for-review": { color: "text-mark-text bg-mark-soft", icon: <Eye size={12} /> },
+  approved: { color: "text-foreground", icon: <Check size={12} /> },
   drafted: { color: "text-muted-foreground bg-muted/20", icon: <FileText size={12} /> },
-  "needs-revision": { color: "text-destructive bg-destructive/10", icon: <RotateCcw size={12} /> },
-  imported: { color: "text-blue-500 bg-blue-500/10", icon: <Download size={12} /> },
+  "needs-revision": { color: "text-mark-text bg-mark-soft", icon: <RotateCcw size={12} /> },
+  imported: { color: "text-muted-foreground bg-muted/20", icon: <Download size={12} /> },
+  "audit-failed": { color: "text-seal-text bg-seal-soft", icon: <RotateCcw size={12} /> },
+  "state-degraded": { color: "text-mark-text bg-mark-soft", icon: <RotateCcw size={12} /> },
 };
 
 export function BookDetail({
@@ -99,7 +102,7 @@ export function BookDetail({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [writeRequestPending, setWriteRequestPending] = useState(false);
   const [draftRequestPending, setDraftRequestPending] = useState(false);
-  const [stage, setStage] = useState<BookStageSnapshot | null>(null);
+  const stage = useBookStage(bookId);
   const [rewritingChapters, setRewritingChapters] = useState<ReadonlyArray<number>>([]);
   const [revisingChapters, setRevisingChapters] = useState<ReadonlyArray<number>>([]);
   const [syncingChapters, setSyncingChapters] = useState<ReadonlyArray<number>>([]);
@@ -160,9 +163,6 @@ export function BookDetail({
     void fetchJson<{ items?: Array<{ chapterNumber: number; severity: string; category: string; description: string }> }>(`/books/${bookId}/review-queue`)
       .then((body) => setReviewQueue(body.items ?? []))
       .catch(() => setReviewQueue([]));
-    void fetchJson<BookStageSnapshot>(`/books/${bookId}/stage`)
-      .then(setStage)
-      .catch(() => setStage(null));
   }, [bookId, skipPreviousApproval, data?.nextChapter, activity.lastError]);
 
   const handleWriteNext = async () => {
@@ -353,17 +353,12 @@ export function BookDetail({
 
   return (
     <div className="space-y-8 fade-in">
-      <BookWorkspaceNav bookId={bookId} active="write" nav={nav} isZh={isZh} t={t} />
+      <BookWorkspaceNav bookId={bookId} active="write" nav={nav} isZh={isZh} t={t} stage={stage} />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border/40 pb-8">
         <div className="space-y-2">
           <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${book.title}》` : book.title}</p>
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-serif font-medium">{isZh ? "落笔" : "Write"}</h1>
-            {book.language === "en" && (
-              <span className="px-1.5 py-0.5 rounded border border-primary/20 text-primary text-[10px] font-bold">EN</span>
-            )}
-          </div>
+          <h1 className="text-4xl font-serif font-medium">{isZh ? "落笔" : "Write"}</h1>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground font-medium">
             <span className="px-2 py-0.5 rounded bg-secondary/50 text-foreground/70 text-xs">{book.genre}</span>
             <div className="flex items-center gap-1.5">
@@ -460,11 +455,11 @@ export function BookDetail({
       />
 
       {reviewQueue.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 space-y-2" data-testid="review-queue">
+        <div className="rounded-2xl border border-border bg-mark-soft px-4 py-3 space-y-2" data-testid="review-queue">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">{isZh ? "等你过目" : "Review queue"}</div>
             {reviewCount > 0 && (
-              <button type="button" onClick={handleApproveAll} className="text-xs font-medium text-emerald-600">
+              <button type="button" onClick={handleApproveAll} className="text-xs font-medium text-muted-foreground hover:text-foreground">
                 {t("book.approveAll")} ({reviewCount})
               </button>
             )}
@@ -472,7 +467,7 @@ export function BookDetail({
           <ul className="space-y-1 text-sm">
             {reviewQueue.slice(0, 12).map((item, index) => (
               <li key={`${item.chapterNumber}-${item.category}-${index}`}>
-                <span className={isMustFixSeverity(item.severity) ? "text-destructive font-medium" : "text-muted-foreground"}>
+                <span className={isMustFixSeverity(item.severity) ? "text-seal-text font-medium" : "text-mark-text"}>
                   {mapAuditSeverity(item.severity, isZh)}
                 </span>{" "}
                 {isZh ? "第" : "Ch."}{item.chapterNumber} · {mapAuditCategory(item.category, isZh)}: {item.description}
@@ -533,7 +528,7 @@ export function BookDetail({
                   </td>
                   <td className="px-6 py-4 text-muted-foreground font-medium tabular-nums text-xs">{(ch.wordCount ?? 0).toLocaleString()}</td>
                   <td className="px-6 py-4">
-                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-tight ${STATUS_CONFIG[ch.status]?.color ?? "bg-muted text-muted-foreground"}`}>
+                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-medium ${STATUS_CONFIG[ch.status]?.color ?? "bg-muted text-muted-foreground"}`}>
                       {STATUS_CONFIG[ch.status]?.icon}
                       {translateChapterStatus(ch.status, t)}
                     </div>
@@ -568,7 +563,7 @@ export function BookDetail({
                                 }
                               }
                             }}
-                            className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
+                            className="p-2 rounded-lg bg-primary/10 text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
                             title={t("book.approve")}
                           >
                             <Check size={14} />
@@ -578,7 +573,7 @@ export function BookDetail({
                               try { await postApi(`/books/${bookId}/chapters/${ch.number}/reject`); refetch(); }
                               catch (e) { setActionMessage(e instanceof Error ? e.message : "Reject failed"); }
                             }}
-                            className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-white transition-all shadow-sm"
+                            className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all"
                             title={data?.book.language === "en" ? "Rollback this chapter" : "回滚本章"}
                           >
                             <X size={14} />
@@ -626,11 +621,11 @@ export function BookDetail({
                         <button
                           onClick={() => handleRepairState(ch.number)}
                           disabled={bookActionPending === `repair-state-${ch.number}`}
-                          className="p-2 rounded-lg bg-amber-500/10 text-amber-600 hover:bg-amber-500 hover:text-white transition-all shadow-sm disabled:opacity-50"
+                          className="p-2 rounded-lg bg-mark-soft text-mark-text hover:bg-mark hover:text-primary-foreground transition-all disabled:opacity-50"
                           title={t("book.repairState")}
                         >
                           {bookActionPending === `repair-state-${ch.number}`
-                            ? <div className="w-3.5 h-3.5 border-2 border-amber-600/20 border-t-amber-600 rounded-full animate-spin" />
+                            ? <div className="w-3.5 h-3.5 border-2 border-mark-text/20 border-t-mark-text rounded-full animate-spin" />
                             : <Settings2 size={14} />}
                         </button>
                       )}

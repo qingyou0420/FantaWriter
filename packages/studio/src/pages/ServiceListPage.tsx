@@ -32,14 +32,14 @@ function ServiceCard({ svc, onClick }: { svc: ServiceInfo; onClick: () => void }
       className={[
         "flex min-h-[92px] flex-col gap-2 rounded-lg border p-5 text-left transition-all hover:shadow-sm",
         svc.connected
-          ? "border-emerald-500/30 bg-emerald-500/[0.03]"
+          ? "border-border bg-card"
           : "border-dashed border-border/40",
       ].join(" ")}
     >
       <button onClick={onClick} className="flex flex-1 flex-col gap-2 text-left">
         <div className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-medium">{svc.label}</span>
-          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${svc.connected ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${svc.connected ? "bg-ok" : "bg-muted-foreground/30"}`} />
         </div>
         <span className="text-xs text-muted-foreground/60">
           {svc.connected ? tr("已连接", "Connected") : tr("未配置", "Not configured")}
@@ -167,7 +167,7 @@ function CoverConfigCard() {
           </p>
         </div>
         {selected?.connected && (
-          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500">
+          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             {tr("已有密钥", "Key saved")}
           </span>
         )}
@@ -247,7 +247,7 @@ function CoverConfigCard() {
           {tr("保存封面配置", "Save cover config")}
         </button>
         {message && (
-          <span className={`text-xs ${status === "error" ? "text-destructive" : "text-emerald-500"}`}>
+          <span className={`text-xs ${status === "error" ? "text-destructive" : "text-foreground"}`}>
             {message}
           </span>
         )}
@@ -341,10 +341,10 @@ export function ServiceListPage({ nav }: { nav: Nav }) {
           {tr("首页", "Home")}
         </button>
         <span className="text-border">/</span>
-        <span className="text-foreground">{tr("服务商管理", "Providers")}</span>
+        <span className="text-foreground">{tr("模型配置", "Model Config")}</span>
       </div>
 
-      <h1 className="font-serif text-2xl">{tr("服务商管理", "Providers")}</h1>
+      <h1 className="font-serif text-2xl">{tr("模型配置", "Model Config")}</h1>
 
       <ServiceConfigSourceCard onChange={() => { void refreshServices(); }} />
 
@@ -433,7 +433,7 @@ export function ServiceListPage({ nav }: { nav: Nav }) {
         return (
           <section key={group} className="space-y-3">
             <div className="space-y-1">
-              <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
+              <h2 className="text-[13px] font-medium text-muted-foreground">
                 {getGroupLabel(group)}
               </h2>
               {getGroupDescription(group) && (
@@ -457,7 +457,7 @@ export function ServiceListPage({ nav }: { nav: Nav }) {
 
       {showCustomSection && (
         <section className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
+          <h2 className="text-[13px] font-medium text-muted-foreground">
             {tr("自定义服务", "Custom services")}
           </h2>
           <div className="grid grid-cols-2 gap-3">

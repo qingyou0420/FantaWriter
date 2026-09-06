@@ -47,15 +47,15 @@ export function HoldingInspect(props: {
                   </span>
                 ))}
               </div>
-              {lifecycle.reason ? <p className="mt-1.5 break-words text-[13px] leading-5 text-emerald-300">▲ {lifecycle.reason}</p> : null}
+              {lifecycle.reason ? <p className="mt-1.5 break-words text-[13px] leading-5 text-foreground">▲ {lifecycle.reason}</p> : null}
             </div>
           ) : row.statusPill ? (
             <div>
               <span className="inline-block rounded-full bg-secondary/60 px-2.5 py-1 text-[14px] leading-5 font-medium text-foreground">{row.statusPill}</span>
               {row.isFresh ? (
-                <p className="mt-1.5 text-[13px] leading-5 text-emerald-300">▲ {isZh ? "刚获得" : "Just acquired"}</p>
+                <p className="mt-1.5 text-[13px] leading-5 text-foreground">▲ {isZh ? "刚获得" : "Just acquired"}</p>
               ) : row.changeReason ? (
-                <p className="mt-1.5 break-words text-[13px] leading-5 text-emerald-300">▲ {row.changeReason}</p>
+                <p className="mt-1.5 break-words text-[13px] leading-5 text-foreground">▲ {row.changeReason}</p>
               ) : null}
             </div>
           ) : null}

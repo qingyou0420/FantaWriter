@@ -219,7 +219,7 @@ export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: 
               ? "bg-destructive/10 text-destructive"
               : notice.tone === "info"
                 ? "bg-secondary text-muted-foreground"
-                : "bg-emerald-500/10 text-emerald-600"
+                : "bg-secondary text-foreground"
           }`}
         >
           {notice.message}
@@ -268,7 +268,7 @@ export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: 
       >
         <div className="space-y-3">
           {skillsData?.diagnostics?.length ? (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            <div className="rounded-xl border border-border bg-mark-soft px-3 py-2 text-xs text-mark-text">
               <div className="font-semibold">{isZh ? "部分外部 Skill 未加载" : "Some external skills were not loaded"}</div>
               {skillsData.diagnostics.slice(0, 8).map((item, index) => (
                 <div key={`${item.path ?? "skill"}-${index}`} className="mt-1 break-all">
@@ -319,7 +319,7 @@ export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <div className="truncate text-sm font-semibold">{skill.name}</div>
-                        <span className="rounded-full bg-background px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <span className="rounded-full bg-background px-2 py-0.5 text-[10px] tracking-wide text-muted-foreground">
                           {skill.source ?? "skill"}
                         </span>
                       </div>
@@ -363,7 +363,7 @@ export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: 
                 {promptGroups.map((group) => (
                   <div key={group.id} className="space-y-2">
                     <div>
-                      <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{group.title}</div>
+                      <div className="text-[13px] font-medium text-muted-foreground">{group.title}</div>
                       {group.description ? (
                         <p className="mt-1 text-[11px] leading-4 text-muted-foreground/80">{group.description}</p>
                       ) : null}

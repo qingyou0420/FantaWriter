@@ -203,18 +203,18 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
             onClick={handleOpenPacket}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-foreground hover:bg-secondary/80 transition-all border border-border/50"
           >
-            Packet
+            {t("reader.packet")}
           </button>
           <button
             onClick={handleApprove}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-emerald-500/10 text-emerald-600 rounded-xl hover:bg-emerald-500 hover:text-white transition-all border border-emerald-500/20 shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-medium bg-primary text-primary-foreground rounded-xl hover:bg-primary-hover transition-all"
           >
             <CheckCircle2 size={14} />
             {t("reader.approve")}
           </button>
           <button
             onClick={handleReject}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-destructive/10 text-destructive rounded-xl hover:bg-destructive hover:text-white transition-all border border-destructive/20 shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-medium bg-destructive/10 text-destructive rounded-xl hover:bg-destructive hover:text-destructive-foreground transition-all border border-destructive/20"
             title="回滚本章"
           >
             <XCircle size={14} />
@@ -263,10 +263,8 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
           <h1 className="text-4xl md:text-5xl font-serif font-medium italic text-foreground tracking-tight leading-tight">
             {title}
           </h1>
-          <div className="mt-8 flex items-center justify-center gap-4 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-            <span>{t("reader.manuscriptPage")}</span>
-            <span className="text-border">·</span>
-            <span>{chapterNumber.toString().padStart(2, '0')}</span>
+          <div className="mt-8 flex items-center justify-center gap-4 text-[13px] font-medium text-muted-foreground/60">
+            <span>{t("chapter.label").replace("{n}", String(chapterNumber))}</span>
           </div>
         </header>
 

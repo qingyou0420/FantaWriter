@@ -27,7 +27,7 @@ export function HoldingSlot(props: {
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[15px] leading-6 font-semibold text-foreground">{row.label}</span>
           {row.isFresh ? (
-            <span className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 text-[12px] leading-5 font-medium text-emerald-300">
+            <span className="shrink-0 rounded-full bg-ok/20 px-1.5 text-[12px] leading-5 font-medium text-foreground">
               {isZh ? "新" : "NEW"}
             </span>
           ) : null}

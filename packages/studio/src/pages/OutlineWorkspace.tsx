@@ -33,8 +33,9 @@ import {
 } from "../lib/outline-weave";
 import { formatVolumeArriveCopy } from "../lib/copy-map";
 import { weaveGuideWhenUngrounded } from "../lib/stage-copy";
-import type { BookStageSnapshot } from "../lib/book-stage";
+import { useBookStage } from "../hooks/use-book-stage";
 import { TruthProposalCard, type PendingTruthProposal } from "../components/TruthProposalCard";
+import { StageDot } from "../components/StageDot";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { Feather, MoreHorizontal } from "lucide-react";
@@ -112,7 +113,7 @@ export function OutlineWorkspace({
   const [weaveNow, setWeaveNow] = useState(0);
   const [weaveProgress, setWeaveProgress] = useState<OutlineWeaveProgress | null>(null);
   const [weaveProposal, setWeaveProposal] = useState<PendingTruthProposal | null>(null);
-  const [stage, setStage] = useState<BookStageSnapshot | null>(null);
+  const stage = useBookStage(bookId);
   const [pageError, setPageError] = useState<string | null>(null);
   const [splitHint, setSplitHint] = useState(false);
   const [notesOpen, setNotesOpen] = useState<Record<string, boolean>>({});
@@ -131,9 +132,6 @@ export function OutlineWorkspace({
     void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
       .then((body) => setVolumeMap(body.content ?? ""))
       .catch(() => setVolumeMap(""));
-    void fetchJson<BookStageSnapshot>(`/books/${bookId}/stage`)
-      .then(setStage)
-      .catch(() => setStage(null));
   }, [bookId]);
 
   useEffect(() => {
@@ -336,7 +334,7 @@ export function OutlineWorkspace({
 
   return (
     <div className="space-y-5 fade-in" data-testid="outline-workspace">
-      <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} t={t} />
+      <BookWorkspaceNav bookId={bookId} active="weave" nav={nav} isZh={isZh} t={t} stage={stage} />
       <header className="space-y-1">
         <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${data.book.title}》` : data.book.title}</p>
         <h1 className="font-serif text-[32px]">{isZh ? "织卷" : "Weave"}</h1>
@@ -437,7 +435,7 @@ export function OutlineWorkspace({
           {empty ? (
             <div className="rounded-2xl border border-border/40 px-6 py-12 text-center space-y-4" data-testid="outline-empty">
               <p className="text-sm text-muted-foreground">
-                {isZh ? "还没有章级大纲。先用右上角织卷锁定卷纲，再每次只织 10 章（走确认闸）。" : "No chapter outline yet. Use the weave button above to lock volumes, then weave 10 chapters at a time."}
+                {isZh ? "还没有卷纲。先定卷，再每次排十章。" : "No volume outline yet. Lock volumes, then weave ten chapters at a time."}
               </p>
             </div>
           ) : (
@@ -520,7 +518,7 @@ export function OutlineWorkspace({
 
               <div className="rounded-2xl border border-border/40 p-5 space-y-4 min-h-[360px]" data-testid="outline-detail">
                 {!selected ? (
-                  <p className="text-sm text-muted-foreground">{isZh ? "选中一章或一卷" : "Select a node"}</p>
+                  <p className="text-sm text-muted-foreground">{isZh ? "点左侧任意一章" : "Pick a chapter on the left"}</p>
                 ) : selected.kind === "volume" ? (
                   <VolumeDetail volumeTitle={selected.title} okr={selected.okr} startChapter={selected.startChapter} endChapter={selected.endChapter} locked={selected.startChapter != null && selected.endChapter != null} isZh={isZh} />
                 ) : selected.kind === "note" ? (
@@ -713,7 +711,7 @@ function ChapterRow({
         coarse ? "text-muted-foreground/70" : ""
       } ${selected ? "bg-primary/10 text-primary" : "hover:bg-muted/30 text-muted-foreground"}`}
     >
-      <span className="text-[11px]">{written ? "●" : "○"}</span>
+      {coarse ? null : <StageDot state={written ? "done" : "todo"} />}
       <span className="truncate">{label}{node.title ? ` ${truncateOutlineLabel(node.title)}` : ""}</span>
     </button>
   );

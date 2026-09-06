@@ -280,7 +280,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
       <div className="flex items-center gap-3">
         <h1 className="font-serif text-2xl">{label}</h1>
         {isConnected && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-medium">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-ok/15 text-foreground font-medium">
             {tr("已连接", "Connected")}
           </span>
         )}
@@ -338,7 +338,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
           )}
           {/* Status feedback */}
           {status.state === "connected" && (
-            <span className="text-xs text-emerald-500">
+            <span className="text-xs text-foreground">
               {tr(`连接成功，${models.length} 个模型`, `Connected, ${models.length} models`)}
               {detectedModel
                 ? tr(
@@ -352,7 +352,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
             <span className="text-xs text-destructive">{status.message}</span>
           )}
           {status.state === "saved" && (
-            <span className="text-xs text-emerald-500">{tr("已保存", "Saved")}</span>
+            <span className="text-xs text-foreground">{tr("已保存", "Saved")}</span>
           )}
         </div>
 
@@ -417,7 +417,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
             {models.length > 0 ? (
               <div className="flex gap-1.5 flex-wrap">
                 {models.map((m) => (
-                  <span key={m.id} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-emerald-500/[0.06] text-emerald-600 dark:text-emerald-400 border border-emerald-500/15">
+                  <span key={m.id} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-primary/5 text-foreground dark:text-foreground border border-border">
                     {m.name ?? m.id}
                     <button
                       type="button"

@@ -18,6 +18,10 @@ describe("studio product chrome branding", () => {
     expect(existsSync(join(studioRoot, "src/components/BrandMark.tsx"))).toBe(true);
     expect(existsSync(join(studioRoot, "public/inkborne-mark.png"))).toBe(true);
     expect(existsSync(join(studioRoot, "public/inkborne-mark.svg"))).toBe(true);
+    const markSvg = read("public/inkborne-mark.svg");
+    expect(markSvg).toMatch(/<title>墨生万象 \/ Inkborne<\/title>/);
+    expect(markSvg).toMatch(/#22272d/);
+    expect(markSvg).not.toMatch(/#16382a/);
     expect(existsSync(join(studioRoot, "public/fantawriter-mark.png"))).toBe(false);
     expect(existsSync(join(studioRoot, "public/favicon.ico"))).toBe(true);
 

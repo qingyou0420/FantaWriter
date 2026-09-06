@@ -35,6 +35,7 @@ import { SIDEBAR_CREATE_ITEM_KEYS } from "../lib/sidebar-create-items";
 import type { AuthorPublic } from "../lib/author-profile";
 import {
   Settings,
+  Cpu,
   Activity,
   Plus,
   MessageSquare,
@@ -290,7 +291,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
             activePage === "dashboard" ? "bg-secondary text-foreground" : "hover:bg-secondary/40"
           }`}
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.36_0.07_160)] text-sm text-[oklch(0.70_0.09_82)]">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-sm text-primary-foreground">
             {authorAvatar
               ? <img src={authorAvatar} alt="" className="h-full w-full object-cover" />
               : (author?.name?.trim().slice(0, 1) || "墨")}
@@ -377,7 +378,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                                 {session.isStreaming ? (
                                   <Loader2 size={12} className="shrink-0 animate-spin text-primary" />
                                 ) : (
-                                  <span className="shrink-0 text-[11px] text-muted-foreground/40">
+                                  <span className="shrink-0 text-[12px] text-muted-foreground/70">
                                     {formatRelativeTime(session.sessionId)}
                                   </span>
                                 )}
@@ -462,7 +463,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
                           {session.isStreaming ? (
                             <Loader2 size={12} className="shrink-0 animate-spin text-primary" />
                           ) : (
-                            <span className="shrink-0 text-[11px] text-muted-foreground/40">
+                            <span className="shrink-0 text-[12px] text-muted-foreground/70">
                               {formatRelativeTime(session.sessionId)}
                             </span>
                           )}
@@ -533,7 +534,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
           <div className="grid grid-cols-2 gap-1" data-testid="sidebar-system-list">
             <CreateItem
               label={t("nav.config")}
-              icon={<Settings size={16} />}
+              icon={<Cpu size={16} />}
               active={activePage === "services"}
               onClick={nav.toServices}
               testId="sidebar-system-config"
@@ -698,7 +699,7 @@ function SectionHeader({ label, expanded, onToggle }: {
   if (!onToggle) {
     return (
       <div className="px-3 mb-2.5">
-        <span className="text-[16px] leading-6 uppercase tracking-[0.1em] text-muted-foreground font-bold">
+        <span className="text-[13px] leading-5 font-medium text-muted-foreground">
           {label}
         </span>
       </div>
@@ -710,7 +711,7 @@ function SectionHeader({ label, expanded, onToggle }: {
       onClick={onToggle}
       className="group flex w-full items-center gap-1.5 px-3 py-2 text-left"
     >
-      <span className="flex-1 text-[16px] leading-6 uppercase tracking-[0.1em] text-muted-foreground font-bold group-hover:text-foreground transition-colors">
+      <span className="flex-1 text-[13px] leading-5 font-medium text-muted-foreground group-hover:text-foreground transition-colors">
         {label}
       </span>
       <ChevronRight

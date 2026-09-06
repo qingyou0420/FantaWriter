@@ -19,7 +19,7 @@ function CheckRow({ label, ok, detail }: { label: string; ok: boolean; detail?: 
   return (
     <div className="flex items-center gap-3 py-3 border-b border-border/30 last:border-0">
       {ok ? (
-        <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+        <CheckCircle2 size={18} className="text-foreground shrink-0" />
       ) : (
         <XCircle size={18} className="text-destructive shrink-0" />
       )}
@@ -68,8 +68,8 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       {data && (
         <div className={`px-4 py-3 rounded-lg text-sm font-medium ${
           data.inkosJson && (data.projectEnv || data.globalEnv) && data.llmConnected
-            ? "bg-emerald-500/10 text-emerald-600"
-            : "bg-amber-500/10 text-amber-600"
+            ? "bg-ok/15 text-foreground"
+            : "bg-mark-soft text-mark-text"
         }`}>
           {data.inkosJson && (data.projectEnv || data.globalEnv) && data.llmConnected
             ? t("doctor.allPassed")
