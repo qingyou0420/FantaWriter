@@ -10,6 +10,7 @@ import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { classifyTruthAuthority, type TruthAuthority } from "./truth-authority.js";
+import { normalizeVolumeMapChapterHeadings } from "../utils/volume-map-tree.js";
 
 export const TruthProposalStatusSchema = z.enum(["pending", "applied", "rejected"]);
 export type TruthProposalStatus = z.infer<typeof TruthProposalStatusSchema>;
@@ -213,6 +214,15 @@ export type CommitTruthFileResult =
  * Single write path for story/ truth files. Direction / foundation / rules
  * are staged as G3 proposals unless `forceImmediate` (confirm-apply).
  */
+async function readBookLanguage(bookDir: string): Promise<"zh" | "en"> {
+  try {
+    const raw = JSON.parse(await readFile(join(bookDir, "book.json"), "utf-8")) as { language?: unknown };
+    return raw.language === "en" ? "en" : "zh";
+  } catch {
+    return "zh";
+  }
+}
+
 export async function commitOrStageTruthFile(params: {
   readonly bookDir: string;
   readonly bookId: string;
@@ -232,20 +242,23 @@ export async function commitOrStageTruthFile(params: {
   }
   const targetPath = join(params.bookDir, "story", fileName);
   const currentContent = await readFile(targetPath, "utf-8").catch(() => "");
+  const content = fileName === "outline/volume_map.md"
+    ? normalizeVolumeMapChapterHeadings(params.content, { language: await readBookLanguage(params.bookDir) })
+    : params.content;
   if (!params.forceImmediate && requiresCanonDiffGate(fileName)) {
-    if (currentContent === params.content) {
+    if (currentContent === content) {
       return { kind: "unchanged", fileName };
     }
     const proposal = await stageTruthProposal({
       bookDir: params.bookDir,
       bookId: params.bookId,
       fileName,
-      proposedContent: params.content,
+      proposedContent: content,
       currentContent,
     });
     return { kind: "proposed", fileName, proposal };
   }
   await mkdir(dirname(targetPath), { recursive: true });
-  await writeFile(targetPath, params.content, "utf-8");
+  await writeFile(targetPath, content, "utf-8");
   return { kind: "written", fileName };
 }

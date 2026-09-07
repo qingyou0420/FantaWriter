@@ -111,6 +111,7 @@ describe("P0-7 dialogs and buttons", () => {
     expect(shouldInvalidateBookStageEvent("write:complete")).toBe(true);
     expect(shouldInvalidateBookStageEvent("weave:complete")).toBe(true);
     expect(shouldInvalidateBookStageEvent("book:deleted")).toBe(true);
+    expect(shouldInvalidateBookStageEvent("truth:written")).toBe(true);
     expect(shouldInvalidateBookStageEvent("weave:progress")).toBe(false);
     expect(shouldInvalidateBookStageEvent("book:creating")).toBe(false);
     expect(shouldInvalidateBookStageEvent("session:title")).toBe(false);

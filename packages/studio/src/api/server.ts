@@ -161,6 +161,7 @@ import {
   classifyHookDue,
   parsePendingHooksMarkdown,
   chapterRuntimeSlug,
+  normalizeVolumeMapChapterHeadings,
 } from "@actalk/inkos-core";
 import { isConfirmedProductionAction } from "../shared/confirmed-production.js";
 import {
@@ -188,6 +189,7 @@ import {
 import { buildStudioBookConfig } from "./book-create.js";
 import { persistAskArtifacts } from "../lib/ask-artifacts.js";
 import { collectBookStageFacts, loadBookWorkflow, resolveBookStage } from "../lib/book-stage-io.js";
+import { resolveStoryCard } from "../lib/story-card.js";
 import { validateGroundConfirm } from "../lib/ground-confirm.js";
 import { parseOpenQuestions, serializeOpenQuestions } from "../lib/open-questions.js";
 import {
@@ -3170,6 +3172,46 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
   });
 
+  app.get("/api/v1/books/:id/story-card", async (c) => {
+    const id = c.req.param("id");
+    try {
+      const book = await state.loadBookConfig(id);
+      const bookDir = state.bookDir(id);
+      const storyDir = join(bookDir, "story");
+      const [storyCardMarkdown, authorIntent, storyFrameRaw, chapters, nextChapter] = await Promise.all([
+        readFile(join(storyDir, "story_card.md"), "utf-8").catch(() => ""),
+        readFile(join(storyDir, "author_intent.md"), "utf-8").catch(() => ""),
+        readFile(join(storyDir, "outline", "story_frame.md"), "utf-8")
+          .catch(() => readFile(join(storyDir, "story_bible.md"), "utf-8"))
+          .catch(() => ""),
+        state.loadChapterIndex(id),
+        state.getNextChapterNumber(id),
+      ]);
+      const resolved = resolveStoryCard({
+        title: book.title,
+        genre: book.genre,
+        storyCardMarkdown,
+        authorIntent,
+        storyFrameBody: storyFrameRaw,
+      });
+      const payload = await resolveBookStage({
+        bookDir,
+        bookExists: true,
+        bookStatus: book.status,
+        targetChapters: book.targetChapters,
+        nextChapter,
+        chaptersWritten: chapters.length,
+      });
+      return c.json({
+        card: resolved.card,
+        source: resolved.source,
+        askDone: payload.steps.ask === "done",
+      });
+    } catch {
+      return c.json({ error: `Book "${id}" not found` }, 404);
+    }
+  });
+
   app.post("/api/v1/books/:id/ground/confirm", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json<{ continueWithOpen?: boolean }>().catch(() => ({ continueWithOpen: false }));
@@ -4025,6 +4067,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           await writeFile(target, content, "utf-8");
         },
       });
+      broadcast("truth:written", { bookId: id, fileName: proposal.fileName ?? staged.fileName });
       return c.json({ ok: true, proposal });
     } finally {
       await releaseLock();
@@ -5288,7 +5331,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
   app.get("/api/v1/sessions", async (c) => {
     const bookId = c.req.query("bookId");
-    const sessions = await listBookSessions(root, bookId === undefined ? null : bookId === "null" ? null : bookId);
+    const queriedBookId = bookId === undefined ? null : bookId === "null" ? null : bookId;
+    const sessions = (await listBookSessions(root, queriedBookId)).filter((session) => {
+      if (queriedBookId !== null) return true;
+      const kind = session.sessionKind ?? "chat";
+      return !(kind === "chat" && session.messageCount === 0);
+    });
     return c.json({ sessions });
   });
 
@@ -6544,13 +6592,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     if (RUNTIME_DIAGNOSTIC_FILE_RE.test(file)) {
       return c.json({ error: "Runtime diagnostic files are read-only" }, 400);
     }
-    const { content } = await c.req.json<{ content: string }>();
+    const { content: rawContent } = await c.req.json<{ content: string }>();
+    let content = rawContent;
+    if (file === "outline/volume_map.md" && typeof content === "string") {
+      const book = await state.loadBookConfig(id).catch(() => null);
+      content = normalizeVolumeMapChapterHeadings(content, {
+        language: book?.language === "en" ? "en" : "zh",
+      });
+    }
     const { writeFile: writeFileFs, mkdir: mkdirFs } = await import("node:fs/promises");
     const { dirname: dirnameFs } = await import("node:path");
     const releaseLock = await state.acquireBookLock(id, { stage: "truth-put" });
     try {
       await mkdirFs(dirnameFs(resolved), { recursive: true });
       await writeFileFs(resolved, content, "utf-8");
+      broadcast("truth:written", { bookId: id, fileName: file });
       return c.json({ ok: true });
     } finally {
       await releaseLock();

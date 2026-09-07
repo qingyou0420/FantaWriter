@@ -11,9 +11,13 @@ import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import {
   applyOutlineWorkspaceSave,
+  applyVolumeMapNodeEdit,
   findNodeById,
+  HARD_CHAPTER_TITLE_CHARS,
   insertChapterStub,
   lockedNamedVolumeCount,
+  MAX_CHAPTER_TITLE_CHARS,
+  normalizeVolumeMapChapterHeadings,
   outlineEditorSource,
   parseVolumeMapTree,
   recommendedOutlineNodeId,
@@ -144,11 +148,11 @@ export function OutlineWorkspace({
 
   useEffect(() => {
     if (!selected) return;
-    const source = outlineEditorSource(selected);
+    const source = outlineEditorSource(selected, { language: isZh ? "zh" : "en" });
     setTitleDraft(source.title);
     setSummaryDraft(source.summary);
-    setSplitHint(false);
-  }, [selected]);
+    setSplitHint(source.split);
+  }, [isZh, selected]);
 
   const visibleVolumes = tree.volumes
     .map((volume) => ({
@@ -258,12 +262,13 @@ export function OutlineWorkspace({
     }
   };
 
-  const saveSelected = async () => {
+  const saveSelected = async (persistSplit = false) => {
     if (!selected || !groundDone) return;
+    const language = isZh ? "zh" : "en";
     let nextTitle = titleDraft;
     let nextSummary = summaryDraft;
     if (selected.kind === "chapter" || selected.kind === "range") {
-      const split = splitOutlineTitleAndSummary(titleDraft, summaryDraft);
+      const split = splitOutlineTitleAndSummary(titleDraft, summaryDraft, { language });
       nextTitle = split.title;
       nextSummary = split.summary;
       if (split.split) {
@@ -271,8 +276,25 @@ export function OutlineWorkspace({
         setSummaryDraft(split.summary);
         setSplitHint(true);
       }
+      if (persistSplit && (selected.title !== nextTitle || selected.summary !== nextSummary)) {
+        const next = applyVolumeMapNodeEdit(volumeMap, selected.id, {
+          title: nextTitle,
+          summary: nextSummary,
+        });
+        if (next === volumeMap) return;
+        setSaving(true);
+        setPageError(null);
+        try {
+          await persistMap(next);
+        } catch (err) {
+          setPageError(err instanceof Error ? err.message : "Save failed");
+        } finally {
+          setSaving(false);
+        }
+        return;
+      }
     }
-    const next = applyOutlineWorkspaceSave(volumeMap, selected.id, nextTitle, nextSummary);
+    const next = applyOutlineWorkspaceSave(volumeMap, selected.id, nextTitle, nextSummary, { language });
     if (next === volumeMap) return;
     setSaving(true);
     setPageError(null);
@@ -300,9 +322,12 @@ export function OutlineWorkspace({
     }
   };
 
-  const tidyOutline = async () => {
+  const tidyOutline = async (deep = false) => {
     if (!groundDone) return;
-    const next = tidyVolumeMapMarkdown(volumeMap, isZh ? "zh" : "en");
+    const language = isZh ? "zh" : "en";
+    const next = deep
+      ? tidyVolumeMapMarkdown(volumeMap, language)
+      : normalizeVolumeMapChapterHeadings(volumeMap, { language });
     if (next === volumeMap) return;
     setSaving(true);
     setPageError(null);
@@ -525,11 +550,21 @@ export function OutlineWorkspace({
                   <button
                     type="button"
                     data-testid="outline-tidy"
-                    onClick={() => void tidyOutline()}
+                    title={isZh ? "只整理超长短题。按住 ⌥ 深度整理卷头与备注。" : "Normalize long titles. Hold ⌥ for a deep tidy."}
+                    onClick={(event) => void tidyOutline(event.altKey)}
                     disabled={treeReadOnly}
                     className="btn-ghost h-8 px-1 text-[13px] underline decoration-[color-mix(in_oklch,var(--foreground)_35%,transparent)] hover:decoration-seal disabled:opacity-40"
                   >
                     {isZh ? "整理卷纲" : "Tidy volumes"}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="outline-tidy-deep"
+                    onClick={() => void tidyOutline(true)}
+                    disabled={treeReadOnly}
+                    className="btn-ghost h-8 px-1 text-[13px] text-muted-foreground underline decoration-[color-mix(in_oklch,var(--foreground)_25%,transparent)] hover:decoration-seal disabled:opacity-40"
+                  >
+                    {isZh ? "深度整理" : "Deep tidy"}
                   </button>
                 </div>
               </div>
@@ -569,15 +604,24 @@ export function OutlineWorkspace({
                       <div className="relative">
                         <input
                           value={titleDraft}
-                          maxLength={selected.kind === "range" ? undefined : 20}
+                          maxLength={selected.kind === "range" ? undefined : (isZh ? HARD_CHAPTER_TITLE_CHARS : HARD_CHAPTER_TITLE_CHARS * 2)}
                           onChange={(event) => setTitleDraft(event.target.value)}
-                          onBlur={() => void saveSelected()}
+                          onBlur={() => void saveSelected(false)}
                           disabled={treeReadOnly}
                           className="w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 pr-14 font-serif text-xl outline-none focus:ring-1 focus:ring-ring"
                         />
                         {selected.kind !== "range" && (
-                          <span className="absolute bottom-2 right-3 text-[12px] tabular-nums text-muted-foreground" data-testid="outline-title-count">
-                            {[...titleDraft].length} / 12
+                          <span
+                            className={`absolute bottom-2 right-3 text-[12px] tabular-nums ${
+                              [...titleDraft].length > (isZh ? MAX_CHAPTER_TITLE_CHARS : MAX_CHAPTER_TITLE_CHARS * 2)
+                                ? "text-seal"
+                                : "text-muted-foreground"
+                            }`}
+                            data-testid="outline-title-count"
+                          >
+                            {isZh
+                              ? `${[...titleDraft].length} / 12`
+                              : `${[...titleDraft].length} / 24`}
                           </span>
                         )}
                       </div>
@@ -598,11 +642,15 @@ export function OutlineWorkspace({
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => void saveSelected()}
+                        onClick={() => void saveSelected(true)}
                         disabled={saving || treeReadOnly}
                         className="btn-secondary disabled:opacity-50"
                       >
-                        {saving ? t("common.loading") : (isZh ? "保存" : "Save")}
+                        {saving
+                          ? t("common.loading")
+                          : splitHint
+                            ? (isZh ? "保存拆分" : "Save split")
+                            : (isZh ? "保存" : "Save")}
                       </button>
                       {selected.kind === "chapter" && (
                         <button
@@ -727,6 +775,7 @@ function ChapterRow({
   const label = coarse && node.endChapter
     ? (isZh ? `第 ${node.chapterNumber}–${node.endChapter} 章（粗纲）` : `Ch. ${node.chapterNumber}–${node.endChapter} (coarse)`)
     : (isZh ? `第 ${node.chapterNumber} 章` : `Ch. ${node.chapterNumber}`);
+  const shortTitle = splitOutlineTitleAndSummary(node.title, node.summary, { language: isZh ? "zh" : "en" }).title;
   return (
     <button
       type="button"
@@ -737,7 +786,7 @@ function ChapterRow({
       } ${selected ? "bg-primary/10 text-primary" : "hover:bg-muted/30 text-muted-foreground"}`}
     >
       {coarse ? null : <StageDot state={written ? "done" : "todo"} />}
-      <span className="truncate">{label}{node.title ? ` ${truncateOutlineLabel(node.title)}` : ""}</span>
+      <span className="truncate">{label}{shortTitle ? ` ${truncateOutlineLabel(shortTitle)}` : ""}</span>
     </button>
   );
 }

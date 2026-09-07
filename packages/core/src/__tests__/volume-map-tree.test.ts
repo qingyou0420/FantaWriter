@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_VOLUME_TREE_LABEL_CHARS,
+  applyOutlineWorkspaceSave,
   formatVolumeLabel,
   listedExactChapterNumbers,
   lockedNamedVolumeCount,
   missingExactChapters,
   nextUnfilledChapterBatch,
+  normalizeVolumeMapChapterHeadings,
+  outlineEditorSource,
   resolveOutlineWeaveStep,
   parseProseVolumeHints,
   isPlaceholderVolumeTitle,
   volumeMapHasLockedNamedVolumes,
   parseVolumeMapTree,
+  splitOutlineTitleAndSummary,
   tidyVolumeMapMarkdown,
   planVolumeRanges,
   planVolumeRangesFromHints,
@@ -300,5 +304,100 @@ describe("renderVolumeMapMarkdown", () => {
     const tree = parseVolumeMapTree(locked);
     expect(resolveOutlineWeaveStep(tree, 40, locked)).toBe("batch");
     expect(nextUnfilledChapterBatch(tree, 40, 10)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  });
+});
+
+describe("splitOutlineTitleAndSummary", () => {
+  it("splits at 12 characters and keeps paired parentheses in the short title", () => {
+    const split = splitOutlineTitleAndSummary(
+      "倒叙冷开(见开篇技法)→落回书院春日苏绻入辩堂初遇阿月后身份暗流起",
+      "",
+    );
+    expect(split.split).toBe(true);
+    expect(split.title).toBe("倒叙冷开(见开篇技法)");
+    expect([...split.title].length).toBeLessThanOrEqual(12);
+    expect(split.summary).toContain("落回书院");
+  });
+
+  it("treats ASCII comma / semicolon / colon as separators", () => {
+    const comma = splitOutlineTitleAndSummary("辩堂正面交锋,苏缙以文脉对抗旧学", "");
+    expect(comma.split).toBe(true);
+    expect(comma.title).toBe("辩堂正面交锋");
+    expect(comma.summary).toContain("苏缙以文脉");
+
+    const semi = splitOutlineTitleAndSummary("夜审开庭追问旧案;第二证人被逼出当堂", "");
+    expect(semi.title).toBe("夜审开庭追问旧案");
+    expect(semi.summary).toContain("第二证人");
+  });
+
+  it("does not split a short title or a title that already has a summary", () => {
+    expect(splitOutlineTitleAndSummary("短题尚可", "").split).toBe(false);
+    expect(splitOutlineTitleAndSummary("这是超过十二个字的长标题没有标点符号", "已有提要").split).toBe(false);
+  });
+
+  it("falls back to a truncated title and keeps the full original as summary", () => {
+    const original = "这是超过十二个字的长标题没有标点符号";
+    const split = splitOutlineTitleAndSummary(original, "");
+    expect(split.split).toBe(true);
+    expect([...split.title].length).toBeLessThanOrEqual(12);
+    expect(split.summary).toBe(original);
+  });
+
+  it("uses a 24-character threshold for English", () => {
+    const english = splitOutlineTitleAndSummary("A longer english title", "", { language: "en" });
+    expect(english.split).toBe(false);
+    const long = splitOutlineTitleAndSummary(
+      "Opening clash, Su argues the lineage against the old school",
+      "",
+      { language: "en" },
+    );
+    expect(long.split).toBe(true);
+    expect(long.title).toBe("Opening clash");
+    expect(long.summary).toContain("Su argues");
+  });
+});
+
+describe("normalizeVolumeMapChapterHeadings", () => {
+  it("rewrites only the oversized chapter heading into title + summary lines", () => {
+    const markdown = [
+      "## 第1卷 书院（1-38章）",
+      "本卷要抵达：相识。",
+      "",
+      "## 第 1 章 倒叙冷开(见开篇技法)→落回书院春日苏绻入辩堂初遇阿月后身份暗流起",
+      "## 第 2 章 短题",
+      "已有提要。",
+      "### 备注",
+      "卷末笔记。",
+      "",
+    ].join("\n");
+    const next = normalizeVolumeMapChapterHeadings(markdown);
+    const originalLines = markdown.split("\n");
+    const nextLines = next.split("\n");
+    expect(nextLines[0]).toBe(originalLines[0]);
+    expect(nextLines[1]).toBe(originalLines[1]);
+    expect(nextLines[3]).toBe("## 第 1 章 倒叙冷开(见开篇技法)");
+    expect(nextLines[4]).toContain("落回书院");
+    expect(next).toContain("## 第 2 章 短题");
+    expect(next).toContain("已有提要。");
+    expect(next).toContain("### 备注");
+    expect(next).toContain("卷末笔记。");
+    const chapter2Index = nextLines.findIndex((line) => line.includes("第 2 章"));
+    const originalChapter2 = originalLines.findIndex((line) => line.includes("第 2 章"));
+    expect(nextLines[chapter2Index]).toBe(originalLines[originalChapter2]);
+    expect(nextLines[chapter2Index + 1]).toBe(originalLines[originalChapter2 + 1]);
+  });
+
+  it("does not rewrite a file that only has short titles", () => {
+    const markdown = "## 第 1 章 短题\n一句提要。\n";
+    expect(normalizeVolumeMapChapterHeadings(markdown)).toBe(markdown);
+  });
+
+  it("keeps the editor source split so an unchanged select-save is a no-op", () => {
+    const markdown = "## 第 1 章 倒叙冷开(见开篇技法)→落回书院春日苏绻入辩堂\n";
+    const tree = parseVolumeMapTree(markdown);
+    const node = tree.orphanChapters[0]!;
+    const source = outlineEditorSource(node);
+    expect(source.split).toBe(true);
+    expect(applyOutlineWorkspaceSave(markdown, node.id, source.title, source.summary)).toBe(markdown);
   });
 });

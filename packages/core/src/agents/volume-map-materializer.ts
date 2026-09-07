@@ -17,6 +17,7 @@ import {
 import {
   chapterNodesByNumber,
   leftoverVolumeMapProse,
+  splitOutlineTitleAndSummary,
   listedExactChapterNumbers,
   missingExactChapters,
   nextUnfilledChapterBatch,
@@ -608,7 +609,7 @@ export class VolumeMapMaterializer extends BaseAgent {
         "Each chapter must be exactly:",
         "## Chapter N Short Title",
         "One to three sentences of summary on the next line. Do not put the summary in the title.",
-        "Short title ≤ 12 characters. Never emit a chapter range as one node.",
+        "Short title ≤ 12 characters. If the title runs long, separate the short title from the summary with a comma or colon. Never emit a chapter range as one node.",
         "Do not emit volume headings, tables, or commentary.",
         `Write every chapter in this set: ${needed.join(", ")}.`,
       ].join("\n")
@@ -618,7 +619,7 @@ export class VolumeMapMaterializer extends BaseAgent {
         "每一章必须是：",
         "## 第 N 章 短标题",
         "提要另起一行，一两句到三句。不要把提要写进标题。",
-        "短标题不超过 12 字。禁止输出「第a–b章」这种范围节点。",
+        "短标题不超过 12 字。若忍不住写长，请用中文逗号 / 冒号把短标题与提要分开。禁止输出「第a–b章」这种范围节点。",
         "卷标题如果出现，只能是「## 第N卷 卷名（第a–b章）」。",
         `必须写全这些章号：${needed.join("、")}。`,
       ].join("\n");
@@ -643,10 +644,14 @@ export class VolumeMapMaterializer extends BaseAgent {
       .map((number) => {
         const node = byNumber.get(number);
         if (!node) return null;
+        const fallback = params.language === "en" ? `Beat ${number}` : `第${number}章`;
+        const split = splitOutlineTitleAndSummary(node.title || fallback, node.summary, {
+          language: params.language,
+        });
         return {
           chapterNumber: number,
-          title: (node.title || (params.language === "en" ? `Beat ${number}` : `第${number}章`)).trim().slice(0, 12),
-          summary: node.summary || (node.title.length > 12 ? node.title : ""),
+          title: split.title || fallback,
+          summary: split.summary,
         };
       })
       .filter((chapter): chapter is AssembledVolumeChapter => chapter != null);

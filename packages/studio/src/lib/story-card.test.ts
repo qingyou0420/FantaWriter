@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   authorIntentFromStoryCard,
   createBookInstruction,
+  deriveStoryCard,
   extractStoryCardDraft,
   parseStoryCard,
+  resolveStoryCard,
   serializeStoryCard,
   storyCardReady,
   trimStoryCard,
@@ -50,5 +52,50 @@ describe("story card", () => {
     const card = { workingTitle: "醉词", oneLine: "一句话", synopsis: "梗概" };
     expect(createBookInstruction(card, true)).toMatch(/就此建书/);
     expect(authorIntentFromStoryCard(card, "zh")).toMatch(/暂定书名：醉词/);
+  });
+
+  it("derives a card from author_intent", () => {
+    const card = deriveStoryCard({
+      title: "醉词",
+      authorIntent: "暂定书名：醉词\n\n四人在琴荒书院相识。\n\n春日入堂，身份暗流。",
+      genre: "古风",
+    });
+    expect(card.workingTitle).toBe("醉词");
+    expect(card.oneLine).toContain("四人");
+    expect(card.synopsis).toContain("春日入堂");
+    expect(card.genre).toBe("古风");
+  });
+
+  it("derives synopsis from story_frame when intent is only one line", () => {
+    const card = deriveStoryCard({
+      title: "醉词",
+      authorIntent: "书院群像",
+      storyFrameBody: "---\nfoo: bar\n---\n框架正文写开局与终局。",
+    });
+    expect(card.oneLine).toBe("书院群像");
+    expect(card.synopsis).toContain("框架正文");
+  });
+
+  it("returns an empty derived card when every source is empty", () => {
+    const card = deriveStoryCard({ title: "新书" });
+    expect(card.workingTitle).toBe("新书");
+    expect(card.oneLine).toBe("");
+    expect(card.synopsis).toBe("");
+    expect(resolveStoryCard({ title: "新书" }).source).toBe("none");
+  });
+
+  it("prefers an on-disk story_card over derived fields", () => {
+    const resolved = resolveStoryCard({
+      title: "醉词",
+      storyCardMarkdown: serializeStoryCard({
+        workingTitle: "",
+        oneLine: "卡上一句话",
+        synopsis: "卡上梗概",
+      }),
+      authorIntent: "磁盘以外的一句话",
+    });
+    expect(resolved.source).toBe("story_card");
+    expect(resolved.card.workingTitle).toBe("醉词");
+    expect(resolved.card.oneLine).toBe("卡上一句话");
   });
 });

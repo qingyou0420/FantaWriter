@@ -6,6 +6,9 @@
 
 export const STORY_CARD_FILE = "story_card.md";
 export const STORY_CARD_SYNOPSIS_MAX = 300;
+export const STORY_CARD_ONE_LINE_MAX = 80;
+
+export type StoryCardSource = "story_card" | "derived" | "none";
 
 export interface StoryCardDraft {
   readonly workingTitle: string;
@@ -13,6 +16,12 @@ export interface StoryCardDraft {
   readonly synopsis: string;
   readonly genre?: string;
   readonly tone?: string;
+}
+
+export interface StoryCardResolved {
+  readonly card: StoryCardDraft;
+  readonly source: StoryCardSource;
+  readonly askDone: boolean;
 }
 
 export const EMPTY_STORY_CARD: StoryCardDraft = {
@@ -82,6 +91,10 @@ function parseFrontmatter(markdown: string): { readonly fields: Record<string, s
     fields[match[1]!] = value;
   }
   return { fields, body };
+}
+
+export function markdownBodyWithoutFrontmatter(markdown: string): string {
+  return parseFrontmatter(markdown).body.trim();
 }
 
 export function parseStoryCard(markdown: string): StoryCardDraft {
@@ -202,3 +215,80 @@ export const REOPEN_ASK_PROMPT = {
   zh: "我想重新推敲这本书的前提",
   en: "I want to rethink this book's premise",
 } as const;
+
+function truncateChars(text: string, max: number): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  const chars = [...cleaned];
+  if (chars.length <= max) return cleaned;
+  if (max <= 1) return "…";
+  return `${chars.slice(0, max - 1).join("")}…`;
+}
+
+function stripWorkingTitleLine(text: string): string {
+  return text
+    .replace(/^\uFEFF/, "")
+    .replace(/^(?:暂定书名|Working title)\s*[：:]\s*[^\n]*\n*/i, "")
+    .trim();
+}
+
+/**
+ * Build a presentation-only card from book title + author_intent / story_frame.
+ * Does not write disk.
+ */
+export function deriveStoryCard(input: {
+  readonly title: string;
+  readonly authorIntent?: string;
+  readonly storyFrameBody?: string;
+  readonly genre?: string;
+}): StoryCardDraft {
+  const workingTitle = input.title.trim();
+  const intent = stripWorkingTitleLine(input.authorIntent ?? "");
+  const paragraphs = intent.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  let oneLine = "";
+  let fromIntentRest = "";
+  if (paragraphs.length > 0) {
+    const first = paragraphs[0]!;
+    const firstLines = first.split("\n").map((line) => line.trim()).filter(Boolean);
+    const head = firstLines[0] ?? first;
+    oneLine = truncateChars(head, STORY_CARD_ONE_LINE_MAX);
+    const leftoverHead = [...head].length > STORY_CARD_ONE_LINE_MAX
+      ? [...head].slice(STORY_CARD_ONE_LINE_MAX).join("").trim()
+      : "";
+    fromIntentRest = [leftoverHead, firstLines.slice(1).join("\n").trim(), ...paragraphs.slice(1)]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  const frame = markdownBodyWithoutFrontmatter(input.storyFrameBody ?? "");
+  const synopsis = (fromIntentRest || frame).trim();
+  return trimStoryCard({
+    workingTitle,
+    oneLine,
+    synopsis,
+    genre: input.genre,
+  });
+}
+
+export function resolveStoryCard(input: {
+  readonly title: string;
+  readonly storyCardMarkdown?: string | null;
+  readonly authorIntent?: string;
+  readonly storyFrameBody?: string;
+  readonly genre?: string;
+}): { readonly card: StoryCardDraft; readonly source: StoryCardSource } {
+  const raw = input.storyCardMarkdown?.trim();
+  if (raw) {
+    const parsed = parseStoryCard(raw);
+    return {
+      source: "story_card",
+      card: {
+        ...parsed,
+        workingTitle: parsed.workingTitle || input.title.trim(),
+      },
+    };
+  }
+  const derived = deriveStoryCard(input);
+  return {
+    source: derived.oneLine || derived.synopsis ? "derived" : "none",
+    card: derived,
+  };
+}
