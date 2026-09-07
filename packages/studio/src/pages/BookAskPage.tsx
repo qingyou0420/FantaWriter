@@ -1,10 +1,9 @@
 /**
- * 问心 page: full-page book chat + story rail.
+ * 问心 page: full-page book chat.
  *
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { AskStoryRail } from "../components/AskStoryRail";
 import { useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
@@ -24,14 +23,12 @@ export function BookAskPage({
   theme,
   t,
   sse,
-  isZh,
 }: {
   readonly bookId: string;
   readonly nav: Nav;
   readonly theme: Theme;
   readonly t: TFunction;
   readonly sse: { messages: ReadonlyArray<SSEMessage>; connected: boolean };
-  readonly isZh: boolean;
 }) {
   const { error } = useApi<{ book?: { title?: string } }>(`/books/${bookId}`);
 
@@ -47,7 +44,6 @@ export function BookAskPage({
         t={t}
         sse={sse}
       />
-      <AskStoryRail bookId={bookId} isZh={isZh} />
     </div>
   );
 }

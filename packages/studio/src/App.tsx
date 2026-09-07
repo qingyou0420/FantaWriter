@@ -344,7 +344,6 @@ export function App() {
                 theme={theme}
                 t={t}
                 sse={sse}
-                isZh={currentLang !== "en"}
               />
             </div>
           )}

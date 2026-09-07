@@ -19,7 +19,7 @@ function read(rel: string): string {
 describe("P2-1 问心", () => {
   it("writes story_card.md and gates 就此建书 on three fields", () => {
     const card = read("src/lib/story-card.ts");
-    const ask = read("src/components/AskStoryRail.tsx") + read("src/components/AskStoryCard.tsx") + read("src/pages/ChatPage.tsx");
+    const ask = read("src/components/AskStoryCard.tsx") + read("src/pages/ChatPage.tsx");
     const rail = read("src/components/AskCreateRail.tsx") + read("src/components/AskStoryCard.tsx");
     const sidebar = read("src/components/Sidebar.tsx");
     const nav = read("src/components/BookWorkspaceNav.tsx");
