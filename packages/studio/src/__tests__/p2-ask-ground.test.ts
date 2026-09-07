@@ -19,7 +19,7 @@ function read(rel: string): string {
 describe("P2-1 问心", () => {
   it("writes story_card.md and gates 就此建书 on three fields", () => {
     const card = read("src/lib/story-card.ts");
-    const ask = read("src/components/AskStoryRail.tsx") + read("src/components/AskStoryCard.tsx") + read("src/pages/ChatPage.tsx");
+    const ask = read("src/components/AskStoryCard.tsx") + read("src/pages/ChatPage.tsx");
     const rail = read("src/components/AskCreateRail.tsx") + read("src/components/AskStoryCard.tsx");
     const sidebar = read("src/components/Sidebar.tsx");
     const nav = read("src/components/BookWorkspaceNav.tsx");
@@ -47,12 +47,19 @@ describe("P2-2 研墨", () => {
     expect(ground).toMatch(/关系与主线/);
     expect(ground).toMatch(/结局与伏笔/);
     expect(ground).toMatch(/待定项/);
+    expect(ground).toMatch(/基础设定/);
+    expect(ground).toMatch(/故事概要/);
+    expect(ground).toMatch(/ground-toc/);
+    expect(ground).toMatch(/ground-confirm-bar/);
+    expect(ground).toMatch(/\/books\/\$\{bookId\}\/story-card/);
+    expect(ground).not.toMatch(/ground-nav/);
     expect(ground).toMatch(/open_questions\.md/);
     expect(ground).toMatch(/ground-confirm/);
     expect(ground).toMatch(/foundation\/revise/);
     expect(ground).toMatch(/TruthProposalCard/);
     expect(ground).toMatch(/GROUND_REEDIT_WARNING/);
     expect(server).toMatch(/\/api\/v1\/books\/:id\/ground\/confirm/);
+    expect(server).toMatch(/app\.put\("\/api\/v1\/books\/:id\/story-card"/);
     expect(server).toMatch(/groundConfirmedAt/);
     expect(server).toMatch(/story_card\.md/);
     expect(server).toMatch(/open_questions\.md/);

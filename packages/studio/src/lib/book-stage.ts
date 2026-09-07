@@ -43,7 +43,7 @@ const STAGE_ORDER: ReadonlyArray<BookStageId> = ["ask", "ground", "weave", "writ
 
 const FRAME_SECTION_GROUPS: ReadonlyArray<RegExp> = [
   /世界|铁律|规则|world|tonal|rule/i,
-  /人物|角色|character/i,
+  /主题|基调|人物|角色|theme|tone|character/i,
   /冲突|主线|因果|conflict/i,
   /终局|结局|伏笔|endgame|ending/i,
 ];

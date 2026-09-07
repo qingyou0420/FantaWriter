@@ -17,15 +17,15 @@ import { useBookStage } from "../hooks/use-book-stage";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
-import type { StoryCardResolved } from "../lib/story-card";
+import type { BookStepState } from "../lib/book-stage";
 import {
   formatVolumeArriveCopy,
   hasPreviousChapterUnapprovedReason,
   shortChapterTitle,
   stripEngineTokens,
 } from "../lib/copy-map";
-import { formatStartedOn, studyGuideCopy } from "../lib/stage-copy";
-import { lockedNamedVolumeCount } from "../lib/volume-map-tree";
+import { formatStartedOn, fourStepCopy, studyGuideCopy } from "../lib/stage-copy";
+import { filledChapterNumbers, lockedNamedVolumeCount, resolveOutlineWeaveStep } from "../lib/volume-map-tree";
 import {
   CheckCircle2,
   Feather,
@@ -118,9 +118,7 @@ export function BookStudy({
   const [pageError, setPageError] = useState<string | null>(null);
   const [volumeExpanded, setVolumeExpanded] = useState(false);
   const [canonOpen, setCanonOpen] = useState(false);
-  const [oneLine, setOneLine] = useState("");
   const [roleCount, setRoleCount] = useState(0);
-  const [openCount, setOpenCount] = useState(0);
 
   const activity = useMemo(() => deriveBookActivity(sse.messages, bookId), [bookId, sse.messages]);
   const writing = writePending || activity.writing;
@@ -143,21 +141,12 @@ export function BookStudy({
     void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
       .then((body) => setVolumeMap(body.content ?? ""))
       .catch(() => setVolumeMap(""));
-    void fetchJson<StoryCardResolved>(`/books/${bookId}/story-card`)
-      .then((body) => setOneLine(body.card.oneLine))
-      .catch(() => setOneLine(""));
     void fetchJson<{ files?: ReadonlyArray<{ name: string }> }>(`/books/${bookId}/truth`)
       .then((body) => {
         const files = body.files ?? [];
         setRoleCount(files.filter((file) => file.name.startsWith("roles/")).length);
       })
       .catch(() => setRoleCount(0));
-    void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/open_questions.md`)
-      .then((body) => {
-        const items = (body.content ?? "").split("\n").filter((line) => /^[-*]\s+\S/.test(line));
-        setOpenCount(items.length);
-      })
-      .catch(() => setOpenCount(0));
   };
 
   useEffect(() => {
@@ -259,8 +248,22 @@ export function BookStudy({
     ? shortChapterTitle(snapshot.nextChapter.title)
     : "";
   const lockedVolumes = snapshot ? lockedNamedVolumeCount(snapshot.tree) : 0;
-  const volumeTotal = snapshot?.tree.volumeCount ?? 0;
-  const planned = snapshot?.tree.chapterCount ?? 0;
+  const targetForWeave = book.targetChapters && book.targetChapters > 0 ? book.targetChapters : 200;
+  const planned = snapshot ? filledChapterNumbers(snapshot.tree).length : 0;
+  const outlineDone = snapshot
+    ? resolveOutlineWeaveStep(snapshot.tree, targetForWeave, volumeMap) === "done"
+    : false;
+  const stepCopy = fourStepCopy({
+    askDone: stage?.steps.ask === "done",
+    grounded: Boolean(stage?.workflow?.groundConfirmedAt),
+    roleCount,
+    lockedVolumes,
+    outlineDone,
+    plannedChapters: planned,
+    writtenChapters: data.chapters.length,
+    targetChapters: target,
+    weaveReady: Boolean(snapshot),
+  }, isZh);
 
   return (
     <div className="space-y-8 fade-in" data-testid="serial-cockpit-home">
@@ -444,40 +447,36 @@ export function BookStudy({
 
       <section className="space-y-3 border-t border-border/40 pt-6" data-testid="study-four-steps">
         <div className="text-sm font-medium">{isZh ? "四步一览" : "Four steps"}</div>
-        <div className="grid gap-3 sm:grid-cols-2 text-sm">
-          <div className="flex items-center gap-2">
-            {stage ? <StageDot state={stage.steps.ask} /> : null}
-            {isZh ? "问心" : "Ask"}
-            {oneLine ? <span className="text-muted-foreground truncate">「{oneLine}」</span> : null}
-          </div>
-          <div className="flex items-center gap-2">
-            {stage ? <StageDot state={stage.steps.ground} /> : null}
-            {isZh ? "研墨" : "Ground"}
-            <span className="text-muted-foreground">
-              {stage?.workflow?.groundConfirmedAt
-                ? (isZh ? `已定稿 · ${roleCount} 位人物` : `Grounded · ${roleCount} people`)
-                : (isZh ? `${roleCount} 位人物 · 待定 ${openCount}` : `${roleCount} people · ${openCount} open`)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {stage ? <StageDot state={stage.steps.weave} /> : null}
-            {isZh ? "织卷" : "Weave"}
-            <span className="text-muted-foreground">
-              {isZh
-                ? `已锁 ${lockedVolumes} 卷 · 细纲 ${planned}${target ? `/${target}` : ""}`
-                : `${lockedVolumes}/${volumeTotal} vol · ${planned}${target ? `/${target}` : ""} outlined`}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {stage ? <StageDot state={stage.steps.write} /> : null}
-            {isZh ? "落笔" : "Write"}
-            <span className="text-muted-foreground">
-              {isZh
-                ? `已写 ${data.chapters.length}${target ? ` / ${target}` : ""} 章`
-                : `${data.chapters.length}${target ? ` / ${target}` : ""} chapters`}
-            </span>
-          </div>
-        </div>
+        <ul className="grid gap-y-2 text-sm sm:grid-cols-2 sm:gap-x-8" data-testid="study-four-steps-grid">
+          <StepLine
+            state={stage?.steps.ask}
+            label={isZh ? "问心" : "Ask"}
+            status={stepCopy.ask}
+            onClick={() => goStage(nav, bookId, "ask")}
+            testId="study-step-ask"
+          />
+          <StepLine
+            state={stage?.steps.ground}
+            label={isZh ? "研墨" : "Ground"}
+            status={stepCopy.ground}
+            onClick={() => goStage(nav, bookId, "ground")}
+            testId="study-step-ground"
+          />
+          <StepLine
+            state={stage?.steps.weave}
+            label={isZh ? "织卷" : "Weave"}
+            status={stepCopy.weave}
+            onClick={() => goStage(nav, bookId, "weave")}
+            testId="study-step-weave"
+          />
+          <StepLine
+            state={stage?.steps.write}
+            label={isZh ? "落笔" : "Write"}
+            status={stepCopy.write}
+            onClick={() => goStage(nav, bookId, "write")}
+            testId="study-step-write"
+          />
+        </ul>
       </section>
 
       {(activity.lastError || pageError) && (
@@ -487,6 +486,35 @@ export function BookStudy({
         </div>
       )}
     </div>
+  );
+}
+
+function StepLine({
+  state,
+  label,
+  status,
+  onClick,
+  testId,
+}: {
+  readonly state: BookStepState | undefined;
+  readonly label: string;
+  readonly status: string;
+  readonly onClick: () => void;
+  readonly testId: string;
+}) {
+  return (
+    <li className="min-w-0">
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid={testId}
+        className="grid w-full grid-cols-[8px_3.5rem_minmax(0,1fr)] items-center gap-x-3 text-left leading-6 hover:text-foreground"
+      >
+        {state ? <StageDot state={state} /> : <span className="h-2 w-2" aria-hidden="true" />}
+        <span className="whitespace-nowrap">{label}</span>
+        <span className="truncate text-muted-foreground" title={status}>{status}</span>
+      </button>
+    </li>
   );
 }
 

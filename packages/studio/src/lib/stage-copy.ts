@@ -91,6 +91,43 @@ export function formatConfirmedDate(iso: string | undefined, isZh: boolean): str
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+export interface FourStepCopyInput {
+  readonly askDone: boolean;
+  readonly grounded: boolean;
+  readonly roleCount: number;
+  readonly lockedVolumes: number;
+  readonly outlineDone: boolean;
+  readonly plannedChapters: number;
+  readonly writtenChapters: number;
+  readonly targetChapters: number;
+  readonly weaveReady: boolean;
+}
+
+export function fourStepCopy(
+  input: FourStepCopyInput,
+  isZh: boolean,
+): { ask: string; ground: string; weave: string; write: string } {
+  const ask = input.askDone
+    ? (isZh ? "故事正典已完成" : "Canon settled")
+    : (isZh ? "故事正典未完成" : "Canon not settled");
+  const ground = input.grounded
+    ? (isZh ? `设定已定稿 · ${input.roleCount} 位人物` : `Grounded · ${input.roleCount} people`)
+    : (isZh ? `设定未定稿 · ${input.roleCount} 位人物` : `Not grounded · ${input.roleCount} people`);
+  const planned = input.targetChapters > 0
+    ? `${input.plannedChapters}/${input.targetChapters}`
+    : String(input.plannedChapters);
+  const weave = !input.weaveReady
+    ? "—"
+    : isZh
+      ? `已锁 ${input.lockedVolumes} 卷 · ${input.outlineDone ? "细纲已完成" : "细纲未完成"} · 章节规划 ${planned}`
+      : `${input.lockedVolumes} vol locked · Outline ${input.outlineDone ? "done" : "not done"} · ${planned} planned`;
+  const written = input.targetChapters > 0
+    ? `${input.writtenChapters}/${input.targetChapters}`
+    : String(input.writtenChapters);
+  const write = isZh ? `已写 ${written} 章` : `${written} chapters`;
+  return { ask, ground, weave, write };
+}
+
 export function formatStudyWords(total: number, isZh: boolean): string {
   if (!isZh) return `${total.toLocaleString()} words`;
   if (total >= 10000) {

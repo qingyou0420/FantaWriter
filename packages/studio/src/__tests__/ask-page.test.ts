@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -33,7 +33,8 @@ describe("ask page layout", () => {
     const page = read("src/pages/BookAskPage.tsx");
     expect(page).toMatch(/mode="book"/);
     expect(page).toMatch(/ChatPage/);
-    expect(page).toMatch(/AskStoryRail/);
+    expect(page).not.toMatch(/AskStoryRail/);
+    expect(existsSync(join(studioRoot, "src/components/AskStoryRail.tsx"))).toBe(false);
     expect(page).not.toMatch(/BookWorkspaceNav/);
     expect(page).not.toMatch(/BookSidebar/);
   });
@@ -51,13 +52,14 @@ describe("ask page layout", () => {
   });
 
   it("renders a derived story card when ask is done but story_card.md is missing", () => {
-    const rail = read("src/components/AskStoryRail.tsx") + read("src/components/AskStoryCard.tsx");
+    const rail = read("src/pages/BookGround.tsx") + read("src/components/AskStoryCard.tsx");
     const study = read("src/pages/BookStudy.tsx");
+    const ground = read("src/pages/BookGround.tsx");
     const server = read("src/api/server.ts");
     expect(rail).toMatch(/\/books\/\$\{bookId\}\/story-card/);
-    expect(rail).toMatch(/askDone \|\| data\.source !== "none"/);
+    expect(rail).toMatch(/storyCardSettled/);
     expect(rail).toMatch(/ask-story-card/);
-    expect(study).toMatch(/\/books\/\$\{bookId\}\/story-card/);
+    expect(ground).toMatch(/\/books\/\$\{bookId\}\/story-card/);
     expect(study).not.toMatch(/truth\/story\/story_card/);
     expect(server).toMatch(/\/api\/v1\/books\/:id\/story-card/);
     expect(server).toMatch(/truth:written/);

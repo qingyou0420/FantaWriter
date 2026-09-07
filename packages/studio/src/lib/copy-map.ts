@@ -54,6 +54,21 @@ const CATEGORY_EN: Record<string, string> = {
   plot: "Plot",
 };
 
+const PLATFORM_LABELS: Record<string, { readonly zh: string; readonly en: string }> = {
+  tomato: { zh: "番茄小说", en: "Tomato" },
+  qidian: { zh: "起点中文网", en: "Qidian" },
+  feilu: { zh: "飞卢", en: "Feilu" },
+  other: { zh: "其他", en: "Other" },
+};
+
+export const GROUND_PLATFORM_VALUES = ["tomato", "qidian", "feilu", "other"] as const;
+
+export function platformLabel(platform: string, isZh: boolean): string {
+  const mapped = PLATFORM_LABELS[platform];
+  if (mapped) return isZh ? mapped.zh : mapped.en;
+  return platform.trim() || (isZh ? "其他" : "Other");
+}
+
 const HIDDEN_TOKENS = /\b(G1|Objective|Key Results?|audit-failed|critical)\b/gi;
 
 export function mapAuditSeverity(severity: string, isZh: boolean): string {

@@ -235,6 +235,12 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
       return async () => undefined;
     }
 
+    async saveBookConfig(bookId: string, book: unknown): Promise<void> {
+      const dir = join(this.root, "books", bookId);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "book.json"), JSON.stringify(book, null, 2), "utf-8");
+    }
+
     inspectBookLock(): null {
       return null;
     }
@@ -345,6 +351,9 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     evaluateBookQuality: evaluateBookQualityMock,
     computeAnalytics: vi.fn(() => ({})),
     isSafeBookId: actual.isSafeBookId,
+    filledChapterNumbers: actual.filledChapterNumbers,
+    parseVolumeMapTree: actual.parseVolumeMapTree,
+    resolveOutlineWeaveStep: actual.resolveOutlineWeaveStep,
     normalizePlatformOrOther: actual.normalizePlatformOrOther,
     defaultChapterLength: actual.defaultChapterLength,
     inferLanguage: actual.inferLanguage,
@@ -7413,4 +7422,89 @@ describe("createStudioServer daemon lifecycle", () => {
     });
   });
 
+});
+
+describe("PUT story-card and book platform/genre", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "inkos-story-card-put-"));
+    await writeFile(join(root, "inkos.json"), JSON.stringify(projectConfig, null, 2), "utf-8");
+    loadBookConfigMock.mockReset();
+    loadChapterIndexMock.mockReset();
+    loadChapterIndexMock.mockResolvedValue([]);
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("writes story_card.md from a derived card and can rename the book", async () => {
+    const bookId = "card-book";
+    await writeCompleteBookFixture(root, bookId, "旧名");
+    const book = {
+      id: bookId,
+      title: "旧名",
+      platform: "qidian",
+      genre: "urban",
+      status: "outlining",
+      targetChapters: 100,
+      chapterWordCount: 3000,
+      language: "zh",
+      createdAt: "2026-04-12T00:00:00.000Z",
+      updatedAt: "2026-04-12T00:00:00.000Z",
+    };
+    loadBookConfigMock.mockResolvedValue(book);
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const putLine = await app.request(`http://localhost/api/v1/books/${bookId}/story-card`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oneLine: "一句话故事" }),
+    });
+    expect(putLine.status).toBe(200);
+    const cardPath = join(root, "books", bookId, "story", "story_card.md");
+    await expect(readFile(cardPath, "utf-8")).resolves.toMatch(/一句话故事/);
+    const got = await app.request(`http://localhost/api/v1/books/${bookId}/story-card`);
+    expect(got.status).toBe(200);
+    await expect(got.json()).resolves.toMatchObject({ source: "story_card" });
+    const beforeTitle = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf-8")) as { title: string };
+    expect(beforeTitle.title).toBe("旧名");
+
+    const putTitle = await app.request(`http://localhost/api/v1/books/${bookId}/story-card`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workingTitle: "新名" }),
+    });
+    expect(putTitle.status).toBe(200);
+    const afterTitle = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf-8")) as { title: string };
+    expect(afterTitle.title).toBe("新名");
+  });
+
+  it("normalizes platform 番茄 to tomato on PUT /books/:id", async () => {
+    const bookId = "plat-book";
+    await writeCompleteBookFixture(root, bookId, "平台书");
+    loadBookConfigMock.mockResolvedValue({
+      id: bookId,
+      title: "平台书",
+      platform: "qidian",
+      genre: "urban",
+      status: "outlining",
+      targetChapters: 100,
+      chapterWordCount: 3000,
+      createdAt: "2026-04-12T00:00:00.000Z",
+      updatedAt: "2026-04-12T00:00:00.000Z",
+    });
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const response = await app.request(`http://localhost/api/v1/books/${bookId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "番茄" }),
+    });
+    expect(response.status).toBe(200);
+    const saved = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf-8")) as { platform: string };
+    expect(saved.platform).toBe("tomato");
+  });
 });

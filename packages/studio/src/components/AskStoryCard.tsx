@@ -17,6 +17,7 @@ export function AskStoryCard({
   onConfirm,
   onReopen,
   onEditTitle,
+  hideConfirm,
 }: {
   readonly card: StoryCardDraft;
   readonly editable: boolean;
@@ -28,6 +29,7 @@ export function AskStoryCard({
   readonly onConfirm?: () => void;
   readonly onReopen?: () => void;
   readonly onEditTitle?: () => void;
+  readonly hideConfirm?: boolean;
 }) {
   const ready = storyCardReady(card);
 
@@ -72,7 +74,7 @@ export function AskStoryCard({
           </p>
         )}
       </div>
-      {editable ? (
+      {editable && !hideConfirm ? (
         <button
           type="button"
           data-testid="create-book-from-card"
@@ -82,7 +84,7 @@ export function AskStoryCard({
         >
           {confirmPending ? (isZh ? "建书中…" : "Creating…") : (isZh ? "就此建书" : "Create book")}
         </button>
-      ) : (
+      ) : !editable ? (
         <div className="mt-5 flex flex-wrap gap-2">
           {onEditTitle && (
             <button
@@ -105,7 +107,7 @@ export function AskStoryCard({
             </button>
           )}
         </div>
-      )}
+      ) : null}
     </aside>
   );
 }

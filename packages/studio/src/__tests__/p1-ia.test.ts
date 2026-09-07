@@ -130,6 +130,11 @@ describe("P1-4 书房", () => {
     expect(study).toMatch(/本卷要抵达/);
     expect(study).toMatch(/等你过目/);
     expect(study).toMatch(/四步一览/);
+    expect(study).toMatch(/study-step-ask/);
+    expect(study).toMatch(/grid-cols-\[8px_/);
+    expect(study).not.toMatch(/待定 \$\{openCount\}/);
+    expect(study).not.toMatch(/「\{oneLine\}」/);
+    expect(study).toMatch(/fourStepCopy/);
     expect(study).toMatch(/hasPreviousChapterUnapprovedReason/);
     expect(study).not.toMatch(/打开大纲/);
     expect(study).not.toMatch(/带病续写/);

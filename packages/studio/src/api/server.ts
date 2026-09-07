@@ -162,6 +162,7 @@ import {
   parsePendingHooksMarkdown,
   chapterRuntimeSlug,
   normalizeVolumeMapChapterHeadings,
+  normalizePlatformOrOther,
 } from "@actalk/inkos-core";
 import { isConfirmedProductionAction } from "../shared/confirmed-production.js";
 import {
@@ -189,7 +190,7 @@ import {
 import { buildStudioBookConfig } from "./book-create.js";
 import { persistAskArtifacts } from "../lib/ask-artifacts.js";
 import { collectBookStageFacts, loadBookWorkflow, resolveBookStage } from "../lib/book-stage-io.js";
-import { resolveStoryCard } from "../lib/story-card.js";
+import { mergeStoryCard, resolveStoryCard, type StoryCardDraft } from "../lib/story-card.js";
 import { validateGroundConfirm } from "../lib/ground-confirm.js";
 import { parseOpenQuestions, serializeOpenQuestions } from "../lib/open-questions.js";
 import {
@@ -3207,6 +3208,48 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
         source: resolved.source,
         askDone: payload.steps.ask === "done",
       });
+    } catch {
+      return c.json({ error: `Book "${id}" not found` }, 404);
+    }
+  });
+
+  app.put("/api/v1/books/:id/story-card", async (c) => {
+    const id = c.req.param("id");
+    const patch = await c.req.json<Partial<StoryCardDraft>>().catch(() => ({}));
+    try {
+      const book = await state.loadBookConfig(id);
+      const bookDir = state.bookDir(id);
+      const storyDir = join(bookDir, "story");
+      const [storyCardMarkdown, authorIntent, storyFrameRaw] = await Promise.all([
+        readFile(join(storyDir, "story_card.md"), "utf-8").catch(() => ""),
+        readFile(join(storyDir, "author_intent.md"), "utf-8").catch(() => ""),
+        readFile(join(storyDir, "outline", "story_frame.md"), "utf-8")
+          .catch(() => readFile(join(storyDir, "story_bible.md"), "utf-8"))
+          .catch(() => ""),
+      ]);
+      const current = resolveStoryCard({
+        title: book.title,
+        genre: book.genre,
+        storyCardMarkdown,
+        authorIntent,
+        storyFrameBody: storyFrameRaw,
+      });
+      const next = mergeStoryCard(current.card, patch);
+      const releaseLock = await state.acquireBookLock(id, { stage: "story-card-put" });
+      try {
+        await persistAskArtifacts({
+          bookDir,
+          card: next,
+          language: book.language === "en" ? "en" : "zh",
+        });
+        if (next.workingTitle && next.workingTitle !== book.title) {
+          await state.saveBookConfig(id, { ...book, title: next.workingTitle, updatedAt: new Date().toISOString() });
+        }
+      } finally {
+        await releaseLock();
+      }
+      broadcast("truth:written", { bookId: id, fileName: "story_card.md" });
+      return c.json({ ok: true, card: next, source: "story_card" });
     } catch {
       return c.json({ error: `Book "${id}" not found` }, 404);
     }
@@ -6639,6 +6682,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     const id = c.req.param("id");
     const updates = await c.req.json<{
       title?: string;
+      platform?: string;
+      genre?: string;
       chapterWordCount?: number;
       targetChapters?: number;
       status?: string;
@@ -6650,6 +6695,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       const updated = {
         ...book,
         ...(updates.title?.trim() ? { title: updates.title.trim() } : {}),
+        ...(updates.platform !== undefined ? { platform: normalizePlatformOrOther(updates.platform) } : {}),
+        ...(updates.genre?.trim() ? { genre: updates.genre.trim() } : {}),
         ...(updates.chapterWordCount !== undefined ? { chapterWordCount: Number(updates.chapterWordCount) } : {}),
         ...(updates.targetChapters !== undefined ? { targetChapters: Number(updates.targetChapters) } : {}),
         ...(updates.status !== undefined ? { status: updates.status as typeof book.status } : {}),

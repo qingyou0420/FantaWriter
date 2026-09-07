@@ -11,6 +11,7 @@ export {
   buildOutlineEditPatch,
   findChapterNode,
   findNodeById,
+  filledChapterNumbers,
   findVolumeForChapter,
   formatVolumeLabel,
   insertChapterStub,
