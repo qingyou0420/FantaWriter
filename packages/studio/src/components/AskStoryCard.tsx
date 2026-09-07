@@ -10,6 +10,7 @@ export function AskStoryCard({
   card,
   editable,
   isZh,
+  derivedFromCanon,
   confirmEnabled,
   confirmPending,
   onChange,
@@ -20,6 +21,7 @@ export function AskStoryCard({
   readonly card: StoryCardDraft;
   readonly editable: boolean;
   readonly isZh: boolean;
+  readonly derivedFromCanon?: boolean;
   readonly confirmEnabled?: boolean;
   readonly confirmPending?: boolean;
   readonly onChange?: (patch: Partial<StoryCardDraft>) => void;
@@ -35,6 +37,11 @@ export function AskStoryCard({
       data-testid="ask-story-card"
     >
       <div className="literary-kicker">{isZh ? "故事卡" : "Story card"}</div>
+      {derivedFromCanon && (
+        <p className="mt-1 text-[12px] text-muted-foreground">
+          {isZh ? "由正典推得 · 可编辑书名" : "Derived from canon · title editable"}
+        </p>
+      )}
       <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
         <Field
           label={isZh ? "暂定书名" : "Working title"}

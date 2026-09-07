@@ -188,6 +188,7 @@ import {
 import { buildStudioBookConfig } from "./book-create.js";
 import { persistAskArtifacts } from "../lib/ask-artifacts.js";
 import { collectBookStageFacts, loadBookWorkflow, resolveBookStage } from "../lib/book-stage-io.js";
+import { resolveStoryCard } from "../lib/story-card.js";
 import { validateGroundConfirm } from "../lib/ground-confirm.js";
 import { parseOpenQuestions, serializeOpenQuestions } from "../lib/open-questions.js";
 import {
@@ -3170,6 +3171,46 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     }
   });
 
+  app.get("/api/v1/books/:id/story-card", async (c) => {
+    const id = c.req.param("id");
+    try {
+      const book = await state.loadBookConfig(id);
+      const bookDir = state.bookDir(id);
+      const storyDir = join(bookDir, "story");
+      const [storyCardMarkdown, authorIntent, storyFrameRaw, chapters, nextChapter] = await Promise.all([
+        readFile(join(storyDir, "story_card.md"), "utf-8").catch(() => ""),
+        readFile(join(storyDir, "author_intent.md"), "utf-8").catch(() => ""),
+        readFile(join(storyDir, "outline", "story_frame.md"), "utf-8")
+          .catch(() => readFile(join(storyDir, "story_bible.md"), "utf-8"))
+          .catch(() => ""),
+        state.loadChapterIndex(id),
+        state.getNextChapterNumber(id),
+      ]);
+      const resolved = resolveStoryCard({
+        title: book.title,
+        genre: book.genre,
+        storyCardMarkdown,
+        authorIntent,
+        storyFrameBody: storyFrameRaw,
+      });
+      const payload = await resolveBookStage({
+        bookDir,
+        bookExists: true,
+        bookStatus: book.status,
+        targetChapters: book.targetChapters,
+        nextChapter,
+        chaptersWritten: chapters.length,
+      });
+      return c.json({
+        card: resolved.card,
+        source: resolved.source,
+        askDone: payload.steps.ask === "done",
+      });
+    } catch {
+      return c.json({ error: `Book "${id}" not found` }, 404);
+    }
+  });
+
   app.post("/api/v1/books/:id/ground/confirm", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json<{ continueWithOpen?: boolean }>().catch(() => ({ continueWithOpen: false }));
@@ -4025,6 +4066,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           await writeFile(target, content, "utf-8");
         },
       });
+      broadcast("truth:written", { bookId: id, fileName: proposal.fileName ?? staged.fileName });
       return c.json({ ok: true, proposal });
     } finally {
       await releaseLock();
@@ -6551,6 +6593,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     try {
       await mkdirFs(dirnameFs(resolved), { recursive: true });
       await writeFileFs(resolved, content, "utf-8");
+      broadcast("truth:written", { bookId: id, fileName: file });
       return c.json({ ok: true });
     } finally {
       await releaseLock();

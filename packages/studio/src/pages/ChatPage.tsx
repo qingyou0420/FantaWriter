@@ -2,7 +2,7 @@ import { useRef, useEffect, useMemo, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
-import { fetchJson, postApi, putApi, useApi } from "../hooks/use-api";
+import { fetchJson, invalidateApiPaths, postApi, putApi, useApi } from "../hooks/use-api";
 import type { ChatAttachmentPayload } from "../store/chat/types";
 import { chatSelectors, useChatStore } from "../store/chat";
 import type { ChatSessionKind } from "../store/chat";
@@ -323,6 +323,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
   const loadSessionDetail = useChatStore((s) => s.loadSessionDetail);
   const activateSession = useChatStore((s) => s.activateSession);
   const setSessionPlayMode = useChatStore((s) => s.setSessionPlayMode);
+  const bumpBookDataVersion = useChatStore((s) => s.bumpBookDataVersion);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollFrameRef = useRef<ScrollFrameId | null>(null);
@@ -752,6 +753,11 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
     markProposalResolved(details.execId, "confirmed");
     try {
       await postApi(`/books/${details.bookId}/truth-proposals/${details.proposalId}/apply`);
+      bumpBookDataVersion();
+      invalidateApiPaths([
+        `/api/v1/books/${details.bookId}/story-card`,
+        `/api/v1/books/${details.bookId}/truth/${details.fileName}`,
+      ]);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Apply failed", "error");
     }

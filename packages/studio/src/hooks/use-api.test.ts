@@ -127,6 +127,17 @@ describe("deriveInvalidationPaths", () => {
     ]);
   });
 
+  it("refreshes story-card and stage after applying a truth proposal", () => {
+    expect(deriveInvalidationPaths("/books/zui-ci/truth-proposals/abc/apply")).toEqual([
+      "/api/v1/books/zui-ci/story-card",
+      "/api/v1/books/zui-ci/stage",
+    ]);
+    expect(deriveInvalidationPaths("/api/v1/books/zui-ci/truth-proposals/abc/apply")).toEqual([
+      "/api/v1/books/zui-ci/story-card",
+      "/api/v1/books/zui-ci/stage",
+    ]);
+  });
+
   it("refreshes the works list after deleting a book", () => {
     expect(deriveInvalidationPaths("/books/ghost")).toEqual([
       "/api/v1/books",

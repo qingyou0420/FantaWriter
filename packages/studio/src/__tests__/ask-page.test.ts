@@ -50,6 +50,19 @@ describe("ask page layout", () => {
     expect(nav).toMatch(/nav\.toAsk\(bookId\)/);
   });
 
+  it("renders a derived story card when ask is done but story_card.md is missing", () => {
+    const rail = read("src/components/AskStoryRail.tsx") + read("src/components/AskStoryCard.tsx");
+    const study = read("src/pages/BookStudy.tsx");
+    const server = read("src/api/server.ts");
+    expect(rail).toMatch(/\/books\/\$\{bookId\}\/story-card/);
+    expect(rail).toMatch(/askDone \|\| data\.source !== "none"/);
+    expect(rail).toMatch(/ask-story-card/);
+    expect(study).toMatch(/\/books\/\$\{bookId\}\/story-card/);
+    expect(study).not.toMatch(/truth\/story\/story_card/);
+    expect(server).toMatch(/\/api\/v1\/books\/:id\/story-card/);
+    expect(server).toMatch(/truth:written/);
+  });
+
   it("strips book-page breadcrumbs and sends sidebar sessions to /ask", () => {
     const study = read("src/pages/BookStudy.tsx");
     const ground = read("src/pages/BookGround.tsx");

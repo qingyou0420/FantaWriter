@@ -17,7 +17,7 @@ import { useBookStage } from "../hooks/use-book-stage";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
-import { parseStoryCard } from "../lib/story-card";
+import type { StoryCardResolved } from "../lib/story-card";
 import {
   formatVolumeArriveCopy,
   hasPreviousChapterUnapprovedReason,
@@ -143,8 +143,8 @@ export function BookStudy({
     void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/outline/volume_map.md`)
       .then((body) => setVolumeMap(body.content ?? ""))
       .catch(() => setVolumeMap(""));
-    void fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/story/story_card.md`)
-      .then((body) => setOneLine(parseStoryCard(body.content ?? "").oneLine))
+    void fetchJson<StoryCardResolved>(`/books/${bookId}/story-card`)
+      .then((body) => setOneLine(body.card.oneLine))
       .catch(() => setOneLine(""));
     void fetchJson<{ files?: ReadonlyArray<{ name: string }> }>(`/books/${bookId}/truth`)
       .then((body) => {

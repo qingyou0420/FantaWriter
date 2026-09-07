@@ -8,7 +8,11 @@ import { useEffect, useState } from "react";
 import { AskStoryCard } from "./AskStoryCard";
 import { LiteraryEmpty } from "./LiteraryEmpty";
 import { fetchJson, putApi, useApi } from "../hooks/use-api";
-import { EMPTY_STORY_CARD, parseStoryCard, REOPEN_ASK_PROMPT } from "../lib/story-card";
+import {
+  EMPTY_STORY_CARD,
+  REOPEN_ASK_PROMPT,
+  type StoryCardResolved,
+} from "../lib/story-card";
 import { showToast } from "../lib/toast";
 import { useChatStore } from "../store/chat";
 
@@ -19,19 +23,25 @@ export function AskStoryRail({
   readonly bookId: string;
   readonly isZh: boolean;
 }) {
-  const { data: fileData, refetch } = useApi<{ content?: string | null }>(`/books/${bookId}/truth/story_card.md`);
+  const { data, refetch } = useApi<StoryCardResolved>(`/books/${bookId}/story-card`);
   const { data: bookData } = useApi<{ book?: { title?: string } }>(`/books/${bookId}`);
-  const title = bookData?.book?.title ?? "";
-  const card = fileData?.content ? parseStoryCard(fileData.content) : EMPTY_STORY_CARD;
+  const title = bookData?.book?.title ?? data?.card.workingTitle ?? "";
+  const card = data?.card ?? EMPTY_STORY_CARD;
+  const ready = Boolean(data && (data.askDone || data.source !== "none"));
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
   const createDraftSession = useChatStore((state) => state.createDraftSession);
   const setInput = useChatStore((state) => state.setInput);
   const bumpBookDataVersion = useChatStore((state) => state.bumpBookDataVersion);
+  const bookDataVersion = useChatStore((state) => state.bookDataVersion);
 
   useEffect(() => {
     setTitleDraft(title);
   }, [title]);
+
+  useEffect(() => {
+    void refetch();
+  }, [bookId, bookDataVersion, refetch]);
 
   const reopen = () => {
     createDraftSession(bookId, "book");
@@ -46,17 +56,20 @@ export function AskStoryRail({
     }
     try {
       await putApi(`/books/${bookId}`, { title: next });
-      if (fileData?.content) {
-        await fetchJson(`/books/${bookId}/truth/story_card.md`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: fileData.content.replace(
-              /working_title:\s*.*/,
-              `working_title: ${JSON.stringify(next)}`,
-            ),
-          }),
-        });
+      if (data?.source === "story_card") {
+        const fileData = await fetchJson<{ content?: string | null }>(`/books/${bookId}/truth/story_card.md`);
+        if (fileData.content) {
+          await fetchJson(`/books/${bookId}/truth/story_card.md`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              content: fileData.content.replace(
+                /working_title:\s*.*/,
+                `working_title: ${JSON.stringify(next)}`,
+              ),
+            }),
+          });
+        }
       }
       setEditingTitle(false);
       bumpBookDataVersion();
@@ -88,11 +101,12 @@ export function AskStoryRail({
           </button>
         </div>
       )}
-      {fileData?.content ? (
+      {ready ? (
         <AskStoryCard
           card={{ ...card, workingTitle: card.workingTitle || title }}
           editable={false}
           isZh={isZh}
+          derivedFromCanon={data?.source === "derived"}
           onEditTitle={() => setEditingTitle(true)}
         />
       ) : (
