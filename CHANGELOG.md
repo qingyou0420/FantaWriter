@@ -2,7 +2,9 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「墨生万象」，英文名 Inkborne（原名幻想作家 / FantaWriter）。
 
-## [未发布]
+## [2.1.4] - 2026-09-07
+
+Windows 补丁安装包：`Inkborne-Setup-2.1.4.exe`（同时上传 `FantaWriter-Setup-2.1.4.exe` 与 `Fantasy-Writer-Setup-2.1.4.exe` 别名）。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。`appId` 仍为 `com.fantawriter.app`。
 
 ### 变更
 
@@ -11,7 +13,7 @@
 - 侧栏「长篇 / 短篇」；问心页只留「重新推敲前提」；首页封面菜单「落笔」不再错标为书籍设置。
 - 书内五页与章页 / 真相 / 数据分析共用顶栏 chrome（左【书房】，右问心·研墨·织卷·落笔）；系统页面包屑去掉，页标题统一 32 衬线。
 - 对话框去掉右上 X 与重阴影；书籍设置 / 更多工具改用同一 Drawer；短篇删除只在短篇设置危险区。
-- 落笔章节表收成「通过 + ⋯」，重写/修订/带病通过改用对话框；研墨显示已定稿日期并把终局与伏笔拆开；织卷筛选折叠、树底文字链接；章页只留编辑 / 通过 / ⋯；短篇创作书房改为【书房】+ 可点问心。
+- 深页排版：落笔章节表收成「通过 + ⋯」，重写/修订/带病通过改用对话框；研墨显示已定稿日期并把终局与伏笔拆开；织卷筛选折叠、树底文字链接；章页只留编辑 / 通过 / ⋯；短篇创作书房改为【书房】+ 可点问心。
 
 ## [2.1.3] - 2026-09-06
 
@@ -455,6 +457,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.1.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.4
 [2.1.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.3
 [2.1.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.2
 [2.1.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.1
