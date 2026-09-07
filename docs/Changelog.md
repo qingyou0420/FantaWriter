@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.1.5
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.5.exe`（#112 P0-9：Windows 安装图标 + 落笔空态内边距；#113 P0-8：问心故事卡 / 织卷短题提要 / 问心记录收口）。
+
 ## 2.1.4
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.4.exe`（#107 P0-6 墨·宣·朱配色 + StageDot + 文案；#108 P0-7 chrome 上提 + 页头对话框；#109 P1-5 深页排版：落笔/研墨/织卷/章页等）。
