@@ -10,6 +10,7 @@ describe("validateGroundConfirm", () => {
     }, true);
     expect(result.ok).toBe(false);
     expect(result.missing).toHaveLength(3);
+    expect(result.missing[0]).toBe("故事框架未齐：主题与基调 / 世界规则 / 关系与主线 / 结局 至少缺一段");
   });
 
   it("passes when four sections, one protagonist, and no open items", () => {

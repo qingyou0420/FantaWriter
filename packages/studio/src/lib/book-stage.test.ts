@@ -40,6 +40,32 @@ describe("storyFrameHasFourSections", () => {
   it("rejects a single paragraph", () => {
     expect(storyFrameHasFourSections("# 骨架\n\n一段话。")).toBe(false);
   });
+
+  it("accepts theme + world + conflict + ending without a 人物 heading", () => {
+    const markdown = [
+      "## 主题与基调",
+      "权谋。",
+      "## 世界观底色",
+      "不可飞升。",
+      "## 核心冲突",
+      "德与兵。",
+      "## 终局方向",
+      "书院重开。",
+    ].join("\n");
+    expect(storyFrameHasFourSections(markdown)).toBe(true);
+  });
+
+  it("rejects three named sections", () => {
+    const markdown = [
+      "## 世界观底色",
+      "不可飞升。",
+      "## 核心冲突",
+      "德与兵。",
+      "## 终局",
+      "书院重开。",
+    ].join("\n");
+    expect(storyFrameHasFourSections(markdown)).toBe(false);
+  });
 });
 
 describe("deriveBookStage", () => {

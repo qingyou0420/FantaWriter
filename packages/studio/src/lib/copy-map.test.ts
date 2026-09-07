@@ -7,6 +7,7 @@ import {
   mapAuditCategory,
   mapAuditSeverity,
   mapTruthFileLabel,
+  platformLabel,
   stripEngineTokens,
 } from "./copy-map";
 
@@ -32,6 +33,13 @@ describe("copy-map", () => {
     expect(copy.arrive).toBe("四人在琴荒书院相识。");
     expect(copy.mustLand).toBe("辩堂立誓");
     expect(copy.arrive).not.toMatch(/Objective/);
+  });
+
+  it("maps platform ids to author-facing labels", () => {
+    expect(platformLabel("tomato", true)).toBe("番茄小说");
+    expect(platformLabel("qidian", true)).toBe("起点中文网");
+    expect(platformLabel("feilu", true)).toBe("飞卢");
+    expect(platformLabel("other", false)).toBe("Other");
   });
 
   it("maps truth file paths to author-facing labels", () => {

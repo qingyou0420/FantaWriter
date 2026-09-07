@@ -21,7 +21,7 @@ export interface GroundConfirmResult {
 export function validateGroundConfirm(facts: GroundConfirmFacts, isZh: boolean): GroundConfirmResult {
   const missing: string[] = [];
   if (!facts.storyFrameFourSections) {
-    missing.push(isZh ? "故事框架四段未齐（世界 / 人物 / 冲突 / 终局）" : "story_frame needs four non-empty sections");
+    missing.push(isZh ? "故事框架未齐：主题与基调 / 世界规则 / 关系与主线 / 结局 至少缺一段" : "story_frame is missing theme, world, conflict, or ending");
   }
   if (facts.majorRoleCount < 1) {
     missing.push(isZh ? "至少需要一位主角" : "Need at least one protagonist");

@@ -52,10 +52,14 @@ describe("ask page layout", () => {
   });
 
   it("renders a derived story card when ask is done but story_card.md is missing", () => {
-    const rail = read("src/components/AskStoryCard.tsx");
+    const rail = read("src/pages/BookGround.tsx") + read("src/components/AskStoryCard.tsx");
     const study = read("src/pages/BookStudy.tsx");
+    const ground = read("src/pages/BookGround.tsx");
     const server = read("src/api/server.ts");
+    expect(rail).toMatch(/\/books\/\$\{bookId\}\/story-card/);
+    expect(rail).toMatch(/storyCardSettled/);
     expect(rail).toMatch(/ask-story-card/);
+    expect(ground).toMatch(/\/books\/\$\{bookId\}\/story-card/);
     expect(study).not.toMatch(/truth\/story\/story_card/);
     expect(server).toMatch(/\/api\/v1\/books\/:id\/story-card/);
     expect(server).toMatch(/truth:written/);

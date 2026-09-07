@@ -6,15 +6,17 @@
 
 import { splitMarkdownSections, stripYamlFrontmatter } from "./book-stage.js";
 
-export type GroundFrameZone = "world" | "conflict" | "ending";
+export type GroundFrameZone = "theme" | "world" | "conflict" | "ending";
 
 const ZONE_PATTERNS: Record<GroundFrameZone, RegExp> = {
-  world: /世界|铁律|规则|world|tonal|rule|底色|主题/i,
+  theme: /主题|基调|theme|tonal|tone/i,
+  world: /世界|铁律|底色|world|rule/i,
   conflict: /冲突|主线|因果|对手|conflict/i,
   ending: /终局|结局|伏笔|endgame|ending/i,
 };
 
 const ZONE_HEADINGS: Record<GroundFrameZone, { zh: string; en: string }> = {
+  theme: { zh: "主题与基调", en: "Theme and tone" },
   world: { zh: "世界铁律", en: "World rules" },
   conflict: { zh: "核心冲突", en: "Core conflict" },
   ending: { zh: "终局", en: "Ending" },

@@ -127,6 +127,14 @@ describe("deriveInvalidationPaths", () => {
     ]);
   });
 
+  it("refreshes story-card, stage, and the book after a story-card put", () => {
+    expect(deriveInvalidationPaths("/books/x/story-card")).toEqual([
+      "/api/v1/books/x/story-card",
+      "/api/v1/books/x/stage",
+      "/api/v1/books/x",
+    ]);
+  });
+
   it("refreshes story-card and stage after applying a truth proposal", () => {
     expect(deriveInvalidationPaths("/books/zui-ci/truth-proposals/abc/apply")).toEqual([
       "/api/v1/books/zui-ci/story-card",
