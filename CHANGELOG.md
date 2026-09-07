@@ -2,6 +2,17 @@
 
 本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「墨生万象」，英文名 Inkborne（原名幻想作家 / FantaWriter）。
 
+## [2.1.5] - 2026-09-07
+
+Windows 补丁安装包：`Inkborne-Setup-2.1.5.exe`（同时上传 `FantaWriter-Setup-2.1.5.exe` 与 `Fantasy-Writer-Setup-2.1.5.exe` 别名）。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。`appId` 仍为 `com.fantawriter.app`。
+
+### 修复
+
+- Windows 安装包嵌入 Inkborne 图标（`icon.ico`），不再静默关掉 rcedit；落笔空态补上内边距，无章节时隐藏表头。
+- 问心故事卡：没有 `story_card.md` 时从作者意图 / 故事框架推导。
+- 织卷长标题拆成短题 / 提要。
+- 问心记录去掉「新书与短篇」；`#/chat` 不再先建空会话。
+
 ## [2.1.4] - 2026-09-07
 
 Windows 补丁安装包：`Inkborne-Setup-2.1.4.exe`（同时上传 `FantaWriter-Setup-2.1.4.exe` 与 `Fantasy-Writer-Setup-2.1.4.exe` 别名）。许可证仍是 **AGPL-3.0-only**，NOTICE 与 InkOS 署名未改。`appId` 仍为 `com.fantawriter.app`。
@@ -457,6 +468,7 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
+[2.1.5]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.5
 [2.1.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.4
 [2.1.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.3
 [2.1.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.2
