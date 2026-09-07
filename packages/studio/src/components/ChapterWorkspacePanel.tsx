@@ -9,7 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { TFunction } from "../hooks/use-i18n";
-import { fetchJson, useApi } from "../hooks/use-api";
+import { fetchJson, postApi, useApi } from "../hooks/use-api";
 
 interface ChapterVersion {
   readonly id: string;
@@ -86,11 +86,8 @@ export function ChapterWorkspacePanel({
   });
 
   const rewrite = () => runAction("rewrite", async () => {
-    await fetchJson(`/books/${bookId}/rewrite/${chapterNumber}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brief }),
-    });
+    await postApi(`/books/${bookId}/rewrite/${chapterNumber}`, { brief });
+    setVersionPreview(null);
     await Promise.all([refetch(), Promise.resolve(onChapterChanged())]);
     setNotice(t("reader.rewriteComplete"));
   });
@@ -119,10 +116,7 @@ export function ChapterWorkspacePanel({
   const restoreVersion = (versionId: string) => {
     if (!window.confirm(t("reader.restoreConfirm"))) return;
     void runAction("restore", async () => {
-      await fetchJson(
-        `/books/${bookId}/chapters/${chapterNumber}/versions/${versionId}/restore`,
-        { method: "POST" },
-      );
+      await postApi(`/books/${bookId}/chapters/${chapterNumber}/versions/${versionId}/restore`);
       setVersionPreview(null);
       await Promise.all([refetch(), Promise.resolve(onChapterChanged())]);
       setNotice(t("reader.restoreComplete"));

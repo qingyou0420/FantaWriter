@@ -43,7 +43,7 @@ import { useSessionEvents } from "./hooks/use-session-events";
 import { useTheme } from "./hooks/use-theme";
 import { useI18n } from "./hooks/use-i18n";
 import { setAppLanguage, tr } from "./lib/app-language";
-import { postApi, useApi } from "./hooks/use-api";
+import { invalidateApiPaths, invalidationPathsForChapterMutationSse, postApi, useApi } from "./hooks/use-api";
 import { Sun, Moon } from "lucide-react";
 import { House } from "lucide-react";
 import { useChatStore } from "./store/chat";
@@ -172,6 +172,8 @@ export function App() {
   const showBookChrome = Boolean(activeBookId && bookChromeTab);
 
   const onStageSse = useCallback((message: { event: string; data: unknown }) => {
+    const chapterPaths = invalidationPathsForChapterMutationSse(message);
+    if (chapterPaths.length) invalidateApiPaths(chapterPaths);
     if (!shouldInvalidateBookStageEvent(message.event)) return;
     const data = message.data as { bookId?: string } | null;
     invalidateBookStage(typeof data?.bookId === "string" ? data.bookId : activeBookId);
@@ -364,7 +366,7 @@ export function App() {
           )}
           {route.page === "chapter" && (
             <div className={PAGE_SHELL_WIDE}>
-              <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} />
+              <ChapterReader bookId={route.bookId} chapterNumber={route.chapterNumber} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "analytics" && (

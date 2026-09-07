@@ -8,6 +8,8 @@ describe("shouldInvalidateBookStageEvent", () => {
 
   it("still ignores progress and unrelated session events", () => {
     expect(shouldInvalidateBookStageEvent("write:complete")).toBe(true);
+    expect(shouldInvalidateBookStageEvent("rewrite:complete")).toBe(true);
+    expect(shouldInvalidateBookStageEvent("revise:complete")).toBe(true);
     expect(shouldInvalidateBookStageEvent("weave:progress")).toBe(false);
     expect(shouldInvalidateBookStageEvent("book:creating")).toBe(false);
     expect(shouldInvalidateBookStageEvent("session:title")).toBe(false);

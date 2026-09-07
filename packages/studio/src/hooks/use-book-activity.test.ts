@@ -9,6 +9,7 @@ import {
   removeShortFromCollection,
   shouldRefetchBookCollections,
   shouldRefetchBookView,
+  shouldRefetchChapterBody,
   shouldRefetchDaemonStatus,
 } from "./use-book-activity";
 
@@ -87,6 +88,16 @@ describe("shouldRefetchBookView", () => {
     expect(shouldRefetchBookView(msg("audit:complete", { bookId: "alpha", chapter: 3, passed: true }, 1), "alpha")).toBe(true);
     expect(shouldRefetchBookView(msg("audit:start", { bookId: "alpha", chapter: 3 }, 1), "alpha")).toBe(false);
     expect(shouldRefetchBookView(msg("rewrite:complete", { bookId: "beta" }, 1), "alpha")).toBe(false);
+  });
+});
+
+describe("shouldRefetchChapterBody", () => {
+  it("refreshes the open chapter after rewrite/revise for that chapter", () => {
+    expect(shouldRefetchChapterBody(msg("rewrite:complete", { bookId: "alpha", chapterNumber: 3 }, 1), "alpha", 3)).toBe(true);
+    expect(shouldRefetchChapterBody(msg("revise:complete", { bookId: "alpha", chapter: 3 }, 1), "alpha", 3)).toBe(true);
+    expect(shouldRefetchChapterBody(msg("rewrite:complete", { bookId: "alpha", chapterNumber: 2 }, 1), "alpha", 3)).toBe(false);
+    expect(shouldRefetchChapterBody(msg("rewrite:complete", { bookId: "beta", chapterNumber: 3 }, 1), "alpha", 3)).toBe(false);
+    expect(shouldRefetchChapterBody(msg("rewrite:complete", { bookId: "alpha" }, 1), "alpha", 3)).toBe(true);
   });
 });
 

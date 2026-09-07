@@ -43,6 +43,34 @@ export function buildApiUrl(path: string): string | null {
   return normalized.startsWith("/") ? `${BASE}${normalized}` : `${BASE}/${normalized}`;
 }
 
+export function chapterMutationInvalidationPaths(
+  bookId: string,
+  chapterNumber: number,
+): ReadonlyArray<string> {
+  return [
+    "/api/v1/books",
+    `/api/v1/books/${bookId}`,
+    `/api/v1/books/${bookId}/chapters/${chapterNumber}`,
+    `/api/v1/books/${bookId}/chapters/${chapterNumber}/workspace`,
+  ];
+}
+
+export function invalidationPathsForChapterMutationSse(input: {
+  readonly event: string;
+  readonly data: unknown;
+}): ReadonlyArray<string> {
+  if (!/^(rewrite|revise):complete$/.test(input.event)) return [];
+  const data = input.data as { bookId?: unknown; chapterNumber?: unknown; chapter?: unknown } | null;
+  const bookId = typeof data?.bookId === "string" ? data.bookId : "";
+  const chapter = typeof data?.chapterNumber === "number"
+    ? data.chapterNumber
+    : typeof data?.chapter === "number"
+      ? data.chapter
+      : Number.NaN;
+  if (!bookId || !Number.isInteger(chapter) || chapter < 1) return [];
+  return chapterMutationInvalidationPaths(bookId, chapter);
+}
+
 export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
   const normalized = buildApiUrl(path);
   if (!normalized) return [];
@@ -81,6 +109,21 @@ export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
   const chapterAction = normalized.match(/^\/api\/v1\/books\/([^/]+)\/chapters\/\d+\/(approve|reject)$/);
   if (chapterAction) {
     return ["/api/v1/books", `/api/v1/books/${chapterAction[1]}`];
+  }
+
+  const chapterMutation = normalized.match(/^\/api\/v1\/books\/([^/]+)\/(rewrite|revise|resync)\/(\d+)$/);
+  if (chapterMutation) {
+    return chapterMutationInvalidationPaths(chapterMutation[1]!, Number(chapterMutation[3]));
+  }
+
+  const chapterRestore = normalized.match(/^\/api\/v1\/books\/([^/]+)\/chapters\/(\d+)\/versions\/[^/]+\/restore$/);
+  if (chapterRestore) {
+    return chapterMutationInvalidationPaths(chapterRestore[1]!, Number(chapterRestore[2]));
+  }
+
+  const chapterBody = normalized.match(/^\/api\/v1\/books\/([^/]+)\/chapters\/(\d+)$/);
+  if (chapterBody) {
+    return chapterMutationInvalidationPaths(chapterBody[1]!, Number(chapterBody[2]));
   }
 
   const storyCard = normalized.match(/^\/api\/v1\/books\/([^/]+)\/story-card$/);
@@ -170,7 +213,7 @@ export async function fetchJson<T>(
   }
 
   const fetchImpl = deps?.fetchImpl ?? fetch;
-  const res = await fetchImpl(url, init);
+  const res = await fetchImpl(url, { cache: "no-store", ...init });
   const method = String(init.method ?? "GET").toUpperCase();
 
   if (!res.ok) {

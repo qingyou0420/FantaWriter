@@ -22,6 +22,7 @@ describe("P0-7 chrome lift", () => {
     expect(app).toMatch(/BookWorkspaceNav/);
     expect(app).toMatch(/deriveBookChromeTab/);
     expect(app).toMatch(/shouldInvalidateBookStageEvent/);
+    expect(app).toMatch(/invalidationPathsForChapterMutationSse/);
     expect(app).toMatch(/max-w-\[880px\]/);
     expect(app).toMatch(/max-w-\[1200px\]/);
     for (const file of [
@@ -109,11 +110,19 @@ describe("P0-7 dialogs and buttons", () => {
 
   it("invalidates shared /stage on write/weave/book SSE but ignores progress", () => {
     expect(shouldInvalidateBookStageEvent("write:complete")).toBe(true);
+    expect(shouldInvalidateBookStageEvent("rewrite:complete")).toBe(true);
+    expect(shouldInvalidateBookStageEvent("revise:complete")).toBe(true);
     expect(shouldInvalidateBookStageEvent("weave:complete")).toBe(true);
     expect(shouldInvalidateBookStageEvent("book:deleted")).toBe(true);
     expect(shouldInvalidateBookStageEvent("truth:written")).toBe(true);
     expect(shouldInvalidateBookStageEvent("weave:progress")).toBe(false);
     expect(shouldInvalidateBookStageEvent("book:creating")).toBe(false);
     expect(shouldInvalidateBookStageEvent("session:title")).toBe(false);
+  });
+
+  it("refreshes the open chapter body after rewrite SSE", () => {
+    expect(read("src/pages/ChapterReader.tsx")).toMatch(/shouldRefetchChapterBody/);
+    expect(read("src/pages/ChapterReader.tsx")).toMatch(/handleChapterChanged/);
+    expect(read("src/components/ChapterWorkspacePanel.tsx")).toMatch(/postApi\(`\/books\/\$\{bookId\}\/rewrite/);
   });
 });
