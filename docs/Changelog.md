@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.1.8
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.8.exe`（#122：改写后刷新章节正文）。
+
 ## 2.1.7
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.7.exe`（#120：问心新建书对话去掉题材模版芯片）。
