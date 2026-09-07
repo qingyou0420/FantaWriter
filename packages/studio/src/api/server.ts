@@ -5331,7 +5331,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
   app.get("/api/v1/sessions", async (c) => {
     const bookId = c.req.query("bookId");
-    const sessions = await listBookSessions(root, bookId === undefined ? null : bookId === "null" ? null : bookId);
+    const queriedBookId = bookId === undefined ? null : bookId === "null" ? null : bookId;
+    const sessions = (await listBookSessions(root, queriedBookId)).filter((session) => {
+      if (queriedBookId !== null) return true;
+      const kind = session.sessionKind ?? "chat";
+      return !(kind === "chat" && session.messageCount === 0);
+    });
     return c.json({ sessions });
   });
 

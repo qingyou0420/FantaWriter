@@ -351,11 +351,11 @@ describe("pickProjectChatSessionId", () => {
     ])).toBe("play-session");
   });
 
-  it("falls back to the newest empty session when all sessions are empty", () => {
+  it("does not reuse empty chat sessions; #/chat stays a draft until the first message", () => {
     expect(pickProjectChatSessionId([
-      { sessionId: "empty-latest", messageCount: 0 },
-      { sessionId: "empty-older", messageCount: 0 },
-    ])).toBe("empty-latest");
+      { sessionId: "empty-latest", messageCount: 0, sessionKind: "chat" },
+      { sessionId: "empty-older", messageCount: 0, sessionKind: "chat" },
+    ])).toBeNull();
   });
 
   it("returns null when there is no project chat session", () => {

@@ -174,7 +174,6 @@ const strings = {
   "nav.authorProfile": { zh: "资料设置", en: "Profile settings" },
   "nav.tools": { zh: "工具", en: "Tools" },
   "nav.history": { zh: "问心记录", en: "Asks" },
-  "nav.projectTalks": { zh: "新书与短篇", en: "New books & shorts" },
   "nav.newAsk": { zh: "新开会话", en: "New session" },
   "nav.newAskPlaceholder": { zh: "新的会话", en: "New session" },
   "nav.renameAsk": { zh: "重命名", en: "Rename" },

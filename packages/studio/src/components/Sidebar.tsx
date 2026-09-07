@@ -9,7 +9,6 @@ import type { TFunction } from "../hooks/use-i18n";
 import { tr } from "../lib/app-language";
 import {
   forgetBookCreateSessionIfMatches,
-  setBookCreateSessionId,
   setProjectChatSessionId,
   startFreshBookCreateSession,
 } from "../pages/chat-page-state";
@@ -31,8 +30,6 @@ import {
   Cpu,
   Activity,
   Plus,
-  MessageSquare,
-  Gamepad2,
   ScrollText,
   BookPlus,
   Boxes,
@@ -44,23 +41,8 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
-  Clapperboard,
-  Rows3,
-  Film,
   User,
 } from "lucide-react";
-
-function SessionKindIcon({ kind, className }: { readonly kind?: string; readonly className?: string }) {
-  const Icon =
-    kind === "play" ? Gamepad2
-    : kind === "short" ? ScrollText
-    : kind === "script" ? Clapperboard
-    : kind === "storyboard" ? Rows3
-    : kind === "interactive-film" ? Film
-    : kind === "book-create" ? BookPlus
-    : MessageSquare;
-  return <Icon size={13} className={className} />;
-}
 
 interface BookSummary {
   readonly id: string;
@@ -119,24 +101,9 @@ export function Sidebar({ nav, activePage, sse, t }: {
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; title: string } | null>(null);
   const [expandedTalkBooks, setExpandedTalkBooks] = useState<Set<string>>(new Set());
-  const [projectChatExpanded, setProjectChatExpanded] = useState(false);
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
 
   const books = data?.books ?? [];
-  const projectChatKey = "__null__";
-  const projectChatSessions = useMemo(
-    () =>
-      (sessionIdsByBook[projectChatKey] ?? [])
-        .map((sessionId) => sessions[sessionId])
-        .filter((session): session is NonNullable<(typeof sessions)[string]> => {
-          if (!session) return false;
-          return Boolean(session.title)
-            || session.messages.length > 0
-            || session.isDraft
-            || session.sessionId === activeSessionId;
-        }),
-    [activeSessionId, sessionIdsByBook, sessions],
-  );
   useEffect(() => {
     const recent = sse.messages.at(-1);
     if (!recent) return;
@@ -156,7 +123,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
 
   useEffect(() => {
     if (!sessionsExpanded) return;
-    void loadSessionList(null);
     for (const book of books) {
       void loadSessionList(book.id);
     }
@@ -170,10 +136,8 @@ export function Sidebar({ nav, activePage, sse, t }: {
   useEffect(() => {
     if (activePage === "chat") {
       setSessionsExpanded(true);
-      setProjectChatExpanded(true);
-      void loadSessionList(null);
     }
-  }, [activePage, loadSessionList]);
+  }, [activePage]);
 
   const toggleTalkBook = (bookId: string) => {
     setExpandedTalkBooks((prev) => {
@@ -215,36 +179,13 @@ export function Sidebar({ nav, activePage, sse, t }: {
     nav.toAsk(bookId);
   };
 
-  const openProjectChatSession = (sessionId: string) => {
-    setInput("");
-    activateSession(sessionId);
-    const kind = sessions[sessionId]?.sessionKind;
-    if (kind === "book-create") {
-      setBookCreateSessionId(sessionId);
-    } else {
-      setProjectChatSessionId(sessionId);
-    }
-    nav.toChat();
-    void loadSessionDetail(sessionId);
-  };
-
-  const handleCreateProjectChatSession = () => {
-    setProjectChatExpanded(true);
-    const sessionId = createDraftSession(null, "chat");
-    setProjectChatSessionId(sessionId);
-    setInput("");
-    nav.toChat();
-  };
-
   const handleOpenBookCreate = () => {
-    setProjectChatExpanded(true);
     startFreshBookCreateSession(createDraftSession);
     setInput("");
     nav.toBookCreate();
   };
 
   const launchProjectMode = (kind: "short" | "play" | "script" | "storyboard" | "interactive-film", playMode?: "guided" | "open") => {
-    setProjectChatExpanded(true);
     const sessionId = createDraftSession(null, kind, playMode);
     setProjectChatSessionId(sessionId);
     setInput("");
@@ -328,7 +269,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
               const next = !sessionsExpanded;
               setSessionsExpanded(next);
               if (next) {
-                void loadSessionList(null);
                 for (const book of books) {
                   if (sessionIdsByBook[book.id] === undefined) void loadSessionList(book.id);
                 }
@@ -416,88 +356,6 @@ export function Sidebar({ nav, activePage, sse, t }: {
                   </div>
                 );
               })}
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !projectChatExpanded;
-                  setProjectChatExpanded(next);
-                  if (next) {
-                    nav.toChat();
-                    if (sessionIdsByBook["__null__"] === undefined) void loadSessionList(null);
-                  }
-                }}
-                className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[14px] text-muted-foreground hover:text-foreground"
-              >
-                <ChevronRight size={12} className={projectChatExpanded ? "rotate-90" : ""} />
-                <span>{t("nav.projectTalks")}</span>
-              </button>
-              <Collapse open={projectChatExpanded}>
-                <div>
-                  {projectChatSessions.map((session) => {
-                    const isActiveSession = activePage === "chat" && activeSessionId === session.sessionId;
-                    const label = getSessionLabel(session, t);
-                    return (
-                      <div
-                        key={session.sessionId}
-                        className={`group/session flex items-center rounded-md ${isActiveSession ? "bg-secondary/50" : "hover:bg-secondary/30"}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => openProjectChatSession(session.sessionId)}
-                          className="flex min-w-0 flex-1 items-center gap-2 pl-7 pr-2 py-1.5 text-left text-[14px] leading-5"
-                        >
-                          <SessionKindIcon
-                            kind={session.sessionKind}
-                            className={`shrink-0 ${isActiveSession ? "text-foreground" : "text-muted-foreground/60"}`}
-                          />
-                          <span className={`truncate flex-1 ${isActiveSession ? "text-foreground" : "text-muted-foreground"}`}>
-                            {label}
-                          </span>
-                          {session.isStreaming ? (
-                            <Loader2 size={12} className="shrink-0 animate-spin text-primary" />
-                          ) : (
-                            <span className="shrink-0 text-[12px] text-muted-foreground/70">
-                              {formatRelativeTime(session.sessionId)}
-                            </span>
-                          )}
-                        </button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger className="flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 group-hover/session:opacity-100 text-muted-foreground">
-                            <MoreHorizontal size={14} />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent side="right" align="start" className="w-36">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setRenameTarget({ sessionId: session.sessionId, currentTitle: label });
-                                setRenameValue(session.title ?? "");
-                              }}
-                            >
-                              <Pencil size={14} />
-                              <span>{tr("改名", "Rename")}</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setDeleteTarget({ sessionId: session.sessionId, title: label })}
-                            >
-                              <Trash2 size={14} />
-                              <span>{tr("删除", "Delete")}</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={handleCreateProjectChatSession}
-                    className="w-full flex items-center gap-2 pl-7 pr-2 py-1.5 text-[13px] text-muted-foreground/50 hover:text-foreground"
-                  >
-                    <Plus size={12} />
-                    <span>{t("nav.newAsk")}</span>
-                  </button>
-                </div>
-              </Collapse>
             </div>
           </Collapse>
         </div>

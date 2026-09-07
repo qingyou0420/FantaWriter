@@ -635,7 +635,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
         return;
       }
 
-      const newSessionId = await createSession(null, "chat");
+      const newSessionId = createDraftSession(null, "chat");
       if (!cancelled) {
         setProjectChatSessionId(newSessionId);
       }
@@ -644,7 +644,7 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
     return () => {
       cancelled = true;
     };
-  }, [activeBookId, activateSession, createSession, loadSessionDetail, loadSessionList, mode]);
+  }, [activeBookId, activateSession, createDraftSession, createSession, loadSessionDetail, loadSessionList, mode]);
 
   const addAttachedFiles = (files: FileList | File[]) => {
     const incoming = Array.from(files);

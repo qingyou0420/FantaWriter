@@ -31,6 +31,8 @@ describe("P1-1 sidebar + author", () => {
     expect(sidebar).not.toMatch(/我的创作/);
     expect(sidebar.indexOf("sidebar-author")).toBeLessThan(sidebar.indexOf("sidebar-create-list"));
     expect(sidebar.indexOf("sidebar-create-list")).toBeLessThan(sidebar.indexOf("sidebar-sessions"));
+    expect(sidebar).not.toMatch(/projectTalks|projectChatExpanded|SessionKindIcon/);
+    expect(sidebar).not.toMatch(/新书与短篇/);
     expect(home).toMatch(/nav\.signYourName/);
     expect(home).toMatch(/isInProgressBookStatus/);
     expect(home).toMatch(/home-edit-author/);
