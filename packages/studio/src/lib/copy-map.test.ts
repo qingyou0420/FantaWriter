@@ -7,7 +7,6 @@ import {
   mapAuditCategory,
   mapAuditSeverity,
   mapTruthFileLabel,
-  splitLongOutlineTitle,
   stripEngineTokens,
 } from "./copy-map";
 
@@ -26,14 +25,6 @@ describe("copy-map", () => {
   it("strips engine tokens from author-facing strings", () => {
     expect(stripEngineTokens("G1 未过，Objective 仍在")).not.toMatch(/G1|Objective/);
     expect(stripEngineTokens("[critical] audit-failed")).not.toMatch(/critical|audit-failed/);
-  });
-
-  it("splits a long outline title into 短题 + 提要", () => {
-    const split = splitLongOutlineTitle("倒叙冷开，落回书院春日苏绻入辩堂初遇阿月后", "");
-    expect(split.split).toBe(true);
-    expect(split.title.length).toBeLessThanOrEqual(12);
-    expect(split.summary).toContain("落回书院");
-    expect(splitLongOutlineTitle("短题", "已有提要").split).toBe(false);
   });
 
   it("formats volume OKR without Objective/Key Results labels", () => {

@@ -161,6 +161,7 @@ import {
   classifyHookDue,
   parsePendingHooksMarkdown,
   chapterRuntimeSlug,
+  normalizeVolumeMapChapterHeadings,
 } from "@actalk/inkos-core";
 import { isConfirmedProductionAction } from "../shared/confirmed-production.js";
 import {
@@ -6586,7 +6587,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
     if (RUNTIME_DIAGNOSTIC_FILE_RE.test(file)) {
       return c.json({ error: "Runtime diagnostic files are read-only" }, 400);
     }
-    const { content } = await c.req.json<{ content: string }>();
+    const { content: rawContent } = await c.req.json<{ content: string }>();
+    let content = rawContent;
+    if (file === "outline/volume_map.md" && typeof content === "string") {
+      const book = await state.loadBookConfig(id).catch(() => null);
+      content = normalizeVolumeMapChapterHeadings(content, {
+        language: book?.language === "en" ? "en" : "zh",
+      });
+    }
     const { writeFile: writeFileFs, mkdir: mkdirFs } = await import("node:fs/promises");
     const { dirname: dirnameFs } = await import("node:path");
     const releaseLock = await state.acquireBookLock(id, { stage: "truth-put" });

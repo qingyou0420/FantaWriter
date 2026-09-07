@@ -100,27 +100,6 @@ export function shortChapterTitle(title: string, max = 12): string {
   return `${cleaned.slice(0, max)}`;
 }
 
-export function splitLongOutlineTitle(title: string, summary: string): {
-  readonly title: string;
-  readonly summary: string;
-  readonly split: boolean;
-} {
-  const trimmedTitle = title.trim();
-  const trimmedSummary = summary.trim();
-  if (trimmedTitle.length <= 20 || trimmedSummary) {
-    return { title: trimmedTitle, summary: summary, split: false };
-  }
-  const mark = trimmedTitle.search(/[，。；→]/);
-  if (mark <= 0) {
-    return { title: shortChapterTitle(trimmedTitle, 12), summary: trimmedTitle, split: true };
-  }
-  return {
-    title: shortChapterTitle(trimmedTitle.slice(0, mark), 12),
-    summary: trimmedTitle.slice(mark + 1).trim(),
-    split: true,
-  };
-}
-
 export function hasPreviousChapterUnapprovedReason(
   reasons: ReadonlyArray<{ readonly code?: string; readonly message?: string; readonly messageZh?: string }>,
 ): boolean {

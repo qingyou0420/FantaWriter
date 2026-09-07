@@ -8,6 +8,12 @@
 export type VolumeMapNodeKind = "volume" | "chapter" | "range" | "note";
 
 export const MAX_VOLUME_TREE_LABEL_CHARS = 22;
+export const MAX_CHAPTER_TITLE_CHARS = 12;
+export const HARD_CHAPTER_TITLE_CHARS = 20;
+
+export function chapterTitleLimit(language?: "zh" | "en"): number {
+  return language === "en" ? MAX_CHAPTER_TITLE_CHARS * 2 : MAX_CHAPTER_TITLE_CHARS;
+}
 
 export interface VolumeMapChapterNode {
   readonly kind: "chapter" | "range";
@@ -494,11 +500,16 @@ function replaceChapterHeadingTitle(
 
 export function outlineEditorSource(
   node: VolumeMapVolumeNode | VolumeMapChapterNode | VolumeMapNoteNode,
-): { title: string; summary: string } {
-  return {
-    title: node.title,
-    summary: node.kind === "volume" ? node.body : node.kind === "note" ? node.body : node.summary,
-  };
+  options?: { readonly language?: "zh" | "en" },
+): { title: string; summary: string; split: boolean } {
+  if (node.kind === "volume") {
+    return { title: node.title, summary: node.body, split: false };
+  }
+  if (node.kind === "note") {
+    return { title: node.title, summary: node.body, split: false };
+  }
+  const split = splitOutlineTitleAndSummary(node.title, node.summary, options);
+  return { title: split.title, summary: split.summary, split: split.split };
 }
 
 /**
@@ -509,8 +520,9 @@ export function buildOutlineEditPatch(
   node: VolumeMapVolumeNode | VolumeMapChapterNode | VolumeMapNoteNode,
   title: string,
   summary: string,
+  options?: { readonly language?: "zh" | "en" },
 ): { readonly title?: string; readonly summary?: string } | null {
-  const source = outlineEditorSource(node);
+  const source = outlineEditorSource(node, options);
   const patch: { title?: string; summary?: string } = {};
   if (title.trim() !== source.title.trim()) patch.title = title.trim();
   if (summary !== source.summary) patch.summary = summary;
@@ -523,11 +535,12 @@ export function applyOutlineWorkspaceSave(
   nodeId: string,
   title: string,
   summary: string,
+  options?: { readonly language?: "zh" | "en" },
 ): string {
   const tree = parseVolumeMapTree(markdown);
   const node = findNodeById(tree, nodeId);
   if (!node) return markdown;
-  const patch = buildOutlineEditPatch(node, title, summary);
+  const patch = buildOutlineEditPatch(node, title, summary, options);
   if (!patch) return markdown;
   return applyVolumeMapNodeEdit(markdown, nodeId, patch);
 }
@@ -1002,25 +1015,88 @@ export function lockedNamedVolumeCount(tree: VolumeMapTree): number {
   ).length;
 }
 
-export function splitOutlineTitleAndSummary(title: string, summary: string): {
+const TITLE_HARD_SEP = /[，,。．.；;：:→—–\-]/g;
+const TITLE_OPENER_CLOSER: Readonly<Record<string, string>> = {
+  "（": "）",
+  "(": ")",
+  "【": "】",
+  "[": "]",
+};
+
+function titleCharCount(text: string): number {
+  return [...text].length;
+}
+
+function trimChapterTitleTail(title: string): string {
+  return title.replace(/[：:，,]+$/u, "").replace(/[（(]$/u, "").trim();
+}
+
+function findTitleSplitMark(title: string): number {
+  TITLE_HARD_SEP.lastIndex = 0;
+  let match = TITLE_HARD_SEP.exec(title);
+  while (match) {
+    if (match.index >= 2) return match.index;
+    match = TITLE_HARD_SEP.exec(title);
+  }
+  for (let index = 0; index < title.length; index += 1) {
+    const closer = TITLE_OPENER_CLOSER[title[index]!];
+    if (!closer || index < 2) continue;
+    if (title.indexOf(closer, index + 1) < 0) return index;
+  }
+  return -1;
+}
+
+export function splitOutlineTitleAndSummary(
+  title: string,
+  summary: string,
+  options?: { readonly language?: "zh" | "en" },
+): {
   readonly title: string;
   readonly summary: string;
   readonly split: boolean;
 } {
   const trimmedTitle = title.trim();
   const trimmedSummary = summary.trim();
-  if (trimmedTitle.length <= 20 || trimmedSummary) {
+  const limit = chapterTitleLimit(options?.language);
+  if (titleCharCount(trimmedTitle) <= limit || trimmedSummary) {
     return { title: trimmedTitle, summary, split: false };
   }
-  const mark = trimmedTitle.search(/[，。；→]/);
-  if (mark <= 0) {
-    return { title: truncateOutlineLabel(trimmedTitle, 12), summary: trimmedTitle, split: true };
+  const mark = findTitleSplitMark(trimmedTitle);
+  if (mark < 0) {
+    return {
+      title: truncateOutlineLabel(trimmedTitle, limit),
+      summary: trimmedTitle,
+      split: true,
+    };
   }
+  const rawHead = trimmedTitle.slice(0, mark);
+  const head = trimChapterTitleTail(rawHead) || rawHead;
   return {
-    title: truncateOutlineLabel(trimmedTitle.slice(0, mark), 12),
+    title: truncateOutlineLabel(head, limit),
     summary: trimmedTitle.slice(mark + 1).trim(),
     split: true,
   };
+}
+
+export function normalizeVolumeMapChapterHeadings(
+  markdown: string,
+  options?: { readonly language?: "zh" | "en" },
+): string {
+  const tree = parseVolumeMapTree(markdown);
+  const chapters = [
+    ...tree.volumes.flatMap((volume) => volume.chapters),
+    ...tree.orphanChapters,
+  ].sort((left, right) => right.lineStart - left.lineStart);
+  let next = markdown;
+  for (const chapter of chapters) {
+    const split = splitOutlineTitleAndSummary(chapter.title, chapter.summary, options);
+    if (!split.split) continue;
+    next = applyVolumeMapNodeEdit(next, chapter.id, {
+      title: split.title,
+      summary: split.summary,
+    });
+  }
+  return next;
 }
 
 export function tidyVolumeMapMarkdown(markdown: string, language: "zh" | "en" = "zh"): string {
