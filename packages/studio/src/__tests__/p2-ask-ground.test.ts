@@ -36,6 +36,15 @@ describe("P2-1 问心", () => {
     expect(sidebar).toMatch(/toBookCreate/);
     expect(sidebar).toMatch(/startFreshBookCreateSession/);
   });
+
+  it("does not render genre template chips above the ask composer", () => {
+    const chat = read("src/pages/ChatPage.tsx");
+    const rail = read("src/components/AskCreateRail.tsx");
+    expect(chat).not.toMatch(/AskGenreChips/);
+    expect(rail).not.toMatch(/AskGenreChips/);
+    expect(chat + rail).not.toMatch(/ask-genre-chips/);
+    expect(chat).toMatch(/reopen-ask/);
+  });
 });
 
 describe("P2-2 研墨", () => {

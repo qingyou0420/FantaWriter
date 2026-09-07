@@ -7,7 +7,6 @@
 import { useMemo, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AskStoryCard } from "./AskStoryCard";
-import { useApi } from "../hooks/use-api";
 import {
   createBookInstruction,
   extractStoryCardDraft,
@@ -136,32 +135,6 @@ export function AskCreateRail({ isZh }: { readonly isZh: boolean }) {
           </div>
         )}
       </ConfirmDialog>
-    </div>
-  );
-}
-
-export function AskGenreChips({
-  isZh,
-  onInsert,
-}: {
-  readonly isZh: boolean;
-  readonly onInsert: (text: string) => void;
-}) {
-  const { data } = useApi<{ genres?: ReadonlyArray<{ id: string; name?: string }> }>("/genres");
-  const genres = (data?.genres ?? []).slice(0, 8);
-  if (genres.length === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-1.5 px-3 pb-1" data-testid="ask-genre-chips">
-      {genres.map((genre) => (
-        <button
-          key={genre.id}
-          type="button"
-          onClick={() => onInsert(isZh ? `题材按「${genre.name ?? genre.id}」来` : `Use the ${genre.name ?? genre.id} genre`)}
-          className="rounded-full border border-border/50 bg-secondary/50 px-2.5 py-1 text-[13px] text-muted-foreground hover:text-foreground"
-        >
-          {genre.name ?? genre.id}
-        </button>
-      ))}
     </div>
   );
 }

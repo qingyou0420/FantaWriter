@@ -49,7 +49,6 @@ import {
   Message,
   MessageContent,
 } from "../components/ai-elements/message";
-import { AskGenreChips } from "../components/AskCreateRail";
 import { REOPEN_ASK_PROMPT } from "../lib/story-card";
 import {
   type ChatPageModelPreference,
@@ -1107,12 +1106,6 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
                   event.currentTarget.value = "";
                 }}
               />
-              {mode === "book-create" ? (
-                <AskGenreChips
-                  isZh={isZh}
-                  onInsert={(text) => setInput(input ? `${input}\n${text}` : text)}
-                />
-              ) : null}
               {mode === "book" && activeBookId ? (
                 <div className="flex flex-wrap gap-1.5 border-b border-border/20 px-3 py-2">
                   <button
