@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildApiUrl, deriveInvalidationPaths, fetchJson, StudioApiError } from "./use-api";
+import {
+  buildApiUrl,
+  chapterMutationInvalidationPaths,
+  deriveInvalidationPaths,
+  fetchJson,
+  invalidationPathsForChapterMutationSse,
+  StudioApiError,
+} from "./use-api";
 
 describe("buildApiUrl", () => {
   it("returns null for blank paths so callers can skip requests", () => {
@@ -155,6 +162,37 @@ describe("deriveInvalidationPaths", () => {
       "/api/v1/books",
       "/api/v1/books/ghost",
     ]);
+  });
+
+  it("refreshes the chapter body after rewrite or restore", () => {
+    expect(deriveInvalidationPaths("/books/demo/rewrite/3")).toEqual([
+      "/api/v1/books",
+      "/api/v1/books/demo",
+      "/api/v1/books/demo/chapters/3",
+      "/api/v1/books/demo/chapters/3/workspace",
+    ]);
+    expect(deriveInvalidationPaths("/books/demo/revise/3")).toEqual(
+      chapterMutationInvalidationPaths("demo", 3),
+    );
+    expect(deriveInvalidationPaths("/books/demo/chapters/3/versions/v1/restore")).toEqual(
+      chapterMutationInvalidationPaths("demo", 3),
+    );
+    expect(invalidationPathsForChapterMutationSse({
+      event: "rewrite:complete",
+      data: { bookId: "demo", chapterNumber: 3 },
+    })).toEqual(chapterMutationInvalidationPaths("demo", 3));
+    expect(invalidationPathsForChapterMutationSse({
+      event: "revise:complete",
+      data: { bookId: "demo", chapter: 3 },
+    })).toEqual(chapterMutationInvalidationPaths("demo", 3));
+    expect(invalidationPathsForChapterMutationSse({
+      event: "rewrite:complete",
+      data: { bookId: "demo" },
+    })).toEqual([]);
+    expect(invalidationPathsForChapterMutationSse({
+      event: "write:complete",
+      data: { bookId: "demo", chapterNumber: 4 },
+    })).toEqual([]);
   });
 });
 

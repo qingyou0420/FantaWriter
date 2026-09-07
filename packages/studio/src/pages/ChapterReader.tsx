@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { showToast } from "../lib/toast";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { StudioApiError } from "../hooks/use-api";
+import { shouldRefetchChapterBody } from "../hooks/use-book-activity";
+import type { SSEMessage } from "../hooks/use-sse";
 import type { Theme } from "../hooks/use-theme";
 import { useI18n, type TFunction } from "../hooks/use-i18n";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -45,12 +47,13 @@ function chapterKicker(n: number, isZh: boolean): string {
   return `第${n}章`;
 }
 
-export function ChapterReader({ bookId, chapterNumber, nav, theme: _theme, t }: {
+export function ChapterReader({ bookId, chapterNumber, nav, theme: _theme, t, sse }: {
   bookId: string;
   chapterNumber: number;
   nav: Nav;
   theme: Theme;
   t: TFunction;
+  sse?: { readonly messages: ReadonlyArray<SSEMessage> };
 }) {
   const { data, loading, error, refetch } = useApi<ChapterData>(
     `/books/${bookId}/chapters/${chapterNumber}`,
@@ -66,6 +69,21 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme: _theme, t }: 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { lang } = useI18n();
   const isZh = lang !== "en";
+
+  const handleChapterChanged = useCallback(() => {
+    setEditing(false);
+    setEditContent("");
+    setWorkspaceRevision((revision) => revision + 1);
+    void refetch();
+  }, [refetch]);
+
+  useEffect(() => {
+    const recent = sse?.messages.at(-1);
+    if (!recent) return;
+    if (shouldRefetchChapterBody(recent, bookId, chapterNumber)) {
+      handleChapterChanged();
+    }
+  }, [bookId, chapterNumber, handleChapterChanged, sse?.messages]);
 
   const handleStartEdit = () => {
     if (!data) return;
@@ -224,7 +242,7 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme: _theme, t }: 
         bookId={bookId}
         chapterNumber={chapterNumber}
         t={t}
-        onChapterChanged={refetch}
+        onChapterChanged={handleChapterChanged}
         onChapterDeleted={() => nav.toBook(bookId)}
       />
 

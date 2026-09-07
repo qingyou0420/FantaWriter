@@ -154,6 +154,27 @@ export function shouldRefetchBookView(message: SSEMessage, bookId: string): bool
   return getBookId(message) === bookId && BOOK_REFRESH_EVENTS.has(message.event);
 }
 
+function sseChapterNumber(message: SSEMessage): number | undefined {
+  const data = message.data as { chapterNumber?: unknown; chapter?: unknown } | null;
+  if (typeof data?.chapterNumber === "number" && Number.isInteger(data.chapterNumber) && data.chapterNumber > 0) {
+    return data.chapterNumber;
+  }
+  if (typeof data?.chapter === "number" && Number.isInteger(data.chapter) && data.chapter > 0) {
+    return data.chapter;
+  }
+  return undefined;
+}
+
+export function shouldRefetchChapterBody(
+  message: SSEMessage,
+  bookId: string,
+  chapterNumber: number,
+): boolean {
+  if (!shouldRefetchBookView(message, bookId)) return false;
+  const eventChapter = sseChapterNumber(message);
+  return eventChapter === undefined || eventChapter === chapterNumber;
+}
+
 export function shouldRefetchBookCollections(message: SSEMessage | undefined): boolean {
   return Boolean(message && BOOK_COLLECTION_REFRESH_EVENTS.has(message.event));
 }

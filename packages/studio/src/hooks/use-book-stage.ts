@@ -18,7 +18,7 @@ const listeners = new Set<() => void>();
 
 export function shouldInvalidateBookStageEvent(event: string): boolean {
   if (event === "weave:progress" || event === "book:creating") return false;
-  return /^(write|weave|book|truth):/.test(event);
+  return /^(write|weave|book|truth|rewrite|revise):/.test(event);
 }
 
 export function invalidateBookStage(bookId?: string): void {

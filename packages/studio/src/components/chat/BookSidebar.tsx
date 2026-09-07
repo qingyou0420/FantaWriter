@@ -85,6 +85,7 @@ function renderTruthBody(
 function ArtifactView({ bookId }: { readonly bookId: string }) {
   const artifactFile = useChatStore((s) => s.artifactFile);
   const artifactChapter = useChatStore((s) => s.artifactChapter);
+  const bookDataVersion = useChatStore((s) => s.bookDataVersion);
   const closeArtifact = useChatStore((s) => s.closeArtifact);
   const [content, setContent] = useState<string | null>(null);
   const [frontmatter, setFrontmatter] = useState<TruthFrontmatter | null>(null);
@@ -121,7 +122,7 @@ function ArtifactView({ bookId }: { readonly bookId: string }) {
         .catch(() => setContent(null))
         .finally(() => setLoading(false));
     }
-  }, [bookId, artifactFile, artifactChapter, isChapter]);
+  }, [bookId, artifactFile, artifactChapter, bookDataVersion, isChapter]);
 
   const handleEdit = useCallback(() => {
     setEditContent(content ?? "");
