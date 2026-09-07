@@ -39,7 +39,7 @@ import { TruthProposalCard, type PendingTruthProposal } from "../components/Trut
 import { StageDot } from "../components/StageDot";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
-import { Feather, MoreHorizontal } from "lucide-react";
+import { Feather } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -395,25 +395,41 @@ export function OutlineWorkspace({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={isZh ? "搜索卷 / 章" : "Search"}
-              className="rounded-lg border border-border/50 bg-secondary/30 px-3 py-1.5 text-sm outline-none focus:border-primary/50"
+              className="rounded-[10px] border border-border-strong bg-card px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
             />
-            {(["all", "coarse", "pending", "refined"] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                data-testid={`outline-filter-${item}`}
-                onClick={() => setFilter(item)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-bold ${filter === item ? "bg-primary text-primary-foreground" : "bg-secondary/50 text-muted-foreground"}`}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                data-testid="outline-filter"
+                className="btn-ghost inline-flex items-center gap-1 text-[13px]"
               >
-                {item === "all"
-                  ? (isZh ? "全部" : "All")
-                  : item === "coarse"
-                    ? (isZh ? "仅粗纲" : "Coarse")
-                    : item === "pending"
-                      ? (isZh ? "待细化" : "To refine")
-                      : (isZh ? "已细化" : "Refined")}
-              </button>
-            ))}
+                {isZh ? "筛选" : "Filter"} ▾
+                <span className="text-muted-foreground">
+                  {filter === "all"
+                    ? (isZh ? "全部" : "All")
+                    : filter === "coarse"
+                      ? (isZh ? "仅粗纲" : "Coarse")
+                      : filter === "pending"
+                        ? (isZh ? "待细化" : "To refine")
+                        : (isZh ? "已细化" : "Refined")}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {([
+                  ["all", isZh ? "全部" : "All"],
+                  ["coarse", isZh ? "仅粗纲" : "Coarse"],
+                  ["pending", isZh ? "待细化" : "To refine"],
+                  ["refined", isZh ? "已细化" : "Refined"],
+                ] as const).map(([item, label]) => (
+                  <DropdownMenuItem
+                    key={item}
+                    data-testid={`outline-filter-${item}`}
+                    onClick={() => setFilter(item)}
+                  >
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {weaveProposal && (
@@ -438,25 +454,8 @@ export function OutlineWorkspace({
             />
           ) : (
             <div className="grid gap-5 md:grid-cols-[280px_1fr]" data-testid="outline-split">
-              <div className="rounded-2xl border border-border/40 overflow-hidden">
-                <div className="flex items-center justify-end border-b border-border/30 px-2 py-1">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      data-testid="outline-tree-more"
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary"
-                    >
-                      <MoreHorizontal size={14} />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => void addFirstChapter()}>
-                        {isZh ? "新增一章" : "Add chapter"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => void tidyOutline()}>
-                        {isZh ? "整理卷纲" : "Tidy volumes"}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+              <div className="rounded-2xl border border-border/40 overflow-hidden flex flex-col">
+                <div className="flex-1">
                 {visibleVolumes.map((volume) => (
                   <div key={volume.id}>
                     <button
@@ -512,6 +511,27 @@ export function OutlineWorkspace({
                     isZh={isZh}
                   />
                 )}
+                </div>
+                <div className="flex items-center gap-3 border-t border-border/30 px-3 py-2">
+                  <button
+                    type="button"
+                    data-testid="outline-add-chapter"
+                    onClick={() => void addFirstChapter()}
+                    disabled={treeReadOnly}
+                    className="btn-ghost h-8 px-1 text-[13px] underline decoration-[color-mix(in_oklch,var(--foreground)_35%,transparent)] hover:decoration-seal disabled:opacity-40"
+                  >
+                    {isZh ? "新增一章" : "Add chapter"}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="outline-tidy"
+                    onClick={() => void tidyOutline()}
+                    disabled={treeReadOnly}
+                    className="btn-ghost h-8 px-1 text-[13px] underline decoration-[color-mix(in_oklch,var(--foreground)_35%,transparent)] hover:decoration-seal disabled:opacity-40"
+                  >
+                    {isZh ? "整理卷纲" : "Tidy volumes"}
+                  </button>
+                </div>
               </div>
 
               <div className="rounded-2xl border border-border/40 p-5 space-y-4 min-h-[360px]" data-testid="outline-detail">
@@ -545,15 +565,22 @@ export function OutlineWorkspace({
                         : (isZh ? `第 ${selected.chapterNumber} 章` : `Chapter ${selected.chapterNumber}`)}
                     </div>
                     <label className="block space-y-1">
-                      <span className="text-xs text-muted-foreground">{isZh ? "短题" : "Short title"} ≤12</span>
-                      <input
-                        value={titleDraft}
-                        maxLength={selected.kind === "range" ? undefined : 20}
-                        onChange={(event) => setTitleDraft(event.target.value)}
-                        onBlur={() => void saveSelected()}
-                        disabled={treeReadOnly}
-                        className="w-full rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 font-serif text-xl outline-none focus:border-primary/50"
-                      />
+                      <span className="text-[13px] text-muted-foreground">{isZh ? "短题" : "Short title"}</span>
+                      <div className="relative">
+                        <input
+                          value={titleDraft}
+                          maxLength={selected.kind === "range" ? undefined : 20}
+                          onChange={(event) => setTitleDraft(event.target.value)}
+                          onBlur={() => void saveSelected()}
+                          disabled={treeReadOnly}
+                          className="w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 pr-14 font-serif text-xl outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        {selected.kind !== "range" && (
+                          <span className="absolute bottom-2 right-3 text-[12px] tabular-nums text-muted-foreground" data-testid="outline-title-count">
+                            {[...titleDraft].length} / 12
+                          </span>
+                        )}
+                      </div>
                     </label>
                     <label className="block space-y-1">
                       <span className="text-xs text-muted-foreground">{isZh ? "提要" : "Summary"}</span>
@@ -573,7 +600,7 @@ export function OutlineWorkspace({
                         type="button"
                         onClick={() => void saveSelected()}
                         disabled={saving || treeReadOnly}
-                        className="rounded-lg bg-secondary px-3 py-2 text-xs font-bold disabled:opacity-50"
+                        className="btn-secondary disabled:opacity-50"
                       >
                         {saving ? t("common.loading") : (isZh ? "保存" : "Save")}
                       </button>
@@ -582,7 +609,7 @@ export function OutlineWorkspace({
                           type="button"
                           data-testid="outline-go-write"
                           onClick={goWrite}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-2 text-xs font-bold"
+                          className="btn-ghost"
                         >
                           {isZh ? "去落笔 →" : "Go write →"}
                         </button>

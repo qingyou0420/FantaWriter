@@ -1,19 +1,21 @@
 import { useApi, postApi } from "../hooks/use-api";
 import { useEffect, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
-import { useColors } from "../hooks/use-colors";
+import { useI18n, type TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
+import { formatActivityEvent } from "../lib/activity-copy";
 import { showToast } from "../lib/toast";
 
 interface Nav {
   toDashboard: () => void;
 }
 
-export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; t: TFunction; sse: { messages: ReadonlyArray<SSEMessage> } }) {
-  const c = useColors(theme);
+export function DaemonControl({ nav: _nav, theme: _theme, t, sse }: { nav: Nav; theme: Theme; t: TFunction; sse: { messages: ReadonlyArray<SSEMessage> } }) {
+  const { lang } = useI18n();
+  const isZh = lang !== "en";
   const { data, refetch } = useApi<{ running: boolean }>("/daemon");
+  const { data: booksData } = useApi<{ books: ReadonlyArray<{ id: string; title: string }> }>("/books");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -22,8 +24,11 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
     void refetch();
   }, [refetch, sse.messages]);
 
-  const daemonEvents = sse.messages
+  const books = booksData?.books ?? [];
+  const daemonLines = sse.messages
     .filter((m) => m.event.startsWith("daemon:") || m.event === "log")
+    .map((msg) => formatActivityEvent(msg, books, isZh))
+    .filter((line): line is NonNullable<typeof line> => line !== null)
     .slice(-20);
 
   const handleStart = async () => {
@@ -57,14 +62,14 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-[32px] font-medium leading-10">{t("daemon.title")}</h1>
         <div className="flex items-center gap-3">
-          <span className={`text-sm font-medium ${isRunning ? "text-foreground" : "text-muted-foreground"}`}>
+          <span className={`text-[13px] font-medium ${isRunning ? "text-foreground" : "text-muted-foreground"}`}>
             {isRunning ? t("daemon.running") : t("daemon.stopped")}
           </span>
           {isRunning ? (
             <button
               onClick={handleStop}
               disabled={loading}
-              className={`px-4 py-2.5 text-sm rounded-md ${c.btnDanger} disabled:opacity-50`}
+              className="btn-danger disabled:opacity-50"
             >
               {loading ? t("daemon.stopping") : t("daemon.stop")}
             </button>
@@ -72,7 +77,7 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
             <button
               onClick={handleStart}
               disabled={loading}
-              className={`px-4 py-2.5 text-sm rounded-md ${c.btnPrimary} disabled:opacity-50`}
+              className="btn-primary disabled:opacity-50"
             >
               {loading ? t("daemon.starting") : t("daemon.start")}
             </button>
@@ -80,31 +85,22 @@ export function DaemonControl({ nav, theme, t, sse }: { nav: Nav; theme: Theme; 
         </div>
       </div>
 
-      {/* Daemon event log */}
-      <div className={`border ${c.cardStatic} rounded-lg`}>
-        <div className="px-5 py-3.5 border-b border-border">
-          <span className="text-sm text-muted-foreground font-medium">{t("daemon.eventLog")}</span>
-        </div>
-        <div className="p-4 max-h-[500px] overflow-y-auto">
-          {daemonEvents.length > 0 ? (
-            <div className="space-y-1.5 font-mono text-sm">
-              {daemonEvents.map((msg, i) => {
-                const d = msg.data as Record<string, unknown>;
-                return (
-                  <div key={i} className="leading-relaxed text-muted-foreground">
-                    <span className="text-primary/50">{msg.event}</span>
-                    <span className="text-border mx-1.5">›</span>
-                    <span>{String(d.message ?? d.bookId ?? JSON.stringify(d))}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-muted-foreground text-sm italic py-8 text-center">
-              {isRunning ? t("daemon.waitingEvents") : t("daemon.startHint")}
-            </div>
-          )}
-        </div>
+      <div>
+        <div className="mb-3 text-[13px] font-medium text-muted-foreground">{t("daemon.eventLog")}</div>
+        {daemonLines.length > 0 ? (
+          <div className="space-y-2 text-[15px] leading-[26px]" data-testid="daemon-event-lines">
+            {daemonLines.map((line, i) => (
+              <div key={`${line.time}-${line.text}-${i}`} className="flex gap-3 text-muted-foreground">
+                <span className="w-12 shrink-0 tabular-nums">{line.time}</span>
+                <span>{line.text}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[15px] leading-[26px] text-muted-foreground py-8">
+            {isRunning ? t("daemon.waitingEvents") : t("daemon.schedulerIdle")}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  countUnifiedDiffLines,
   formatVolumeArriveCopy,
   hasPreviousChapterUnapprovedReason,
   isMustFixSeverity,
   mapAuditCategory,
   mapAuditSeverity,
+  mapTruthFileLabel,
   splitLongOutlineTitle,
   stripEngineTokens,
 } from "./copy-map";
@@ -39,6 +41,14 @@ describe("copy-map", () => {
     expect(copy.arrive).toBe("四人在琴荒书院相识。");
     expect(copy.mustLand).toBe("辩堂立誓");
     expect(copy.arrive).not.toMatch(/Objective/);
+  });
+
+  it("maps truth file paths to author-facing labels", () => {
+    expect(mapTruthFileLabel("outline/story_frame.md", true)).toBe("故事框架");
+    expect(mapTruthFileLabel("story/outline/story_frame.md", true)).toBe("故事框架");
+    expect(mapTruthFileLabel("roles/主要角色/苏绻.md", true)).toBe("人物 · 苏绻");
+    expect(mapTruthFileLabel("roles/major/Su.md", false)).toBe("Character · Su");
+    expect(countUnifiedDiffLines("@@\n+a\n+b\n-c\n--- a\n+++ b\n")).toEqual({ added: 2, removed: 1 });
   });
 
   it("detects 上一章未通过 as the only 带病续写 trigger", () => {

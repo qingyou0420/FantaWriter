@@ -3,23 +3,22 @@ import { showToast } from "../lib/toast";
 import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { StudioApiError } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
-import { useColors } from "../hooks/use-colors";
+import { useI18n, type TFunction } from "../hooks/use-i18n";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ChapterWorkspacePanel } from "../components/ChapterWorkspacePanel";
 import {
-  ChevronLeft,
-  Check,
-  X,
-  List,
-  RotateCcw,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import {
   BookOpen,
-  CheckCircle2,
-  XCircle,
   Type,
   Clock,
   Pencil,
   Save,
-  Eye,
+  MoreHorizontal,
 } from "lucide-react";
 
 interface ChapterData {
@@ -33,14 +32,26 @@ interface Nav {
   toDashboard: () => void;
 }
 
-export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
+function chapterKicker(n: number, isZh: boolean): string {
+  const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+  if (!isZh) return `Chapter ${n}`;
+  if (n <= 10) return `第${digits[n]}章`;
+  if (n < 20) return `第十${n === 10 ? "" : digits[n - 10]}章`;
+  if (n < 100) {
+    const tens = Math.floor(n / 10);
+    const ones = n % 10;
+    return `第${tens === 1 ? "十" : `${digits[tens]}十`}${ones ? digits[ones] : ""}章`;
+  }
+  return `第${n}章`;
+}
+
+export function ChapterReader({ bookId, chapterNumber, nav, theme: _theme, t }: {
   bookId: string;
   chapterNumber: number;
   nav: Nav;
   theme: Theme;
   t: TFunction;
 }) {
-  const c = useColors(theme);
   const { data, loading, error, refetch } = useApi<ChapterData>(
     `/books/${bookId}/chapters/${chapterNumber}`,
   );
@@ -50,7 +61,11 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [packetOpen, setPacketOpen] = useState(false);
   const [packetText, setPacketText] = useState("");
+  const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideWhy, setOverrideWhy] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const { lang } = useI18n();
+  const isZh = lang !== "en";
 
   const handleStartEdit = () => {
     if (!data) return;
@@ -91,7 +106,6 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
   if (error) return <div className="text-destructive p-8 bg-destructive/5 rounded-xl border border-destructive/20">Error: {error}</div>;
   if (!data) return null;
 
-  // Split markdown content into title and body
   const lines = data.content.split("\n");
   const titleLine = lines.find((l) => l.startsWith("# "));
   const title = titleLine?.replace(/^#\s*/, "") ?? `Chapter ${chapterNumber}`;
@@ -100,14 +114,18 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     .join("\n")
     .trim();
 
-  const handleApprove = async () => {
+  const handleApprove = async (why?: string) => {
     try {
-      await postApi(`/books/${bookId}/chapters/${chapterNumber}/approve`, overrideWhy.trim()
-        ? { override: { who: "author", why: overrideWhy.trim() } }
+      await postApi(`/books/${bookId}/chapters/${chapterNumber}/approve`, why?.trim()
+        ? { override: { who: "author", why: why.trim() } }
         : {});
       nav.toBook(bookId);
     } catch (e) {
       const blocked = e instanceof StudioApiError && e.code === "APPROVE_BLOCKED";
+      if (blocked && !why?.trim()) {
+        setOverrideOpen(true);
+        return;
+      }
       showToast(blocked
         ? `${e.message} ${e.details ? JSON.stringify(e.details) : ""}`
         : (e instanceof Error ? e.message : "Approve failed"), "error");
@@ -133,83 +151,67 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await fetchJson(`/books/${bookId}/chapters/${chapterNumber}`, { method: "DELETE" });
+      setDeleteOpen(false);
+      nav.toBook(bookId);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Delete failed", "error");
+    }
+  };
+
   const paragraphs = body.split(/\n\n+/).filter(Boolean);
 
   return (
     <div className="w-full space-y-10 fade-in">
-      {/* Navigation & Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-end gap-6">
-        <div className="flex gap-2">
-          <button
-            onClick={() => nav.toBook(bookId)}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-foreground hover:bg-secondary/80 transition-all border border-border/50"
-          >
-            <List size={14} />
-            {t("reader.backToList")}
-          </button>
-
-          {/* Edit / Preview toggle */}
-          {editing ? (
-            <>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl transition-colors shadow-sm disabled:opacity-50"
-              >
-                {saving ? <div className="w-3.5 h-3.5 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Save size={14} />}
-                {saving ? t("book.saving") : t("book.save")}
-              </button>
-              <button
-                onClick={handleCancelEdit}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-foreground transition-all border border-border/50"
-              >
-                <Eye size={14} />
-                {t("reader.preview")}
-              </button>
-            </>
-          ) : (
+      <div className="flex justify-end gap-2">
+        {editing ? (
+          <>
             <button
-              onClick={handleStartEdit}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-primary hover:bg-primary/10 transition-all border border-border/50"
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="btn-primary disabled:opacity-50"
             >
-              <Pencil size={14} />
-              {t("reader.edit")}
+              {saving ? <div className="w-3.5 h-3.5 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" /> : <Save size={14} />}
+              {saving ? t("book.saving") : t("book.save")}
             </button>
-          )}
-
-          <button
-            onClick={handleOpenPacket}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-secondary text-muted-foreground rounded-xl hover:text-foreground hover:bg-secondary/80 transition-all border border-border/50"
-          >
-            {t("reader.packet")}
+            <button type="button" onClick={handleCancelEdit} className="btn-ghost">
+              {t("reader.cancel")}
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={handleStartEdit} className="btn-secondary">
+            <Pencil size={14} />
+            {t("reader.edit")}
           </button>
-          <button
-            onClick={handleApprove}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-medium bg-primary text-primary-foreground rounded-xl hover:bg-primary-hover transition-all"
-          >
-            <CheckCircle2 size={14} />
-            {t("reader.approve")}
-          </button>
-          <button
-            onClick={handleReject}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-medium bg-destructive/10 text-destructive rounded-xl hover:bg-destructive hover:text-destructive-foreground transition-all border border-destructive/20"
-            title="回滚本章"
-          >
-            <XCircle size={14} />
-            回滚本章
-          </button>
-        </div>
+        )}
+        <button
+          type="button"
+          onClick={() => void handleApprove()}
+          className="btn-primary"
+          data-testid="chapter-approve"
+        >
+          {t("reader.approve")}
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger data-testid="chapter-more" className="btn-ghost inline-flex h-10 w-10 items-center justify-center">
+            <MoreHorizontal size={16} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => void handleReject()}>
+              {t("reader.rollback")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void handleOpenPacket()}>
+              {t("reader.packet")}
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+              {t("reader.deleteChapter")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      <label className="block text-xs text-muted-foreground">
-        带病通过原因（critical 覆盖，可选）
-        <input
-          value={overrideWhy}
-          onChange={(event) => setOverrideWhy(event.target.value)}
-          placeholder="例如：人设改动是刻意的"
-          className="mt-1 w-full rounded-lg border border-border/50 bg-background px-3 py-2 text-sm"
-        />
-      </label>
 
       {packetOpen && (
         <pre className="max-h-80 overflow-auto rounded-xl border border-border/50 bg-secondary/20 p-4 text-xs" data-testid="packet-viewer">
@@ -226,11 +228,9 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         onChapterDeleted={() => nav.toBook(bookId)}
       />
 
-      {/* Manuscript Sheet */}
-      <div className="paper-sheet rounded-2xl p-8 md:p-16 lg:p-24 shadow-2xl shadow-primary/5 min-h-[80vh] relative overflow-hidden">
-        {/* Physical Paper Details */}
-        <div className="absolute top-0 left-8 w-px h-full bg-primary/5 hidden md:block" />
-        <div className="absolute top-0 right-8 w-px h-full bg-primary/5 hidden md:block" />
+      <div className="paper-sheet rounded-2xl p-8 md:p-16 lg:p-24 min-h-[80vh] relative overflow-hidden border border-border">
+        <div className="absolute top-0 left-8 w-px h-full bg-border/40 hidden md:block" />
+        <div className="absolute top-0 right-8 w-px h-full bg-border/40 hidden md:block" />
 
         <header className="mb-16 text-center">
           <div className="flex items-center justify-center gap-2 text-muted-foreground/30 mb-8 select-none">
@@ -238,25 +238,23 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
             <BookOpen size={20} />
             <div className="h-px w-12 bg-border/40" />
           </div>
+          <p className="literary-kicker mb-4">{chapterKicker(chapterNumber, isZh)}</p>
           <h1 className="font-serif text-[32px] font-medium leading-10 text-foreground">
             {title}
           </h1>
-          <div className="mt-8 flex items-center justify-center gap-4 text-[13px] font-medium text-muted-foreground/60">
-            <span>{t("chapter.label").replace("{n}", String(chapterNumber))}</span>
-          </div>
         </header>
 
         {editing ? (
           <textarea
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
-            className="w-full min-h-[60vh] bg-transparent font-serif text-lg leading-[1.8] text-foreground/90 focus:outline-none resize-none border border-border/30 rounded-lg p-6 focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+            className="w-full min-h-[60vh] bg-transparent font-serif text-lg leading-[32px] text-foreground/90 focus:outline-none resize-none border border-border-strong rounded-[10px] p-6 focus:ring-1 focus:ring-ring"
             autoFocus
           />
         ) : (
           <article className="prose prose-zinc dark:prose-invert max-w-none">
             {paragraphs.map((para, i) => (
-              <p key={i} className="font-serif text-lg md:text-xl leading-[1.8] text-foreground/90 mb-8 first-letter:text-2xl first-letter:font-bold first-letter:text-primary/40">
+              <p key={i} className="font-serif text-lg md:text-xl leading-[32px] text-foreground/90 mb-8">
                 {para}
               </p>
             ))}
@@ -264,13 +262,13 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         )}
 
         <footer className="mt-24 pt-12 border-t border-border/20 flex flex-col items-center gap-6 text-center">
-          <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
-             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/50">
-               <Type size={14} className="text-primary/60" />
+          <div className="flex items-center gap-4 text-[13px] font-medium text-muted-foreground">
+             <div className="flex items-center gap-1.5">
+               <Type size={14} />
                <span>{body.length.toLocaleString()} {t("reader.characters")}</span>
              </div>
-             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/50">
-               <Clock size={14} className="text-primary/60" />
+             <div className="flex items-center gap-1.5">
+               <Clock size={14} />
                <span>{Math.ceil(body.length / 500)} {t("reader.minRead")}</span>
              </div>
           </div>
@@ -278,20 +276,39 @@ export function ChapterReader({ bookId, chapterNumber, nav, theme, t }: {
         </footer>
       </div>
 
-      {/* Footer Navigation */}
-      <div className="flex justify-between items-center py-8">
-        {chapterNumber > 1 ? (
-          <button
-            onClick={() => nav.toBook(bookId)}
-            className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-primary transition-all group"
-          >
-            <RotateCcw size={16} className="group-hover:-rotate-45 transition-transform" />
-            {t("reader.chapterList")}
-          </button>
-        ) : (
-          <div />
-        )}
-      </div>
+      <ConfirmDialog
+        open={overrideOpen}
+        title={t("reader.stillApprove")}
+        message=""
+        confirmLabel={t("reader.approve")}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => { setOverrideOpen(false); setOverrideWhy(""); }}
+        onConfirm={() => {
+          const why = overrideWhy.trim();
+          if (!why) return;
+          setOverrideOpen(false);
+          void handleApprove(why);
+        }}
+      >
+        <input
+          data-testid="chapter-override-why"
+          value={overrideWhy}
+          onChange={(event) => setOverrideWhy(event.target.value)}
+          placeholder={t("reader.overrideWhy")}
+          className="w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title={t("reader.deleteChapter")}
+        message={t("reader.deleteChapterConfirm")}
+        confirmLabel={t("reader.deleteChapter")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => void handleDelete()}
+      />
     </div>
   );
 }

@@ -82,3 +82,21 @@ export function formatStartedOn(iso: string | undefined, isZh: boolean): string 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
   return isZh ? `始于 ${date}` : `Since ${date}`;
 }
+
+export function formatConfirmedDate(iso: string | undefined, isZh: boolean): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  if (isZh) return `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export function formatStudyWords(total: number, isZh: boolean): string {
+  if (!isZh) return `${total.toLocaleString()} words`;
+  if (total >= 10000) {
+    const wan = total / 10000;
+    const label = Number.isInteger(wan) ? String(wan) : wan.toFixed(1).replace(/\.0$/, "");
+    return `${label} 万字`;
+  }
+  return `${total.toLocaleString()} 字`;
+}

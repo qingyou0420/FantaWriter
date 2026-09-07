@@ -6,6 +6,7 @@
 
 import { postApi } from "../hooks/use-api";
 import { showToast } from "../lib/toast";
+import { countUnifiedDiffLines, mapTruthFileLabel } from "../lib/copy-map";
 import { useState } from "react";
 
 export interface PendingTruthProposal {
@@ -26,6 +27,9 @@ export function TruthProposalCard({
   readonly onResolved: () => void;
 }) {
   const [pending, setPending] = useState<"apply" | "reject" | null>(null);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const stats = proposal.unifiedDiff ? countUnifiedDiffLines(proposal.unifiedDiff) : null;
+  const label = mapTruthFileLabel(proposal.fileName, isZh);
 
   const run = async (action: "apply" | "reject") => {
     setPending(action);
@@ -44,28 +48,40 @@ export function TruthProposalCard({
       className="rounded-xl border border-border bg-card px-4 py-3 space-y-2"
       data-testid="truth-proposal-card"
     >
-      <div className="text-sm font-medium">
-        {isZh ? "正典待确认" : "Canon change pending"} · <code className="text-xs">{proposal.fileName}</code>
+      <div className="literary-kicker">
+        {isZh ? "正典变更" : "Canon change"} · {label}
       </div>
-      {proposal.unifiedDiff && (
-        <pre className="max-h-40 overflow-auto rounded-lg bg-background/60 p-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap">
-          {proposal.unifiedDiff.split("\n").slice(0, 40).join("\n")}
-        </pre>
+      {proposal.unifiedDiff && stats && (
+        <div>
+          <button
+            type="button"
+            data-testid="truth-diff-toggle"
+            onClick={() => setDiffOpen((open) => !open)}
+            className="btn-ghost h-8 px-2 text-[13px] text-muted-foreground"
+          >
+            +{stats.added} −{stats.removed} {isZh ? "行" : "lines"} {diffOpen ? "▾" : "▸"} {isZh ? "查看" : "View"}
+          </button>
+          {diffOpen && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-background/60 p-2 text-[12px] leading-5 text-muted-foreground whitespace-pre-wrap">
+              {proposal.unifiedDiff}
+            </pre>
+          )}
+        </div>
       )}
       <div className="flex gap-2">
         <button
           type="button"
           disabled={pending !== null}
           onClick={() => void run("apply")}
-          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+          className="btn-primary h-8 px-3 text-[13px] disabled:opacity-50"
         >
-          {pending === "apply" ? "…" : (isZh ? "确认写入" : "Apply")}
+          {pending === "apply" ? "…" : (isZh ? "写入" : "Apply")}
         </button>
         <button
           type="button"
           disabled={pending !== null}
           onClick={() => void run("reject")}
-          className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-bold text-muted-foreground disabled:opacity-50"
+          className="btn-ghost h-8 px-2 text-[13px] disabled:opacity-50"
         >
           {pending === "reject" ? "…" : (isZh ? "拒绝" : "Reject")}
         </button>
