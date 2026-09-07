@@ -3,7 +3,7 @@ import { Bell, Bot, FileText, FolderUp, Globe, MessageSquare, Radar, RotateCcw, 
 import { fetchJson, postApi, putApi, useApi } from "../hooks/use-api";
 import { usePreferencesStore } from "../store/preferences";
 import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
+import { useI18n, type TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import {
   buildDetectionConfig,
@@ -92,7 +92,8 @@ const fieldClass = "w-full rounded-lg border border-border bg-secondary/30 px-3 
 
 export function ProjectSettings({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
-  const isZh = t("nav.connected") === "\u5DF2\u8FDE\u63A5";
+  const { lang } = useI18n();
+  const isZh = lang !== "en";
   const { data: projectData, refetch: refetchProject } = useApi<{ language?: string }>("/project");
   const { data: overridesData, refetch: refetchOverrides } = useApi<{ overrides: Record<string, unknown> }>("/project/model-overrides");
   const { data: defaultModelData, refetch: refetchDefaultModel } = useApi<{ service: string | null; defaultModel: string | null }>("/project/default-model");

@@ -165,7 +165,7 @@ describe("works list long/short parity", () => {
     const bookDetail = read("src/pages/BookDetail.tsx");
 
     expect(i18n).toMatch(/"book\.export": \{ zh: "导出"/);
-    expect(i18n).toMatch(/"book\.exportSave": \{ zh: "保存原文到项目"/);
+    expect(i18n).toMatch(/"book\.exportSave": \{ zh: "保存到项目"/);
     expect(dashboard).toMatch(/bookManuscriptExportPath/);
     expect(dashboard).toMatch(/shortManuscriptExportPath/);
     expect(bookDetail).toMatch(/book-export-manuscript/);

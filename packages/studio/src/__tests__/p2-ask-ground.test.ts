@@ -100,6 +100,7 @@ describe("P2-3 visual", () => {
     expect(p06).not.toMatch(/(emerald|amber|blue|rose)-[0-9]{3}/);
     expect(p06).not.toMatch(/oklch\(/);
     expect(p06).not.toMatch(/\buppercase\b/);
+    expect(p06 + "\n" + read("src/pages/BookDetail.tsx")).not.toMatch(/window\.prompt/);
   });
 });
 
@@ -109,7 +110,9 @@ describe("P2-4 short study", () => {
     const settings = read("src/pages/ShortSettings.tsx");
     expect(short).toMatch(/创作书房/);
     expect(short).toMatch(/short-stage-strip/);
+    expect(short).toMatch(/short-study-home/);
     expect(short).toMatch(/short-primary-cta/);
+    expect(short).not.toMatch(/reader\.backToList/);
     expect(short).not.toMatch(/short-danger-zone/);
     expect(short).toMatch(/toShortSettings/);
     expect(short).toMatch(/toShortAnalytics/);

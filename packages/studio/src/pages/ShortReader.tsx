@@ -5,7 +5,7 @@
  */
 
 import { cjk } from "@streamdown/cjk";
-import { AlertCircle, ChevronLeft, Feather, Loader2, MoreHorizontal } from "lucide-react";
+import { AlertCircle, Feather, Loader2, MoreHorizontal } from "lucide-react";
 import { Streamdown } from "streamdown";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
 import { StageDot } from "../components/StageDot";
@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { useApi } from "../hooks/use-api";
-import type { TFunction } from "../hooks/use-i18n";
+import { useI18n, type TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
 import { tr } from "../lib/app-language";
 import { deriveShortStudy, shortStudyCtaLabel } from "../lib/short-study";
@@ -29,14 +29,15 @@ const streamdownPlugins = { cjk };
 interface Nav {
   toDashboard: () => void;
   toChat?: () => void;
+  toShort?: (id: string) => void;
   toShortSettings?: (id: string) => void;
   toShortAnalytics?: (id: string) => void;
 }
 
 const STEPS = [
-  { id: "ask" as const, zh: "问心", en: "Ask" },
-  { id: "weave" as const, zh: "织卷", en: "Weave" },
-  { id: "write" as const, zh: "落笔", en: "Write" },
+  { id: "ask" as const, zh: "问心", en: "Ask", clickable: true },
+  { id: "weave" as const, zh: "织卷", en: "Weave", clickable: false },
+  { id: "write" as const, zh: "落笔", en: "Write", clickable: false },
 ];
 
 export function ShortReader({ storyId, nav, theme: _theme, t }: {
@@ -45,8 +46,9 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
   theme: Theme;
   t: TFunction;
 }) {
+  const { lang } = useI18n();
+  const isZh = lang !== "en";
   const { data, loading, error } = useApi<StudioShortDetail>(`/shorts/${encodeURIComponent(storyId)}`);
-  const isZh = t("nav.connected") === "已连接";
   const study = data
     ? deriveShortStudy({
       status: data.status,
@@ -57,6 +59,20 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
   const createDraftSession = useChatStore((state) => state.createDraftSession);
   const setInput = useChatStore((state) => state.setInput);
   const activateSession = useChatStore((state) => state.activateSession);
+  const sessions = useChatStore((state) => state.sessions);
+
+  const openAsk = () => {
+    if (!data) return;
+    const existing = Object.values(sessions).find((session) => session.sessionKind === "short");
+    if (existing) {
+      activateSession(existing.sessionId);
+      nav.toChat?.();
+      return;
+    }
+    const sessionId = createDraftSession(null, "short");
+    activateSession(sessionId);
+    nav.toChat?.();
+  };
 
   const continueTalk = () => {
     if (!data) return;
@@ -73,38 +89,64 @@ export function ShortReader({ storyId, nav, theme: _theme, t }: {
       window.location.assign(shortManuscriptExportPath(storyId));
       return;
     }
+    if (study.primaryCta === "ask") {
+      openAsk();
+      return;
+    }
     continueTalk();
   };
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8" data-testid="short-study">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3" data-testid="short-study-chrome">
         <button
           type="button"
-          onClick={nav.toDashboard}
-          className="inline-flex items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground"
+          data-testid="short-study-home"
+          onClick={() => nav.toShort?.(storyId)}
+          className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-[14px] font-medium text-primary-foreground"
         >
-          <ChevronLeft size={16} />
-          {t("reader.backToList")}
+          {isZh ? "书房" : "Study"}
         </button>
         {study && (
           <ol className="flex items-center gap-1" data-testid="short-stage-strip">
             {STEPS.map((step, index) => {
               const state = study.steps[step.id];
+              const label = isZh ? step.zh : step.en;
+              const inner = (
+                <>
+                  <StageDot state={state} />
+                  {label}
+                </>
+              );
               return (
                 <li key={step.id} className="flex items-center gap-1 text-[13px]">
-                  {index > 0 && <span className="h-px w-3 bg-border" aria-hidden="true" />}
-                  <span data-testid={`short-step-${step.id}`} data-state={state} className={`inline-flex items-center gap-1.5 ${state === "current" ? "font-semibold" : "text-muted-foreground"}`}>
-                    <StageDot state={state} />
-                    {isZh ? step.zh : step.en}
-                  </span>
+                  {index > 0 && <span className="h-px w-4 bg-border" aria-hidden="true" />}
+                  {step.clickable ? (
+                    <button
+                      type="button"
+                      data-testid={`short-step-${step.id}`}
+                      data-state={state}
+                      onClick={openAsk}
+                      className={`inline-flex items-center gap-1.5 ${state === "current" ? "font-medium" : "text-muted-foreground"}`}
+                    >
+                      {inner}
+                    </button>
+                  ) : (
+                    <span
+                      data-testid={`short-step-${step.id}`}
+                      data-state={state}
+                      className={`inline-flex items-center gap-1.5 ${state === "current" ? "font-medium" : "text-muted-foreground"}`}
+                    >
+                      {inner}
+                    </span>
+                  )}
                 </li>
               );
             })}
           </ol>
         )}
         <DropdownMenu>
-          <DropdownMenuTrigger data-testid="short-more" className="rounded-lg bg-secondary/50 p-2 text-muted-foreground">
+          <DropdownMenuTrigger data-testid="short-more" className="btn-ghost inline-flex h-8 w-8 items-center justify-center">
             <MoreHorizontal size={16} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

@@ -130,3 +130,38 @@ export function hasPreviousChapterUnapprovedReason(
     return /上一章/.test(text) && /未通过|尚未通过|not approved/i.test(text);
   });
 }
+
+const TRUTH_FILE_LABELS: Record<string, { readonly zh: string; readonly en: string }> = {
+  "outline/story_frame.md": { zh: "故事框架", en: "Story frame" },
+  "story/outline/story_frame.md": { zh: "故事框架", en: "Story frame" },
+  "outline/volume_map.md": { zh: "卷纲规划", en: "Volume map" },
+  "pending_hooks.md": { zh: "伏笔清单", en: "Hook list" },
+  "current_state.md": { zh: "当前状态", en: "Current state" },
+  "open_questions.md": { zh: "待定项", en: "Open questions" },
+  "emotional_arcs.md": { zh: "情感弧线", en: "Emotional arcs" },
+  "subplot_board.md": { zh: "支线进度", en: "Subplot board" },
+};
+
+export function mapTruthFileLabel(fileName: string, isZh: boolean): string {
+  const normalized = fileName.replace(/^\/+/, "");
+  const mapped = TRUTH_FILE_LABELS[normalized];
+  if (mapped) return isZh ? mapped.zh : mapped.en;
+  const role = normalized.match(/^roles\/(主要角色|次要角色|major|minor)\/(.+)\.md$/);
+  if (role) {
+    const name = role[2];
+    return isZh ? `人物 · ${name}` : `Character · ${name}`;
+  }
+  const base = normalized.split("/").pop()?.replace(/\.md$/, "") ?? normalized;
+  return base;
+}
+
+export function countUnifiedDiffLines(diff: string): { readonly added: number; readonly removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) added += 1;
+    else if (line.startsWith("-")) removed += 1;
+  }
+  return { added, removed };
+}

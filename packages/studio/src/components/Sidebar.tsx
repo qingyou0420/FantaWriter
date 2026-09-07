@@ -702,7 +702,7 @@ function CreateItem({ icon, label, active, onClick, testId }: {
       type="button"
       data-testid={testId}
       onClick={onClick}
-      className={`flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-[16px] leading-6 transition-all ${
+      className={`flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-[14px] leading-5 transition-all ${
         active
           ? "border border-border bg-secondary text-foreground font-medium shadow-sm"
           : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"

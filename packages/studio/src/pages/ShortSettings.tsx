@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { putApi, useApi } from "../hooks/use-api";
-import type { TFunction } from "../hooks/use-i18n";
+import { useI18n, type TFunction } from "../hooks/use-i18n";
 import { deleteStudioShortWork } from "../lib/short-api";
 import { showToast } from "../lib/toast";
 import { shortManuscriptExportPath } from "../lib/work-export";
@@ -24,7 +24,8 @@ export function ShortSettings({ storyId, nav, t }: {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const isZh = t("nav.connected") === "已连接";
+  const { lang } = useI18n();
+  const isZh = lang !== "en";
 
   useEffect(() => {
     if (!data) return;

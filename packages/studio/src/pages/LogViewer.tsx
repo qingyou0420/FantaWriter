@@ -1,8 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
-import type { TFunction } from "../hooks/use-i18n";
-import { useColors } from "../hooks/use-colors";
+import { useI18n, type TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { deriveActiveBookIds } from "../hooks/use-book-activity";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
@@ -22,18 +21,19 @@ interface Nav {
 const LEVEL_COLORS: Record<string, string> = {
   error: "text-destructive",
   warn: "text-mark-text",
-  info: "text-primary/70",
+  info: "text-muted-foreground",
   debug: "text-muted-foreground/50",
 };
 
-export function LogViewer({ nav, theme, t, sse }: {
+export function LogViewer({ nav: _nav, theme: _theme, t, sse }: {
   nav: Nav;
   theme: Theme;
   t: TFunction;
   sse?: { messages: ReadonlyArray<SSEMessage> };
 }) {
-  const c = useColors(theme);
-  const isZh = t("nav.connected") === "已连接";
+  const { lang } = useI18n();
+  const isZh = lang !== "en";
+  const [rawOpen, setRawOpen] = useState(false);
   const { data, refetch } = useApi<{ entries: ReadonlyArray<LogEntry> }>("/logs");
   const { data: booksData } = useApi<{ books: ReadonlyArray<{ id: string; title: string }> }>("/books");
   const books = booksData?.books ?? [];
@@ -53,87 +53,86 @@ export function LogViewer({ nav, theme, t, sse }: {
   );
 
   return (
-    <div className="space-y-6" data-testid="ai-activity-page">
+    <div className="space-y-10" data-testid="ai-activity-page">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="font-serif text-[32px] font-medium leading-10">{t("logs.title")}</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">
-            {headline}
-          </span>
-          <button
-            onClick={() => refetch()}
-            className={`px-4 py-2.5 text-sm rounded-md ${c.btnSecondary}`}
-          >
-            {t("common.refresh")}
-          </button>
-        </div>
+        <span className="text-[13px] leading-5 text-muted-foreground">
+          {headline}
+        </span>
       </div>
 
-      <div className={`border ${c.cardStatic} rounded-lg overflow-hidden`}>
-        <div className="px-5 py-3.5 border-b border-border">
-          <span className="text-sm text-muted-foreground font-medium">{t("logs.live")}</span>
-        </div>
-        <div className="p-4 max-h-[360px] overflow-y-auto">
-          {liveLines.length > 0 ? (
-            <div className="space-y-2 text-sm leading-6">
-              {liveLines.map((line, i) => (
-                <div key={`${line.time}-${line.text}-${i}`} className="flex gap-3">
-                  <span className="w-12 shrink-0 tabular-nums text-muted-foreground">{line.time}</span>
-                  {line.bookTitle && (
-                    <span className="shrink-0 text-foreground/80">《{line.bookTitle}》</span>
-                  )}
-                  <span className="text-foreground/80">{line.text}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <LiteraryEmpty
-              title={t("logs.noActivity")}
-              action={t("common.refresh")}
-              onAction={() => refetch()}
-              testId="logs-empty-live"
-            />
-          )}
-        </div>
+      <div>
+        <div className="mb-3 text-[13px] font-medium text-muted-foreground">{t("logs.live")}</div>
+        {liveLines.length > 0 ? (
+          <div className="space-y-2 text-[15px] leading-[26px]">
+            {liveLines.map((line, i) => (
+              <div key={`${line.time}-${line.text}-${i}`} className="flex gap-3">
+                <span className="w-12 shrink-0 tabular-nums text-muted-foreground">{line.time}</span>
+                {line.bookTitle && (
+                  <span className="shrink-0 text-foreground/80">《{line.bookTitle}》</span>
+                )}
+                <span className="text-foreground/80">{line.text}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <LiteraryEmpty
+            title={t("logs.noActivity")}
+            testId="logs-empty-live"
+          />
+        )}
       </div>
 
-      <div className={`border ${c.cardStatic} rounded-lg overflow-hidden`}>
-        <div className="px-5 py-3.5 border-b border-border">
-          <span className="text-sm text-muted-foreground font-medium">{t("logs.raw")}</span>
-        </div>
-        <div className="p-4 max-h-[360px] overflow-y-auto">
-          {data?.entries && data.entries.length > 0 ? (
-            <div className="space-y-1 font-mono text-sm leading-relaxed">
-              {data.entries.map((entry, i) => (
-                <div key={i} className="flex gap-2">
-                  {entry.timestamp && (
-                    <span className="text-muted-foreground shrink-0 w-20 tabular-nums">
-                      {new Date(entry.timestamp).toLocaleTimeString()}
-                    </span>
-                  )}
-                  {entry.level && (
-                    <span className={`shrink-0 w-12 ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}>
-                      {entry.level}
-                    </span>
-                  )}
-                  {entry.tag && (
-                    <span className="text-primary/70 shrink-0">[{entry.tag}]</span>
-                  )}
-                  <span className="text-foreground/80">{entry.message}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <LiteraryEmpty
-              title={t("logs.empty")}
-              action={t("common.refresh")}
-              onAction={() => refetch()}
-              testId="logs-empty-raw"
-            />
-          )}
-        </div>
+      <div>
+        <button
+          type="button"
+          data-testid="logs-raw-toggle"
+          onClick={() => setRawOpen((open) => !open)}
+          className="btn-ghost h-8 px-1 text-[13px] text-muted-foreground"
+        >
+          {t("logs.rawFold")} {rawOpen ? "▾" : "▸"}
+        </button>
+        {rawOpen && (
+          <div className="mt-3 space-y-3" data-testid="logs-raw-panel">
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="btn-secondary h-8 px-3 text-[13px]"
+            >
+              {t("common.refresh")}
+            </button>
+            {data?.entries && data.entries.length > 0 ? (
+              <div className="space-y-1 font-mono text-[13px] leading-relaxed">
+                {data.entries.map((entry, i) => (
+                  <div key={i} className="flex gap-2">
+                    {entry.timestamp && (
+                      <span className="text-muted-foreground shrink-0 w-20 tabular-nums">
+                        {new Date(entry.timestamp).toLocaleTimeString()}
+                      </span>
+                    )}
+                    {entry.level && (
+                      <span className={`shrink-0 w-12 ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}>
+                        {entry.level}
+                      </span>
+                    )}
+                    {entry.tag && (
+                      <span className="text-muted-foreground shrink-0">[{entry.tag}]</span>
+                    )}
+                    <span className="text-foreground/80">{entry.message}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <LiteraryEmpty
+                title={t("logs.empty")}
+                action={t("common.refresh")}
+                onAction={() => refetch()}
+                testId="logs-empty-raw"
+              />
+            )}
+          </div>
+        )}
       </div>
-
     </div>
   );
 }

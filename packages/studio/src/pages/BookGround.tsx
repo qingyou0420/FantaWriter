@@ -16,6 +16,7 @@ import { fetchJson, postApi, useApi } from "../hooks/use-api";
 import type { TFunction } from "../hooks/use-i18n";
 import type { Theme } from "../hooks/use-theme";
 import { GROUND_REEDIT_WARNING, validateGroundConfirm } from "../lib/ground-confirm";
+import { formatConfirmedDate } from "../lib/stage-copy";
 import {
   addOpenQuestion,
   CONTINUE_WITH_OPEN_MARK,
@@ -195,12 +196,19 @@ export function BookGround({
 
   return (
     <div className="space-y-6 fade-in" data-testid="book-ground-page">
-      <header className="space-y-2">
-        <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${title}》` : title}</p>
-        <h1 className="font-serif text-[32px] font-medium leading-10">{isZh ? "研墨" : "Ground"}</h1>
-        <p className="text-[15px] leading-7 text-muted-foreground">
-          {isZh ? "把世界与人磨实，定稿后开始织卷。" : "Settle the world and people, then start weaving."}
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${title}》` : title}</p>
+          <h1 className="font-serif text-[32px] font-medium leading-10">{isZh ? "研墨" : "Ground"}</h1>
+          <p className="text-[15px] leading-7 text-muted-foreground">
+            {isZh ? "把世界与人磨实，定稿后开始织卷。" : "Settle the world and people, then start weaving."}
+          </p>
+        </div>
+        {confirmed && (
+          <p className="shrink-0 pt-8 text-[13px] leading-5 text-muted-foreground" data-testid="ground-confirmed-stamp">
+            {isZh ? "已定稿" : "Confirmed"} · {formatConfirmedDate(stageData?.workflow?.groundConfirmedAt, isZh)}
+          </p>
+        )}
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
@@ -251,15 +259,15 @@ export function BookGround({
                     value={roleText}
                     onChange={(event) => setRoleText(event.target.value)}
                     rows={16}
-                    className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 font-mono text-sm leading-6"
+                    className="w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 font-serif text-[15px] leading-[26px] outline-none focus:ring-1 focus:ring-ring"
                   />
                   <button
                     type="button"
                     disabled={saving}
                     onClick={() => void saveTruth(selectedRole, roleText)}
-                    className="rounded-xl bg-secondary px-4 py-2 text-sm"
+                    className="btn-secondary"
                   >
-                    {isZh ? "保存人物" : "Save character"}
+                    {isZh ? "保存" : "Save"}
                   </button>
                 </>
               )}
@@ -314,38 +322,37 @@ export function BookGround({
                 {isZh ? CONTINUE_WITH_OPEN_MARK : "Continue with open questions"}
               </label>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <textarea
-                data-testid={`ground-editor-${section}`}
-                value={section === "ending" ? `${draft}${hooksText ? `\n\n---\n${hooksText}` : ""}` : draft}
-                onChange={(event) => {
-                  if (section === "ending") {
-                    const [framePart, hooksPart] = event.target.value.split(/\n---\n/);
-                    setDraft(framePart ?? "");
-                    if (hooksPart !== undefined) setHooksText(hooksPart);
-                  } else {
-                    setDraft(event.target.value);
-                  }
-                }}
-                rows={16}
-                className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm leading-7"
-              />
+          ) : section === "ending" ? (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h3 className="font-serif text-[18px] font-medium leading-[26px]">{isZh ? "终局" : "Ending"}</h3>
+                <textarea
+                  data-testid="ground-editor-ending"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  rows={10}
+                  className="w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 font-serif text-[15px] leading-[26px] outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-serif text-[18px] font-medium leading-[26px]">{isZh ? "伏笔清单" : "Hook list"}</h3>
+                <textarea
+                  data-testid="ground-editor-hooks"
+                  value={hooksText}
+                  onChange={(event) => setHooksText(event.target.value)}
+                  rows={10}
+                  className="w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 font-serif text-[15px] leading-[26px] outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   disabled={saving}
                   onClick={() => {
-                    if (section === "ending") {
-                      void saveZone("ending", draft.split(/\n---\n/)[0] ?? draft);
-                      void saveTruth("pending_hooks.md", hooksText);
-                    } else if (section === "world") {
-                      void saveZone("world", draft);
-                    } else {
-                      void saveZone("conflict", draft);
-                    }
+                    void saveZone("ending", draft);
+                    void saveTruth("pending_hooks.md", hooksText);
                   }}
-                  className="rounded-xl bg-secondary px-4 py-2 text-sm"
+                  className="btn-secondary"
                 >
                   {isZh ? "保存" : "Save"}
                 </button>
@@ -354,7 +361,42 @@ export function BookGround({
                   data-testid="ground-ai-expand"
                   disabled={revising}
                   onClick={() => void reviseFoundation()}
-                  className="rounded-xl border border-border/60 px-4 py-2 text-sm"
+                  className="btn-secondary"
+                >
+                  {revising ? (isZh ? "铺开中…" : "Expanding…") : (isZh ? "让 AI 铺细节" : "Ask AI to expand")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <h3 className="font-serif text-[18px] font-medium leading-[26px]">
+                {NAV.find((item) => item.id === section)?.[isZh ? "zh" : "en"]}
+              </h3>
+              <textarea
+                data-testid={`ground-editor-${section}`}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                rows={16}
+                className="w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 font-serif text-[15px] leading-[26px] outline-none focus:ring-1 focus:ring-ring"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    if (section === "world") void saveZone("world", draft);
+                    else void saveZone("conflict", draft);
+                  }}
+                  className="btn-secondary"
+                >
+                  {isZh ? "保存" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  data-testid="ground-ai-expand"
+                  disabled={revising}
+                  onClick={() => void reviseFoundation()}
+                  className="btn-secondary"
                 >
                   {revising ? (isZh ? "铺开中…" : "Expanding…") : (isZh ? "让 AI 铺细节" : "Ask AI to expand")}
                 </button>
@@ -394,9 +436,11 @@ export function BookGround({
           data-testid="ground-confirm"
           disabled={!validation.ok}
           onClick={() => setConfirmOpen(true)}
-          className="btn-primary ml-auto"
+          className={`${confirmed ? "btn-secondary" : "btn-primary"} ml-auto`}
         >
-          {isZh ? "研墨定稿" : "Confirm ground"}
+          {confirmed
+            ? (isZh ? "重新定稿" : "Reconfirm ground")
+            : (isZh ? "研墨定稿" : "Confirm ground")}
         </button>
       </div>
 

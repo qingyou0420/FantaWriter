@@ -10,7 +10,7 @@ import { startFreshBookCreateSession } from "./chat-page-state";
 import { useChatStore } from "../store/chat";
 import { useServiceStore } from "../store/service";
 import type { SSEMessage } from "../hooks/use-sse";
-import type { TFunction } from "../hooks/use-i18n";
+import { useI18n, type TFunction } from "../hooks/use-i18n";
 import { removeBookFromCollection, removeShortFromCollection, shouldRefetchBookCollections } from "../hooks/use-book-activity";
 import { deleteStudioShortWork } from "../lib/short-api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -58,7 +58,8 @@ export function Dashboard({ nav, sse, t }: {
   theme?: unknown;
   t: TFunction;
 }) {
-  const isZh = t("nav.connected") === "已连接";
+  const { lang } = useI18n();
+  const isZh = lang !== "en";
   const createDraftSession = useChatStore((s) => s.createDraftSession);
   const setInput = useChatStore((s) => s.setInput);
   const { data: author } = useApi<AuthorPublic>("/author");

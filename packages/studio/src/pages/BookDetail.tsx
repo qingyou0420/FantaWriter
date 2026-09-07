@@ -2,33 +2,32 @@ import { fetchJson, useApi, postApi } from "../hooks/use-api";
 import { useEffect, useMemo, useState } from "react";
 import { SerialCockpitStrip, startDraft, startWriteNext } from "../components/SerialCockpitStrip";
 import type { BookWorkspaceNavTarget } from "../components/BookWorkspaceNav";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LiteraryEmpty } from "../components/LiteraryEmpty";
+import { StageDot } from "../components/StageDot";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 import { bookManuscriptExportPath } from "../lib/work-export";
 import { hasPreviousChapterUnapprovedReason, isMustFixSeverity, mapAuditCategory, mapAuditSeverity } from "../lib/copy-map";
-import { writeEmptyCopy } from "../lib/stage-copy";
+import { formatStudyWords, writeEmptyCopy } from "../lib/stage-copy";
+import type { BookStepState } from "../lib/book-stage";
 import { useBookStage } from "../hooks/use-book-stage";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import {
   Feather,
-  FileText,
   Download,
-  Eye,
   Check,
-  X,
-  ShieldCheck,
-  RotateCcw,
-  RefreshCw,
   ChevronDown,
-  Settings2
+  MoreHorizontal,
 } from "lucide-react";
 
 interface ChapterMeta {
@@ -63,6 +62,8 @@ interface Nav extends BookWorkspaceNavTarget {
   toTruth: (bookId: string) => void;
 }
 
+type BriefKind = "rewrite" | "revise" | "sync";
+
 function translateChapterStatus(status: string, t: TFunction): string {
   const map: Record<string, () => string> = {
     "ready-for-review": () => t("chapter.readyForReview"),
@@ -76,15 +77,19 @@ function translateChapterStatus(status: string, t: TFunction): string {
   return map[status]?.() ?? status;
 }
 
-const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = {
-  "ready-for-review": { color: "text-mark-text bg-mark-soft", icon: <Eye size={12} /> },
-  approved: { color: "text-foreground", icon: <Check size={12} /> },
-  drafted: { color: "text-muted-foreground bg-muted/20", icon: <FileText size={12} /> },
-  "needs-revision": { color: "text-mark-text bg-mark-soft", icon: <RotateCcw size={12} /> },
-  imported: { color: "text-muted-foreground bg-muted/20", icon: <Download size={12} /> },
-  "audit-failed": { color: "text-seal-text bg-seal-soft", icon: <RotateCcw size={12} /> },
-  "state-degraded": { color: "text-mark-text bg-mark-soft", icon: <RotateCcw size={12} /> },
-};
+function statusDotState(status: string): BookStepState {
+  if (status === "approved") return "done";
+  if (status === "audit-failed") return "blocked";
+  if (status === "ready-for-review" || status === "needs-revision" || status === "state-degraded") return "current";
+  return "todo";
+}
+
+function statusTone(status: string): string {
+  if (status === "audit-failed") return "text-seal-text";
+  if (status === "ready-for-review" || status === "needs-revision" || status === "state-degraded") return "text-mark-text";
+  if (status === "approved") return "text-foreground";
+  return "text-muted-foreground";
+}
 
 export function BookDetail({
   bookId,
@@ -110,9 +115,6 @@ export function BookDetail({
   const [exportFormat, setExportFormat] = useState<ExportFormat>("txt");
   const [exportApprovedOnly, setExportApprovedOnly] = useState(false);
   const [bookActionPending, setBookActionPending] = useState<string | null>(null);
-  // Auto (pipeline self-reviews) vs manual (write the draft and stop; you
-  // run audit / revise / approve as checkpoint actions). This is scoped to
-  // the current book, with project-level mode as the inherited default.
   const [reviewMode, setReviewMode] = useState<"auto" | "manual">("auto");
   const [skipPreviousApproval, setSkipPreviousApproval] = useState(false);
   const [preflight, setPreflight] = useState<{ ok: boolean; reasons: Array<{ code?: string; message?: string; messageZh?: string; chapterNumber?: number }> } | null>(null);
@@ -122,6 +124,14 @@ export function BookDetail({
     category: string;
     description: string;
   }>>([]);
+  const [briefPrompt, setBriefPrompt] = useState<{ kind: BriefKind; chapter: number; mode?: ReviseMode } | null>(null);
+  const [briefValue, setBriefValue] = useState("");
+  const [overridePrompt, setOverridePrompt] = useState<{
+    chapter: number;
+    remaining: ReadonlyArray<number>;
+  } | null>(null);
+  const [overrideValue, setOverrideValue] = useState("");
+
   useEffect(() => {
     void fetchJson<{ mode?: string }>(`/books/${encodeURIComponent(bookId)}/chapter-review-mode`)
       .then((r) => setReviewMode(r.mode === "manual" ? "manual" : "auto"))
@@ -136,8 +146,8 @@ export function BookDetail({
     const recent = sse.messages.at(-1);
     if (!recent) return;
 
-    const data = recent.data as { bookId?: string } | null;
-    if (data?.bookId !== bookId) return;
+    const payload = recent.data as { bookId?: string } | null;
+    if (payload?.bookId !== bookId) return;
 
     if (recent.event === "write:start") {
       setWriteRequestPending(false);
@@ -196,18 +206,11 @@ export function BookDetail({
         body: JSON.stringify({ mode: next }),
       });
     } catch {
-      setReviewMode(reviewMode); // revert on failure
+      setReviewMode(reviewMode);
     }
   };
 
-  const handleRewrite = async (chapterNum: number) => {
-    const brief = window.prompt(
-      data?.book.language === "en"
-        ? "Optional rewrite brief for this run only. Leave blank to use existing focus."
-        : "可选：输入这次重写要遵循的补充想法。留空则沿用现有 focus。",
-      "",
-    );
-    if (brief === null) return;
+  const runRewrite = async (chapterNum: number, brief: string) => {
     setRewritingChapters((prev) => [...prev, chapterNum]);
     try {
       await fetchJson(`/books/${bookId}/rewrite/${chapterNum}`, {
@@ -223,14 +226,7 @@ export function BookDetail({
     }
   };
 
-  const handleRevise = async (chapterNum: number, mode: ReviseMode) => {
-    const brief = window.prompt(
-      data?.book.language === "en"
-        ? "Optional revise brief for this run only. Leave blank to use existing focus."
-        : "可选：输入这次修订要遵循的补充想法。留空则沿用现有 focus。",
-      "",
-    );
-    if (brief === null) return;
+  const runRevise = async (chapterNum: number, mode: ReviseMode, brief: string) => {
     setRevisingChapters((prev) => [...prev, chapterNum]);
     try {
       await fetchJson(`/books/${bookId}/revise/${chapterNum}`, {
@@ -246,14 +242,7 @@ export function BookDetail({
     }
   };
 
-  const handleSync = async (chapterNum: number) => {
-    const brief = window.prompt(
-      data?.book.language === "en"
-        ? "Optional sync brief for interpreting the edited chapter body. Leave blank to sync directly from the text."
-        : "可选：输入这次同步时要遵循的补充说明。留空则直接按正文同步。",
-      "",
-    );
-    if (brief === null) return;
+  const runSync = async (chapterNum: number, brief: string) => {
     setSyncingChapters((prev) => [...prev, chapterNum]);
     try {
       await fetchJson(`/books/${bookId}/resync/${chapterNum}`, {
@@ -269,41 +258,73 @@ export function BookDetail({
     }
   };
 
-  const handleApproveAll = async () => {
-    if (!data) return;
-    const reviewable = data.chapters.filter((ch) => ch.status === "ready-for-review");
+  const approveChapter = async (chapterNum: number, why?: string) => {
+    await postApi(`/books/${bookId}/chapters/${chapterNum}/approve`, why?.trim()
+      ? { override: { who: "author", why: why.trim() } }
+      : {});
+  };
+
+  const approveQueue = async (queue: ReadonlyArray<number>) => {
+    const remaining = [...queue];
     let failed = 0;
-    for (const chapter of reviewable) {
+    while (remaining.length > 0) {
+      const chapterNum = remaining[0]!;
       try {
-        await postApi(`/books/${bookId}/chapters/${chapter.number}/approve`, {});
+        await approveChapter(chapterNum);
+        remaining.shift();
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (/critical|须处理|APPROVE_BLOCKED/i.test(message) || /APPROVE_BLOCKED/.test(String(error))) {
-          const why = window.prompt(
-            data?.book.language === "en"
-              ? `Chapter ${chapter.number} still has must-fix issues. Type an override reason or cancel.`
-              : `第 ${chapter.number} 章仍有须处理的问题。输入带病定稿原因，或取消。`,
-            "",
-          );
-          if (!why?.trim()) {
-            failed += 1;
-            continue;
-          }
-          try {
-            await postApi(`/books/${bookId}/chapters/${chapter.number}/approve`, {
-              override: { who: "author", why: why.trim() },
-            });
-            continue;
-          } catch {
-            failed += 1;
-            continue;
-          }
+          setOverridePrompt({ chapter: chapterNum, remaining: remaining.slice(1) });
+          setOverrideValue("");
+          return;
         }
         failed += 1;
+        remaining.shift();
       }
     }
     if (failed > 0) {
-      setActionMessage(`${failed}/${reviewable.length} approve(s) failed`);
+      setActionMessage(`${failed} approve(s) failed`);
+    }
+    refetch();
+  };
+
+  const handleApprove = async (chapterNum: number) => {
+    try {
+      await approveChapter(chapterNum);
+      refetch();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "";
+      if (/critical|须处理|APPROVE_BLOCKED/i.test(message) || /APPROVE_BLOCKED/.test(String(e))) {
+        setOverridePrompt({ chapter: chapterNum, remaining: [] });
+        setOverrideValue("");
+        return;
+      }
+      setActionMessage(e instanceof Error ? e.message : "Approve failed");
+    }
+  };
+
+  const handleApproveAll = async () => {
+    if (!data) return;
+    await approveQueue(data.chapters.filter((ch) => ch.status === "ready-for-review").map((ch) => ch.number));
+  };
+
+  const confirmOverride = async () => {
+    if (!overridePrompt) return;
+    const why = overrideValue.trim();
+    if (!why) return;
+    const { chapter, remaining } = overridePrompt;
+    setOverridePrompt(null);
+    try {
+      await approveChapter(chapter, why);
+    } catch (retry) {
+      setActionMessage(retry instanceof Error ? retry.message : "Approve failed");
+      refetch();
+      return;
+    }
+    if (remaining.length > 0) {
+      await approveQueue(remaining);
+      return;
     }
     refetch();
   };
@@ -325,6 +346,34 @@ export function BookDetail({
       await fetchJson(`/books/${bookId}/repair-state/${chapterNum}`, { method: "POST" });
       return data?.book.language === "en" ? `Chapter ${chapterNum} state repaired.` : `第 ${chapterNum} 章状态已修复。`;
     });
+  };
+
+  const confirmBrief = () => {
+    if (!briefPrompt) return;
+    const { kind, chapter, mode } = briefPrompt;
+    const brief = briefValue;
+    setBriefPrompt(null);
+    setBriefValue("");
+    if (kind === "rewrite") void runRewrite(chapter, brief);
+    else if (kind === "revise" && mode) void runRevise(chapter, mode, brief);
+    else if (kind === "sync") void runSync(chapter, brief);
+  };
+
+  const bookIsZh = data?.book.language !== "en";
+  const briefCopy = (kind: BriefKind) => {
+    if (kind === "rewrite") {
+      return bookIsZh
+        ? { title: t("book.rewrite"), message: "可选：输入这次重写要遵循的补充想法。留空则沿用现有 focus。" }
+        : { title: t("book.rewrite"), message: "Optional rewrite brief for this run only. Leave blank to use existing focus." };
+    }
+    if (kind === "sync") {
+      return bookIsZh
+        ? { title: t("book.syncTruth"), message: "可选：输入这次同步时要遵循的补充说明。留空则直接按正文同步。" }
+        : { title: t("book.syncTruth"), message: "Optional sync brief for interpreting the edited chapter body. Leave blank to sync directly from the text." };
+    }
+    return bookIsZh
+      ? { title: t("book.reviseWith"), message: "可选：输入这次修订要遵循的补充想法。留空则沿用现有 focus。" }
+      : { title: t("book.reviseWith"), message: "Optional revise brief for this run only. Leave blank to use existing focus." };
   };
 
   if (loading) return (
@@ -351,6 +400,7 @@ export function BookDetail({
   });
 
   const exportHref = bookManuscriptExportPath(bookId, exportFormat, exportApprovedOnly);
+  const briefDialog = briefPrompt ? briefCopy(briefPrompt.kind) : null;
 
   return (
     <div className="space-y-8 fade-in">
@@ -358,64 +408,60 @@ export function BookDetail({
         <div className="space-y-2">
           <p className="eyebrow text-[13px] font-medium text-muted-foreground">{isZh ? `《${book.title}》` : book.title}</p>
           <h1 className="font-serif text-[32px] font-medium leading-10">{isZh ? "落笔" : "Write"}</h1>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground font-medium">
-            <span className="px-2 py-0.5 rounded bg-secondary/50 text-foreground/70 text-xs">{book.genre}</span>
-            <div className="flex items-center gap-1.5">
-              <FileText size={14} />
-              <span>{chapters.length} {t("dash.chapters")}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Feather size={14} />
-              <span>{totalWords.toLocaleString()} {t("book.words")}</span>
-            </div>
-          </div>
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            {book.genre} · {chapters.length} {t("dash.chapters")} · {formatStudyWords(totalWords, isZh)}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-xl border border-border/50 bg-secondary/50 px-4 py-2.5 text-sm font-medium">
+            <DropdownMenuTrigger className="btn-secondary inline-flex items-center gap-1.5">
               <Download size={14} />
               {t("book.exportMenu")}
               <ChevronDown size={14} />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 p-2 space-y-2">
-              <select
-                value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-                className="w-full rounded-md border border-border/50 bg-background px-2 py-1.5 text-xs"
-              >
-                <option value="txt">TXT</option>
-                <option value="md">MD</option>
-                <option value="epub">EPUB</option>
-              </select>
-              <label className="flex items-center gap-1.5 text-xs">
+            <DropdownMenuContent align="end" className="w-56 p-3 space-y-3">
+              {(["txt", "md", "epub"] as const).map((format) => (
+                <label key={format} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="export-format"
+                    checked={exportFormat === format}
+                    onChange={() => setExportFormat(format)}
+                  />
+                  {format.toUpperCase()}
+                </label>
+              ))}
+              <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={exportApprovedOnly} onChange={(e) => setExportApprovedOnly(e.target.checked)} />
                 {t("book.approvedOnly")}
               </label>
-              <a href={exportHref} download data-testid="book-export-manuscript" className="block rounded-md px-2 py-1.5 text-xs hover:bg-secondary">
-                {t("book.export")}
-              </a>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const exported = await fetchJson<{ path?: string; chapters?: number }>(`/books/${bookId}/export-save`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ format: exportFormat, approvedOnly: exportApprovedOnly }),
-                    });
-                    setBookActionPending(`saved:${exported.path ?? ""}`);
-                  } catch (e) {
-                    setBookActionPending(e instanceof Error ? e.message : "Export failed");
-                  }
-                }}
-                className="block w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-secondary"
-              >
-                {t("book.exportSave")}
-              </button>
+              <div className="flex flex-col gap-1 pt-1">
+                <a href={exportHref} download data-testid="book-export-manuscript" className="btn-secondary text-center">
+                  {t("book.download")}
+                </a>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const exported = await fetchJson<{ path?: string; chapters?: number }>(`/books/${bookId}/export-save`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ format: exportFormat, approvedOnly: exportApprovedOnly }),
+                      });
+                      setBookActionPending(`saved:${exported.path ?? ""}`);
+                    } catch (e) {
+                      setBookActionPending(e instanceof Error ? e.message : "Export failed");
+                    }
+                  }}
+                  className="btn-ghost w-full"
+                >
+                  {t("book.exportSave")}
+                </button>
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
-          <div className="inline-flex overflow-hidden rounded-xl bg-primary text-primary-foreground">
+          <div className="inline-flex overflow-hidden rounded-[10px] bg-primary text-primary-foreground">
             <button
               type="button"
               onClick={handleWriteNext}
@@ -458,7 +504,7 @@ export function BookDetail({
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">{isZh ? "等你过目" : "Review queue"}</div>
             {reviewCount > 0 && (
-              <button type="button" onClick={handleApproveAll} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => void handleApproveAll()} className="btn-secondary h-8 px-3 text-[13px]">
                 {t("book.approveAll")} ({reviewCount})
               </button>
             )}
@@ -481,7 +527,7 @@ export function BookDetail({
           className={`rounded-2xl border px-4 py-3 text-sm ${
             activity.lastError
               ? "border-destructive/30 bg-destructive/5 text-destructive"
-              : "border-primary/20 bg-primary/[0.04] text-foreground"
+              : "border-border bg-card text-foreground"
           }`}
         >
           {activity.lastError ? (
@@ -498,158 +544,136 @@ export function BookDetail({
         </div>
       )}
 
-      {/* Chapters Table */}
-      <div className="paper-sheet rounded-2xl overflow-hidden border border-border/40 shadow-xl shadow-primary/5">
+      <div className="rounded-xl overflow-hidden border border-border">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+          <table className="w-full text-[15px] leading-[26px] border-collapse">
             <thead>
-              <tr className="bg-muted/30 border-b border-border/50">
-                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground w-16">#</th>
-                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground">{t("book.manuscriptTitle")}</th>
-                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground w-28">{t("book.words")}</th>
-                <th className="text-left px-6 py-4 font-bold text-[11px]  text-muted-foreground w-36">{t("book.status")}</th>
-                <th className="text-right px-6 py-4 font-bold text-[11px]  text-muted-foreground">{t("book.curate")}</th>
+              <tr className="bg-muted/30 border-b border-border">
+                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-16">#</th>
+                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground">{t("book.manuscriptTitle")}</th>
+                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-28">{t("book.words")}</th>
+                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-36">{t("book.status")}</th>
+                <th className="text-right px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-32">{t("book.curate")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30">
-              {chapters.map((ch, index) => {
-                const staggerClass = `stagger-${Math.min(index + 1, 5)}`;
-                return (
-                <tr key={ch.number} className={`group hover:bg-primary/[0.02] transition-colors fade-in ${staggerClass}`}>
-                  <td className="px-6 py-4 text-muted-foreground/60 font-mono text-xs">{ch.number.toString().padStart(2, '0')}</td>
-                  <td className="px-6 py-4">
+              {chapters.map((ch) => (
+                <tr key={ch.number} className="group hover:bg-accent/60 transition-colors h-12">
+                  <td className="px-4 py-3 text-muted-foreground font-mono text-[13px] tabular-nums">{ch.number}</td>
+                  <td className="px-4 py-3">
                     <button
                       onClick={() => nav.toChapter(bookId, ch.number)}
-                      className="font-serif text-lg font-medium hover:text-primary transition-colors text-left"
+                      className="font-serif text-lg font-medium text-left underline decoration-[color-mix(in_oklch,var(--foreground)_35%,transparent)] hover:decoration-seal"
                     >
                       {ch.title || t("chapter.label").replace("{n}", String(ch.number))}
                     </button>
                   </td>
-                  <td className="px-6 py-4 text-muted-foreground font-medium tabular-nums text-xs">{(ch.wordCount ?? 0).toLocaleString()}</td>
-                  <td className="px-6 py-4">
-                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-medium ${STATUS_CONFIG[ch.status]?.color ?? "bg-muted text-muted-foreground"}`}>
-                      {STATUS_CONFIG[ch.status]?.icon}
+                  <td className="px-4 py-3 text-muted-foreground font-medium tabular-nums text-[13px]">{(ch.wordCount ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3">
+                    <div className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${statusTone(ch.status)}`}>
+                      <StageDot state={statusDotState(ch.status)} />
                       {translateChapterStatus(ch.status, t)}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-4 py-3 text-right">
                     <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                       {ch.status === "ready-for-review" && (
-                        <>
-                          <button
-                            onClick={async () => {
-                              try {
-                                await postApi(`/books/${bookId}/chapters/${ch.number}/approve`, {});
-                                refetch();
-                              } catch (e) {
-                                const why = window.prompt(
-                                  data?.book.language === "en"
-                                    ? "Must-fix issues block approve. Type override reason or cancel."
-                                    : "须处理的问题阻止通过。输入带病定稿原因，或取消。",
-                                  "",
-                                );
-                                if (!why?.trim()) {
-                                  setActionMessage(e instanceof Error ? e.message : "Approve failed");
-                                  return;
-                                }
-                                try {
-                                  await postApi(`/books/${bookId}/chapters/${ch.number}/approve`, {
-                                    override: { who: "author", why: why.trim() },
-                                  });
-                                  refetch();
-                                } catch (retry) {
-                                  setActionMessage(retry instanceof Error ? retry.message : "Approve failed");
-                                }
-                              }
-                            }}
-                            className="p-2 rounded-lg bg-primary/10 text-foreground hover:bg-primary hover:text-primary-foreground transition-all"
-                            title={t("book.approve")}
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            onClick={async () => {
-                              try { await postApi(`/books/${bookId}/chapters/${ch.number}/reject`); refetch(); }
-                              catch (e) { setActionMessage(e instanceof Error ? e.message : "Reject failed"); }
-                            }}
-                            className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all"
-                            title={data?.book.language === "en" ? "Rollback this chapter" : "回滚本章"}
-                          >
-                            <X size={14} />
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={async () => {
-                          try {
-                            const auditResult = await fetchJson<{ passed?: boolean; issues?: unknown[] }>(`/books/${bookId}/audit/${ch.number}`, { method: "POST" });
-                            setActionMessage(auditResult.passed
-                              ? (isZh ? "审校已通过" : "Audit passed")
-                              : (isZh ? `审校未过：${auditResult.issues?.length ?? 0} 条` : `Audit failed: ${auditResult.issues?.length ?? 0} issues`));
-                            refetch();
-                          } catch (e) {
-                            setActionMessage(e instanceof Error ? e.message : "Audit failed");
-                          }
-                        }}
-                        className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all shadow-sm"
-                        title={t("book.audit")}
-                      >
-                        <ShieldCheck size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleRewrite(ch.number)}
-                        disabled={rewritingChapters.includes(ch.number)}
-                        className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all shadow-sm disabled:opacity-50"
-                        title={t("book.rewrite")}
-                      >
-                        {rewritingChapters.includes(ch.number)
-                          ? <div className="w-3.5 h-3.5 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" />
-                          : <RotateCcw size={14} />}
-                      </button>
-                      <button
-                        onClick={() => handleSync(ch.number)}
-                        disabled={syncingChapters.includes(ch.number) || ch.number !== latestPersistedChapter}
-                        className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all shadow-sm disabled:opacity-50"
-                        title={data?.book.language === "en" ? "Sync truth/state from edited chapter" : "根据已编辑章节同步 truth/state"}
-                      >
-                        {syncingChapters.includes(ch.number)
-                          ? <div className="w-3.5 h-3.5 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" />
-                          : <RefreshCw size={14} />}
-                      </button>
-                      {ch.status === "state-degraded" && (
                         <button
-                          onClick={() => handleRepairState(ch.number)}
-                          disabled={bookActionPending === `repair-state-${ch.number}`}
-                          className="p-2 rounded-lg bg-mark-soft text-mark-text hover:bg-mark hover:text-primary-foreground transition-all disabled:opacity-50"
-                          title={t("book.repairState")}
+                          type="button"
+                          onClick={() => void handleApprove(ch.number)}
+                          className="btn-primary h-8 px-3 text-[13px]"
+                          data-testid={`chapter-approve-${ch.number}`}
                         >
-                          {bookActionPending === `repair-state-${ch.number}`
-                            ? <div className="w-3.5 h-3.5 border-2 border-mark-text/20 border-t-mark-text rounded-full animate-spin" />
-                            : <Settings2 size={14} />}
+                          <Check size={14} />
+                          {t("book.approve")}
                         </button>
                       )}
-                      <select
-                        disabled={revisingChapters.includes(ch.number)}
-                        value=""
-                        onChange={(e) => {
-                          const mode = e.target.value as ReviseMode;
-                          if (mode) handleRevise(ch.number, mode);
-                        }}
-                        className="px-2 py-1.5 text-[11px] font-bold rounded-lg bg-secondary text-muted-foreground border border-border/50 outline-none hover:text-primary hover:bg-primary/10 transition-all disabled:opacity-50 cursor-pointer"
-                        title="Revise with AI"
-                      >
-                        <option value="" disabled>{revisingChapters.includes(ch.number) ? t("common.loading") : t("book.curate")}</option>
-                        <option value="spot-fix">{t("book.spotFix")}</option>
-                        <option value="polish">{t("book.polish")}</option>
-                        <option value="rewrite">{t("book.rewrite")}</option>
-                        <option value="rework">{t("book.rework")}</option>
-                        <option value="anti-detect">{t("book.antiDetect")}</option>
-                      </select>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          data-testid={`chapter-more-${ch.number}`}
+                          className="btn-ghost inline-flex h-8 w-8 items-center justify-center"
+                        >
+                          <MoreHorizontal size={16} />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-44">
+                          {ch.status === "ready-for-review" && (
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={async () => {
+                                try { await postApi(`/books/${bookId}/chapters/${ch.number}/reject`); refetch(); }
+                                catch (e) { setActionMessage(e instanceof Error ? e.message : "Reject failed"); }
+                              }}
+                            >
+                              {t("book.rollbackChapter")}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              try {
+                                const auditResult = await fetchJson<{ passed?: boolean; issues?: unknown[] }>(`/books/${bookId}/audit/${ch.number}`, { method: "POST" });
+                                setActionMessage(auditResult.passed
+                                  ? (isZh ? "审校已通过" : "Audit passed")
+                                  : (isZh ? `审校未过：${auditResult.issues?.length ?? 0} 条` : `Audit failed: ${auditResult.issues?.length ?? 0} issues`));
+                                refetch();
+                              } catch (e) {
+                                setActionMessage(e instanceof Error ? e.message : "Audit failed");
+                              }
+                            }}
+                          >
+                            {t("book.audit")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={rewritingChapters.includes(ch.number)}
+                            onClick={() => {
+                              setBriefPrompt({ kind: "rewrite", chapter: ch.number });
+                              setBriefValue("");
+                            }}
+                          >
+                            {t("book.rewrite")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={syncingChapters.includes(ch.number) || ch.number !== latestPersistedChapter}
+                            onClick={() => {
+                              setBriefPrompt({ kind: "sync", chapter: ch.number });
+                              setBriefValue("");
+                            }}
+                          >
+                            {t("book.syncTruth")}
+                          </DropdownMenuItem>
+                          {ch.status === "state-degraded" && (
+                            <DropdownMenuItem
+                              disabled={bookActionPending === `repair-state-${ch.number}`}
+                              onClick={() => void handleRepairState(ch.number)}
+                            >
+                              {t("book.repairState")}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>{t("book.reviseWith")}</DropdownMenuLabel>
+                          {([
+                            ["spot-fix", t("book.spotFix")],
+                            ["polish", t("book.polish")],
+                            ["rewrite", t("book.rewrite")],
+                            ["rework", t("book.rework")],
+                            ["anti-detect", t("book.antiDetect")],
+                          ] as const).map(([mode, label]) => (
+                            <DropdownMenuItem
+                              key={mode}
+                              disabled={revisingChapters.includes(ch.number)}
+                              onClick={() => {
+                                setBriefPrompt({ kind: "revise", chapter: ch.number, mode });
+                                setBriefValue("");
+                              }}
+                            >
+                              {label}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                 </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
@@ -671,6 +695,45 @@ export function BookDetail({
           />
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(briefPrompt)}
+        title={briefDialog?.title ?? ""}
+        message={briefDialog?.message ?? ""}
+        confirmLabel={isZh ? "继续" : "Continue"}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => { setBriefPrompt(null); setBriefValue(""); }}
+        onConfirm={confirmBrief}
+      >
+        <input
+          data-testid="chapter-brief-input"
+          value={briefValue}
+          onChange={(event) => setBriefValue(event.target.value)}
+          className="mt-3 w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={Boolean(overridePrompt)}
+        title={t("reader.stillApprove")}
+        message={overridePrompt
+          ? (isZh
+            ? `第 ${overridePrompt.chapter} 章仍有须处理的问题。写下原因后仍可通过。`
+            : `Chapter ${overridePrompt.chapter} still has must-fix issues. Type a reason to approve anyway.`)
+          : ""}
+        confirmLabel={t("book.approve")}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => { setOverridePrompt(null); setOverrideValue(""); }}
+        onConfirm={() => void confirmOverride()}
+      >
+        <input
+          data-testid="approve-override-input"
+          value={overrideValue}
+          onChange={(event) => setOverrideValue(event.target.value)}
+          placeholder={t("reader.overrideWhy")}
+          className="mt-3 w-full rounded-[10px] border border-border-strong bg-card px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      </ConfirmDialog>
     </div>
   );
 }
