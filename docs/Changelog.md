@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.1.7
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.7.exe`（#120：问心新建书对话去掉题材模版芯片）。
+
 ## 2.1.6
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.6.exe`（#117：问心去故事卡 / 研墨七段 / 书房四步文案）。
