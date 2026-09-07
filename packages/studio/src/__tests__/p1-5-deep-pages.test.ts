@@ -107,7 +107,7 @@ describe("P1-5 卡片 / 动态 / 短篇 / 清理", () => {
   it("gives shorts a 书房 + clickable 问心 strip", () => {
     const short = read("src/pages/ShortReader.tsx");
     expect(short).toMatch(/short-study-home/);
-    expect(short).toMatch(/short-step-ask/);
+    expect(short).toMatch(/short-step-\$\{step\.id\}/);
     expect(short).toMatch(/openAsk/);
     expect(short).not.toMatch(/reader\.backToList/);
     expect(short).not.toMatch(/t\("nav\.connected"\) ===/);
