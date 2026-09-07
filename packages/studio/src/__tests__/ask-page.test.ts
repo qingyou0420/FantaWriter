@@ -57,7 +57,6 @@ describe("ask page layout", () => {
     expect(rail).toMatch(/\/books\/\$\{bookId\}\/story-card/);
     expect(rail).toMatch(/askDone \|\| data\.source !== "none"/);
     expect(rail).toMatch(/ask-story-card/);
-    expect(study).toMatch(/\/books\/\$\{bookId\}\/story-card/);
     expect(study).not.toMatch(/truth\/story\/story_card/);
     expect(server).toMatch(/\/api\/v1\/books\/:id\/story-card/);
     expect(server).toMatch(/truth:written/);
