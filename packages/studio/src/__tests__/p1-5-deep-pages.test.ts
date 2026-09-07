@@ -33,6 +33,17 @@ describe("P1-5 落笔", () => {
     expect(detail).toMatch(/StageDot/);
   });
 
+  it("pads the write empty state and hides the table header when there are no chapters", () => {
+    const empty = read("src/components/LiteraryEmpty.tsx");
+    expect(empty).toMatch(/className\?: string/);
+    expect(empty).toMatch(/cn\(/);
+    expect(empty).toMatch(/py-12/);
+    const detail = read("src/pages/BookDetail.tsx");
+    expect(detail).toMatch(/chapters\.length > 0 && \(/);
+    expect(detail).toMatch(/className="px-6 py-14 sm:px-8"/);
+    expect(detail).toMatch(/testId="write-empty"/);
+  });
+
   it("keeps SerialCockpitStrip to one next-chapter line", () => {
     const strip = read("src/components/SerialCockpitStrip.tsx");
     expect(strip).toMatch(/serial-next-line/);

@@ -384,7 +384,7 @@ function createWindow(targetUrl) {
     show: false,
     autoHideMenuBar: true,
     title: "墨生万象 / Inkborne",
-    icon: path.join(__dirname, "icon.png"),
+    icon: path.join(__dirname, process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -440,7 +440,7 @@ function openUpdatePanel() {
     modal: false,
     autoHideMenuBar: true,
     title: "检查更新",
-    icon: path.join(__dirname, "icon.png"),
+    icon: path.join(__dirname, process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -489,7 +489,7 @@ function showAbout() {
   dialog.showMessageBox(mainWindow || undefined, {
     type: "info",
     title: "关于墨生万象",
-    icon: path.join(__dirname, "icon.png"),
+    icon: path.join(__dirname, process.platform === "win32" ? "icon.ico" : "icon.png"),
     message: "墨生万象 / Inkborne 2.0",
     detail: [
       "内核与工作台 fork 自 InkOS (https://github.com/Narcooo/inkos) v1.8.x。",
