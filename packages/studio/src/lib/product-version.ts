@@ -1,2 +1,2 @@
 /** Desktop product version. Keep in lockstep with the repo-root package.json. */
-export const PRODUCT_VERSION = "2.1.5";
+export const PRODUCT_VERSION = "2.1.6";
