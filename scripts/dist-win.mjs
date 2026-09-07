@@ -72,7 +72,14 @@ async function buildInstaller() {
     await run("pnpm", builderArgs, desktopDir);
   } catch (first) {
     if (dirOnly) throw first;
-    console.warn("[dist:win] 首次打包失败，跳过签名重试");
+    if (process.env.INKBORNE_ALLOW_UNBRANDED_EXE !== "1") {
+      throw new Error(
+        "[dist:win] electron-builder 失败。不要用 signAndEditExecutable=false 兜底（会跳过 rcedit，桌面 / 任务栏仍是 Electron 默认图标）。紧急放行请设 INKBORNE_ALLOW_UNBRANDED_EXE=1。"
+        + ` 原错误：${first instanceof Error ? first.message : first}`,
+        { cause: first },
+      );
+    }
+    console.error("[dist:win] 首次打包失败；INKBORNE_ALLOW_UNBRANDED_EXE=1，将跳过 rcedit（无品牌图标）");
     await run("pnpm", [...builderArgs, "-c.win.signAndEditExecutable=false"], desktopDir, {
       CSC_IDENTITY_AUTO_DISCOVERY: "false",
       CSC_LINK: "",
@@ -80,6 +87,16 @@ async function buildInstaller() {
       CSC_KEY_PASSWORD: "",
       WIN_CSC_KEY_PASSWORD: "",
     });
+    writeFileSync(
+      join(distDir, "UNBRANDED.txt"),
+      [
+        "UNBRANDED Windows build",
+        "Packed with signAndEditExecutable=false; Inkborne.exe keeps the default Electron icon.",
+        "Do not ship this artifact. Rebuild with rcedit enabled.",
+        "",
+      ].join("\n"),
+    );
+    console.error("[dist:win] 已写出 dist-installer/UNBRANDED.txt — 此包不得发版");
   }
 }
 

@@ -15,6 +15,7 @@ files:
   - first-run.html
   - update-panel.html
   - icon.png
+  - icon.ico
   - lib/**/*
   - package.json
 extraResources:
@@ -24,12 +25,15 @@ extraResources:
       - "**/*"
 win:
   icon: icon.ico
+  legalTrademarks: Inkborne / 墨生万象
   target:
     - target: nsis
       arch:
         - x64
   artifactName: Inkborne-Setup-${version}.${ext}
-  signAndEditExecutable: false
+  # Do not set signAndEditExecutable: false — electron-builder then skips rcedit
+  # (icon + FileDescription / ProductName). Unsigned builds still skip sign()
+  # when CSC_IDENTITY_AUTO_DISCOVERY=false.
 nsis:
   oneClick: false
   perMachine: false

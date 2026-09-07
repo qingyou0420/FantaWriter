@@ -64,15 +64,38 @@ describe("2.1.4 Windows installer contract", () => {
     const ico = join(repoRoot, "build", "icon.ico");
     const png = join(repoRoot, "build", "icon.png");
     const mark = join(repoRoot, "build", "inkborne-mark.png");
+    const desktopIco = join(desktopDir, "icon.ico");
     const yml = readFileSync(join(desktopDir, "electron-builder.yml"), "utf8");
     expect(existsSync(ico)).toBe(true);
     expect(existsSync(png)).toBe(true);
     expect(existsSync(mark)).toBe(true);
+    expect(existsSync(desktopIco)).toBe(true);
     const header = readFileSync(ico).subarray(0, 4);
     expect(header.equals(Buffer.from([0, 0, 1, 0]))).toBe(true);
+    expect(icoFrameSizes(readFileSync(ico))).toContain(256);
+    expect(readFileSync(desktopIco).equals(readFileSync(ico))).toBe(true);
     expect(yml).toMatch(/buildResources:\s*\.\.\/\.\.\/build/);
     expect(yml).toMatch(/icon:\s*icon\.ico/);
     expect(yml).toMatch(/^\s*- icon\.png$/m);
+    expect(yml).toMatch(/^\s*- icon\.ico$/m);
+    expect(yml).not.toMatch(/^\s*signAndEditExecutable:\s*false/m);
+  });
+
+  it("lets rcedit brand the exe and does not silently ship an unbranded fallback", () => {
+    const yml = readFileSync(join(desktopDir, "electron-builder.yml"), "utf8");
+    const distWin = readFileSync(join(repoRoot, "scripts", "dist-win.mjs"), "utf8");
+    const workflow = readFileSync(join(repoRoot, ".github", "workflows", "release-win.yml"), "utf8");
+    const main = readFileSync(join(desktopDir, "main.cjs"), "utf8");
+    expect(yml).toMatch(/appId:\s*com\.fantawriter\.app/);
+    expect(yml).not.toMatch(/^\s*signAndEditExecutable:\s*false/m);
+    expect(distWin).toMatch(/INKBORNE_ALLOW_UNBRANDED_EXE/);
+    expect(distWin).toMatch(/UNBRANDED\.txt/);
+    expect(distWin).not.toMatch(/首次打包失败，跳过签名重试/);
+    expect(workflow).toMatch(/ProductName/);
+    expect(workflow).toMatch(/ExtractAssociatedIcon/);
+    expect(workflow).toMatch(/UNBRANDED\.txt/);
+    expect(main).toMatch(/process\.platform === "win32" \? "icon\.ico" : "icon\.png"/);
+    expect(main.match(/process\.platform === "win32" \? "icon\.ico" : "icon\.png"/g)?.length).toBe(3);
   });
 
   it("brands first-run and the Electron window as 墨生万象, not InkOS", () => {
@@ -84,7 +107,21 @@ describe("2.1.4 Windows installer contract", () => {
     expect(firstRun).toMatch(/name: \$\("serviceName"\)\.value/);
     expect(firstRun).not.toMatch(/InkOS Studio|InkosLogo|>InkOS</);
     expect(main).toMatch(/title: "墨生万象 \/ Inkborne"/);
-    expect(main).toMatch(/icon: path\.join\(__dirname, "icon\.png"\)/);
+    expect(main).toMatch(/process\.platform === "win32" \? "icon\.ico" : "icon\.png"/);
     expect(main).not.toMatch(/title: "InkOS/);
   });
 });
+
+/** ICONDIR width bytes: 0 means 256. */
+function icoFrameSizes(buf: Buffer): number[] {
+  expect(buf.readUInt16LE(0)).toBe(0);
+  expect(buf.readUInt16LE(2)).toBe(1);
+  const count = buf.readUInt16LE(4);
+  expect(count).toBeGreaterThan(0);
+  const sizes: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const width = buf[6 + i * 16];
+    sizes.push(width === 0 ? 256 : width);
+  }
+  return sizes;
+}

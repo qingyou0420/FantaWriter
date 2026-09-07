@@ -547,15 +547,17 @@ export function BookDetail({
       <div className="rounded-xl overflow-hidden border border-border">
         <div className="overflow-x-auto">
           <table className="w-full text-[15px] leading-[26px] border-collapse">
-            <thead>
-              <tr className="bg-muted/30 border-b border-border">
-                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-16">#</th>
-                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground">{t("book.manuscriptTitle")}</th>
-                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-28">{t("book.words")}</th>
-                <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-36">{t("book.status")}</th>
-                <th className="text-right px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-32">{t("book.curate")}</th>
-              </tr>
-            </thead>
+            {chapters.length > 0 && (
+              <thead>
+                <tr className="bg-muted/30 border-b border-border">
+                  <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-16">#</th>
+                  <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground">{t("book.manuscriptTitle")}</th>
+                  <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-28">{t("book.words")}</th>
+                  <th className="text-left px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-36">{t("book.status")}</th>
+                  <th className="text-right px-4 py-3 font-medium text-[13px] leading-5 text-muted-foreground w-32">{t("book.curate")}</th>
+                </tr>
+              </thead>
+            )}
             <tbody className="divide-y divide-border/30">
               {chapters.map((ch) => (
                 <tr key={ch.number} className="group hover:bg-accent/60 transition-colors h-12">
@@ -691,6 +693,7 @@ export function BookDetail({
               const chapter = preflight?.reasons.find((reason) => reason.chapterNumber)?.chapterNumber;
               if (chapter) nav.toChapter(bookId, chapter);
             }}
+            className="px-6 py-14 sm:px-8"
             testId="write-empty"
           />
         )}

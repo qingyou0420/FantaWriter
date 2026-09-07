@@ -67,3 +67,7 @@ git remote add inkos-upstream https://github.com/Narcooo/inkos.git
 ## 许可证
 
 [AGPL-3.0-only](LICENSE)。1.x 已发布的 MIT 安装包不受影响。关于页与 `NOTICE` 保留 InkOS 署名。
+
+## 常见问题
+
+**升级后桌面 / 任务栏仍是旧图标？** 安装包会把 Inkborne 圆标写进 `Inkborne.exe`。Windows 可能缓存同一路径 exe 的旧图（`IconCache.db`）；运行 `ie4uinit.exe -show` 或重启资源管理器即可。之前「固定到任务栏」的图钉不会随升级自动换标，取消固定再固定一次。
