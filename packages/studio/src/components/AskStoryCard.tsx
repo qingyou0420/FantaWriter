@@ -107,7 +107,7 @@ export function AskStoryCard({
             </button>
           )}
         </div>
-      )}
+      ) : null}
     </aside>
   );
 }
