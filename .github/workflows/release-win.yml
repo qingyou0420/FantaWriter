@@ -100,11 +100,11 @@ jobs:
         shell: powershell
         run: |
           if (Test-Path "dist-installer\UNBRANDED.txt") {
-            throw "UNBRANDED.txt present — refusing to release an exe without rcedit branding"
+            throw "UNBRANDED.txt present - refusing to release an exe without rcedit branding"
           }
           $exe = "dist-installer\win-unpacked\Inkborne.exe"
           if (-not (Test-Path $exe)) {
-            throw "missing $exe — rcedit / version-info check needs the unpacked exe"
+            throw "missing $exe - rcedit / version-info check needs the unpacked exe"
           }
           $info = (Get-Item $exe).VersionInfo
           if ($info.ProductName -ne "Inkborne") {
