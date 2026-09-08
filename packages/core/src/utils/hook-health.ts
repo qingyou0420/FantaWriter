@@ -44,11 +44,11 @@ export function analyzeHookHealth(params: {
     issues.push(warning(
       params.language,
       params.language === "en"
-        ? `There are ${activeHooks.length} active hooks, above the recommended cap of ${maxActiveHooks}.`
-        : `当前有 ${activeHooks.length} 个活跃伏笔，已经高于建议上限 ${maxActiveHooks} 个。`,
+        ? `There are ${activeHooks.length} unresolved threads still in play, more than the ${maxActiveHooks} this book can comfortably carry.`
+        : `当前还压着 ${activeHooks.length} 条没回收的伏笔，比这本书舒服能扛的 ${maxActiveHooks} 条要多。`,
       params.language === "en"
-        ? "Prefer advancing, resolving, or deferring existing debt before opening more hooks."
-        : "优先推进、回收或延后已有伏笔，再继续开新伏笔。",
+        ? "Move, close, or set aside an existing thread before planting more."
+        : "先推进、收束或按下已有伏笔，再继续埋新的。",
     ));
   }
 
@@ -83,8 +83,8 @@ export function analyzeHookHealth(params: {
         mentionsCurrentChapter: Boolean(params.delta),
       }),
       params.language === "en"
-        ? "Move one pressured hook with a real payoff, escalation, or explicit defer before opening adjacent debt."
-        : "先让一个已进入压力区的伏笔发生真实推进、回收或明确延后，再继续扩展同类债务。",
+        ? "Let one overdue thread actually move, close, or be set aside before planting more of the same kind."
+        : "先让一条已经该收的伏笔真正推进、收束或明确按下，再继续埋同类的新线。",
     ));
   } else {
     const latestRealAdvance = activeHooks.reduce(
@@ -99,11 +99,11 @@ export function analyzeHookHealth(params: {
       issues.push(warning(
         params.language,
         params.language === "en"
-          ? `No real hook advancement has landed for ${params.chapterNumber - latestRealAdvance} chapters.`
-          : `已经连续 ${params.chapterNumber - latestRealAdvance} 章没有真实伏笔推进。`,
+          ? `No planted thread has truly moved for ${params.chapterNumber - latestRealAdvance} chapters.`
+          : `已经连续 ${params.chapterNumber - latestRealAdvance} 章，没有哪条伏笔真正往前走。`,
         params.language === "en"
-          ? "Schedule one old hook for real movement instead of opening parallel restatements."
-          : "下一章优先让一个旧伏笔发生真实推进，而不是继续平行重述。",
+          ? "Give one older thread a real beat instead of restating several in parallel."
+          : "下一章先让一条旧伏笔真正动一动，不要几条一起空提。",
       ));
     }
   }
@@ -119,11 +119,11 @@ export function analyzeHookHealth(params: {
       issues.push(warning(
         params.language,
         params.language === "en"
-          ? `Opened ${newHookIds.length} new hooks without resolving any older debt.`
-          : `本章新开了 ${newHookIds.length} 个伏笔，但没有回收任何旧债。`,
+          ? `Opened ${newHookIds.length} new threads without closing any older ones.`
+          : `本章新埋了 ${newHookIds.length} 条伏笔，却没有收束任何旧的。`,
         params.language === "en"
-          ? "Keep the hook table from ballooning by pairing new openings with old payoffs."
-          : "控制伏笔膨胀，新开伏笔时尽量配套回收旧伏笔。",
+          ? "Pair a new plant with an older payoff so the page does not keep stacking unfinished threads."
+          : "新埋一条时，尽量顺手收一条旧的，别只往上叠。",
       ));
     }
   }
@@ -144,9 +144,13 @@ function buildPressureDescription(params: {
     .map(({ hook, lifecycle }) => {
       const timing = localizeHookPayoffTiming(lifecycle.timing, params.language);
       const pressure = localizePressureLabel(lifecycle, params.language);
+      const name = hookAuthorName(hook);
+      const label = name
+        ? (params.language === "en" ? `“${name}” (${hook.hookId})` : `「${name}」（${hook.hookId}）`)
+        : (params.language === "en" ? `a planted thread (${hook.hookId})` : `某条伏笔（${hook.hookId}）`);
       return params.language === "en"
-        ? `${hook.hookId} (${timing}, ${pressure})`
-        : `${hook.hookId}（${timing}，${pressure}）`;
+        ? `${label} (${timing}, ${pressure})`
+        : `${label}（${timing}，${pressure}）`;
     });
   const suffix = params.entries.length > summarized.length
     ? params.language === "en"
@@ -156,13 +160,22 @@ function buildPressureDescription(params: {
 
   if (params.language === "en") {
     return params.mentionsCurrentChapter
-      ? `Hooks are already under payoff pressure but this chapter left them untouched: ${summarized.join(", ")}${suffix}.`
-      : `Hooks are already under payoff pressure without recent movement: ${summarized.join(", ")}${suffix}.`;
+      ? `These threads are already under payoff pressure but this chapter left them untouched: ${summarized.join(", ")}${suffix}.`
+      : `These threads are already under payoff pressure without recent movement: ${summarized.join(", ")}${suffix}.`;
   }
 
   return params.mentionsCurrentChapter
-    ? `这些伏笔已经进入回收/推进压力，但本章没有真正处理：${summarized.join("、")}${suffix}。`
-    : `这些伏笔已经进入回收/推进压力，但近期没有真实推进：${summarized.join("、")}${suffix}。`;
+    ? `这些伏笔已经该推进或收束，但本章没有真正写到：${summarized.join("、")}${suffix}。`
+    : `这些伏笔已经该推进或收束，但近期没有真正往前走：${summarized.join("、")}${suffix}。`;
+}
+
+function hookAuthorName(hook: HookRecord): string {
+  const payoff = hook.expectedPayoff?.trim() ?? "";
+  if (payoff && payoff.length <= 24 && !/^[A-Za-z]?\d{1,4}$/.test(payoff)) {
+    return payoff;
+  }
+  const quoted = hook.notes?.match(/[""「『]([^""」』\n]{1,24})[""」』]/);
+  return quoted?.[1]?.trim() ?? "";
 }
 
 function localizePressureLabel(

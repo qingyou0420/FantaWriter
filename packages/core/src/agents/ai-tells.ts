@@ -58,11 +58,11 @@ export function analyzeAITells(content: string, language: AITellLanguage = "zh")
           severity: "warning",
           category: isEnglish ? "Paragraph uniformity" : "段落等长",
           description: isEnglish
-            ? `Paragraph-length coefficient of variation is only ${cv.toFixed(3)} (threshold <0.15), which suggests unnaturally uniform paragraph sizing`
-            : `段落长度变异系数仅${cv.toFixed(3)}（阈值<0.15），段落长度过于均匀，呈现AI生成特征`,
+            ? `Several paragraphs are almost the same length, so the chapter feels mechanically even.`
+            : `好几段篇幅差不多长，读起来缺少起伏。`,
           suggestion: isEnglish
-            ? "Increase paragraph-length contrast: use shorter beats for impact and longer blocks for immersive detail"
-            : "增加段落长度差异：短段落用于节奏加速或冲击，长段落用于沉浸描写",
+            ? "Let short beats hit harder and give longer passages room to linger."
+            : "短段落用来加速或砸一下，长段落用来沉进去，让段落有长有短。",
         });
       }
     }
@@ -83,11 +83,11 @@ export function analyzeAITells(content: string, language: AITellLanguage = "zh")
         severity: "warning",
         category: isEnglish ? "Hedge density" : "套话密度",
         description: isEnglish
-          ? `Hedge-word density is ${hedgeDensity.toFixed(1)} per 1k characters (threshold >3), making the prose sound overly tentative`
-          : `套话词（似乎/可能/或许等）密度为${hedgeDensity.toFixed(1)}次/千字（阈值>3），语气过于模糊犹豫`,
+          ? `Hedge words such as “seems” and “perhaps” show up often enough that the narration sounds unsure.`
+          : `「似乎」「可能」「或许」这类含糊字眼用得偏多，语气有点拿不准。`,
         suggestion: isEnglish
-          ? "Replace hedges with firmer narration: remove vague qualifiers and use concrete detail instead"
-          : "用确定性叙述替代模糊表达：去掉「似乎」直接描述状态，用具体细节替代「可能」",
+          ? "Drop the hedges and name what is actually happening."
+          : "去掉「似乎」，直接写眼前的状态；用具体细节代替「可能」。",
       });
     }
   }
@@ -112,11 +112,11 @@ export function analyzeAITells(content: string, language: AITellLanguage = "zh")
       severity: "warning",
       category: isEnglish ? "Formulaic transitions" : "公式化转折",
       description: isEnglish
-        ? `Transition words repeat too often: ${detail}. Reusing the same transition pattern 3+ times creates a formulaic AI texture`
-        : `转折词重复使用：${detail}。同一转折模式≥3次暴露AI生成痕迹`,
+        ? `The same turning words keep coming back (${detail}), so the pivots start to feel canned.`
+        : `「${repeatedTransitions.map(([word]) => word).join("」「")}」反复出现（${detail}），转折读起来有点套。`,
       suggestion: isEnglish
         ? "Let scenes pivot through action, timing, or viewpoint shifts instead of repeating the same transitions"
-        : "用情节自然转折替代转折词，或换用不同的过渡手法（动作切入、时间跳跃、视角切换）",
+        : "用动作、时间或视角自己拐弯，少靠同一个转折词往下接。",
     });
   }
 
@@ -147,12 +147,12 @@ export function analyzeAITells(content: string, language: AITellLanguage = "zh")
       issues.push({
         severity: "info",
         category: isEnglish ? "List-like structure" : "列表式结构",
-        description: isEnglish
-          ? `Detected ${maxConsecutive} consecutive sentences with the same opening pattern, creating a list-like generated cadence`
-          : `检测到${maxConsecutive}句连续以相同开头的句子，呈现列表式AI生成结构`,
-        suggestion: isEnglish
-          ? "Vary how sentences open: change subject, timing, or action entry to break the list effect"
-          : "变换句式开头：用不同主语、时间词、动作词开头，打破列表感",
+          description: isEnglish
+            ? `${maxConsecutive} sentences in a row open the same way, so the page starts to read like a list.`
+            : `连续${maxConsecutive}句用差不多的开头，读起来像在列条目。`,
+          suggestion: isEnglish
+            ? "Change how sentences begin: a new subject, a new time, or a new action."
+            : "换换句首：换主语、换时间、换动作，别排成一列。",
       });
     }
   }

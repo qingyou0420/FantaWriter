@@ -46,16 +46,16 @@ function normalizeRepairScope(value: unknown): AuditIssue["repairScope"] {
 }
 
 const DIMENSION_LABELS: Record<number, { readonly zh: string; readonly en: string }> = {
-  1: { zh: "OOC检查", en: "OOC Check" },
-  2: { zh: "时间线检查", en: "Timeline Check" },
-  3: { zh: "设定冲突", en: "Lore Conflict Check" },
-  4: { zh: "战力崩坏", en: "Power Scaling Check" },
-  5: { zh: "数值检查", en: "Numerical Consistency Check" },
-  6: { zh: "伏笔检查", en: "Hook Check" },
-  7: { zh: "节奏检查", en: "Pacing Check" },
-  8: { zh: "文风检查", en: "Style Check" },
-  9: { zh: "信息越界", en: "Information Boundary Check" },
-  10: { zh: "词汇疲劳", en: "Lexical Fatigue Check" },
+  1: { zh: "人设走样", en: "Character Drift" },
+  2: { zh: "时间线", en: "Timeline" },
+  3: { zh: "设定冲突", en: "Setting Clash" },
+  4: { zh: "战力崩坏", en: "Power Scaling" },
+  5: { zh: "数值", en: "Numbers" },
+  6: { zh: "伏笔", en: "Planted Thread" },
+  7: { zh: "节奏", en: "Pacing" },
+  8: { zh: "文风", en: "Style" },
+  9: { zh: "不该知道的信息", en: "Something They Shouldn't Know" },
+  10: { zh: "用词习惯", en: "Word Habits" },
   11: { zh: "利益链断裂", en: "Incentive Chain Check" },
   12: { zh: "年代考据", en: "Era Accuracy Check" },
   13: { zh: "配角降智", en: "Side Character Competence Check" },
@@ -63,12 +63,12 @@ const DIMENSION_LABELS: Record<number, { readonly zh: string; readonly en: strin
   15: { zh: "爽点虚化", en: "Payoff Dilution Check" },
   16: { zh: "台词失真", en: "Dialogue Authenticity Check" },
   17: { zh: "流水账", en: "Chronicle Drift Check" },
-  18: { zh: "知识库污染", en: "Knowledge Base Pollution Check" },
-  19: { zh: "视角一致性", en: "POV Consistency Check" },
-  20: { zh: "段落等长", en: "Paragraph Uniformity Check" },
-  21: { zh: "套话密度", en: "Cliche Density Check" },
-  22: { zh: "公式化转折", en: "Formulaic Twist Check" },
-  23: { zh: "列表式结构", en: "List-like Structure Check" },
+  18: { zh: "设定串台", en: "Setting Bleed" },
+  19: { zh: "视角", en: "Point of View" },
+  20: { zh: "段落节奏", en: "Paragraph Rhythm" },
+  21: { zh: "套话太多", en: "Hedge Words" },
+  22: { zh: "转折套式", en: "Formulaic Turns" },
+  23: { zh: "句式排比", en: "List-like Sentences" },
   24: { zh: "支线停滞", en: "Subplot Stagnation Check" },
   25: { zh: "弧线平坦", en: "Arc Flatline Check" },
   26: { zh: "节奏单调", en: "Pacing Monotony Check" },
@@ -78,7 +78,7 @@ const DIMENSION_LABELS: Record<number, { readonly zh: string; readonly en: strin
   30: { zh: "世界规则跨书一致性", en: "Cross-Book World Rule Check" },
   31: { zh: "番外伏笔隔离", en: "Spinoff Hook Isolation Check" },
   32: { zh: "读者期待管理", en: "Reader Expectation Check" },
-  33: { zh: "章节备忘偏离", en: "Chapter Memo Drift Check" },
+  33: { zh: "本章是否写到", en: "Did This Chapter Land" },
   34: { zh: "角色还原度", en: "Character Fidelity Check" },
   35: { zh: "世界规则遵守", en: "World Rule Compliance Check" },
   36: { zh: "关系动态", en: "Relationship Dynamics Check" },
@@ -158,8 +158,8 @@ function buildDimensionNote(
 
   if (id === 10 && words.length > 0) {
     return language === "en"
-      ? `Fatigue words: ${words.join(", ")}. Also check AI tell markers (仿佛/不禁/宛如/竟然/忽然/猛地); warn when any appears more than once per 3,000 words.`
-      : `高疲劳词：${words.join("、")}。同时检查AI标记词（仿佛/不禁/宛如/竟然/忽然/猛地）密度，每3000字超过1次即warning`;
+      ? `Watch repeated words: ${words.join(", ")}. Also watch 仿佛 / 不禁 / 宛如 / 竟然 / 忽然 / 猛地 — if they start stacking, say so in plain language. If they stay sparse, do not emit an issue.`
+      : `留意反复出现的词：${words.join("、")}。也看「仿佛／不禁／宛如／竟然／忽然／猛地」会不会堆在一起。若只是偶尔一见，不要出条；不要写密度、阈值、健康区间。`;
   }
 
   if (id === 15 && gp.satisfactionTypes.length > 0) {
@@ -216,7 +216,7 @@ function buildDimensionNote(
 • At volume end (final chapter of any volume per volume_map) a promoted core_hook that is still open or stale without explicit "carried over to volume N+1" planning → critical.
 • Any non-promoted stale hook → info-level log; do not fail the chapter on it, but note it so the planner can schedule cleanup.
 
-Quote the exact hook_id in description and include the stale / blocked marker text verbatim. Structure check only — do not judge hook prose quality.`
+In the author-facing description, name the thread in literary language (the object, secret, or promise). Pair a code like H003 only when a human name is also present; never leave a bare code alone. Structure check only — do not judge hook prose quality.`
         : `Phase 7 hook-debt 升级规则（含 hotfix 2/3）。阅读 pending_hooks.md 伏笔池时不要只看"有没有悬而未决的伏笔"，要读状态列中的 stale / blocked 标记、core_hook 列、depends_on 列、以及升级列：
 
 • critical 级别仅适用于升级=是（promoted=true）的伏笔。非升级的 stale/blocked 伏笔一律保持 info——升级标志是降噪的开关，因为架构师阶段会产出大量非承重的伏笔种子。
@@ -225,7 +225,7 @@ Quote the exact hook_id in description and include the stale / blocked marker te
 • 卷尾（volume_map 中任一卷的末章）仍有升级=是的主线伏笔处于 open 或 stale 且没有显式"延至下一卷"规划 → critical。
 • 升级=否的 stale 伏笔 → info 级记录，不判本章失败，但保留以便 planner 安排清理。
 
-description 中要明确引用 hook_id，并把状态列中 stale / blocked 的原文标记字面抄进去。本维度只审结构，不评价伏笔文笔。`;
+写给作者看时，用伏笔名（物件、秘密、承诺），不要只甩 H003 这种编号；有编号就配上名字。本维度只审结构，不评价伏笔文笔。不要写 hook 账、advance/resolve、memo、Polisher。`;
     case 19:
       return language === "en"
         ? "Check whether POV shifts are signaled clearly and stay consistent with the configured viewpoint."
@@ -466,7 +466,7 @@ export class ContinuityAuditor extends BaseAgent {
 
 ## Reviewer Scope (hard constraints)
 
-You audit completion and structure only. Your job is to decide whether the chapter delivers the plan, keeps characters and timelines intact, and moves the book forward. Wording, sentence rhythm, paragraph shape, punctuation, imagery, and other prose-surface choices are NOT yours — those belong to the Polisher pass that runs after you. If you notice prose-surface issues, you may flag them with severity "info" so the Polisher can see them, but they do not count toward passed / overall_score and they must never be critical.
+You audit completion and structure only. Your job is to decide whether the chapter delivers the plan, keeps characters and timelines intact, and moves the book forward. Wording, sentence rhythm, paragraph shape, punctuation, imagery, and other prose-surface choices are NOT yours — those belong to the later prose pass. If you notice prose-surface issues, you may flag them with severity "info" so the later prose pass can see them, but they do not count toward passed / overall_score and they must never be critical. Do not mention internal agent names, rule ids, or ledger jargon in category / description / suggestion. Write as an editor speaking to the novelist. If a wording habit is already sparse and healthy, omit the issue entirely.
 
 You audit twelve structural reader-pain patterns: dragging / flat openings, blurry worldbuilding disconnected from reality, contradictory character setup, tangled POV, mainline drift or stagnation, weak conflict with missing payoff, pacing loss of control and abrupt transitions, character inconsistency across the arc, thin/one-note characters without contrast, stiff emotion expression and abrupt relationship jumps, imbalanced cheats/power gifts, and settings that never land in concrete action. Alongside these, keep the engineering dimensions listed below (OOC, timeline coherence, information boundary, hook debt, cross-chapter repetition, lexical fatigue, length band, title fatigue, paragraph shape).
 
@@ -487,9 +487,9 @@ Output format MUST be JSON:
 	    {
 	      "severity": "critical|warning|info",
 	      "repair_scope": "local|structural|unknown",
-	      "category": "dimension name",
-	      "description": "specific issue description",
-	      "suggestion": "fix suggestion"
+	      "category": "short literary label (Style, Planted thread, Choppy paragraphs, Word habits — never paragraph-shape, hook ledger, or agent names)",
+	      "description": "specific issue in plain editorial English; name the thread, not a bare H003; never mention Polisher, memo, advance/resolve, or density thresholds",
+	      "suggestion": "what the author should do on the page"
 	    }
   ],
   "summary": "one-sentence audit conclusion"
@@ -508,7 +508,7 @@ Score holistically — do not let a single minor issue tank the score.`
 
 ## 审稿边界（硬约束）
 
-你不审文笔、不审排版、不审句式——这些归 Polisher。你发现的文笔问题只能以 severity="info" 标注供 Polisher 参考，不计入 reviewer 的 passed/overall_score，也绝不可标为 critical。
+你不审文笔、不审排版、不审句式——这些交给后边的润色。你发现的文笔问题只能以 severity="info" 标注，不计入 reviewer 的 passed/overall_score，也绝不可标为 critical。写给作者看：用伏笔／本章是否写到／段落太碎／场景切换排版／用词习惯，不要写 hook 账、memo、advance/resolve、paragraph-shape、Polisher、密度阈值。若用词已经克制，不要出条。
 
 你审 12 条结构类雷点：开篇拖沓/平淡、世界观模糊脱现实、人设矛盾、视角杂乱、主线偏离/停滞、冲突乏力爽点缺失、节奏失控过渡生硬、人设前后矛盾、人物单薄无反差、情感表达生硬/关系突兀、金手指失衡、设定无落地。同时保留工程维度（OOC、timeline 一致、信息越界、hook-debt、跨章重复、词汇疲劳、章节字数、标题疲劳、段落形状）。
 
@@ -529,9 +529,9 @@ ${dimList}
 	    {
 	      "severity": "critical|warning|info",
 	      "repair_scope": "local|structural|unknown",
-	      "category": "审查维度名称",
-	      "description": "具体问题描述",
-	      "suggestion": "修改建议"
+	      "category": "作者能看懂的短名（文风、伏笔、段落太碎、用词习惯——不要写 paragraph-shape、hook 账、内部代称）",
+	      "description": "像责编对作者说话：点出伏笔名或具体场面，不要只甩 H003；不要写 Polisher、memo、advance/resolve、密度阈值",
+	      "suggestion": "作者在正文里该怎么改"
 	    }
   ],
   "summary": "一句话总结审查结论"

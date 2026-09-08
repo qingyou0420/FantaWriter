@@ -221,8 +221,8 @@ describe("ContinuityAuditor", () => {
       const systemPrompt = messages?.[0]?.content ?? "";
       const userPrompt = messages?.[1]?.content ?? "";
 
-      expect(systemPrompt).toContain("Hook Check");
-      expect(systemPrompt).toContain("Chapter Memo Drift Check");
+      expect(systemPrompt).toContain("Planted Thread");
+      expect(systemPrompt).toContain("Did This Chapter Land");
       expect(systemPrompt).not.toContain("Outline Drift Check");
       expect(systemPrompt).toContain("stays dormant long enough to feel abandoned");
       expect(systemPrompt).toContain("3-question test");
@@ -442,7 +442,7 @@ describe("ContinuityAuditor", () => {
       expect(systemPrompt).toContain("审稿边界");
       expect(systemPrompt).toContain("你不审文笔");
       expect(systemPrompt).toContain("稀疏 memo 是合法状态");
-      expect(systemPrompt).toContain("章节备忘偏离");
+      expect(systemPrompt).toContain("本章是否写到");
       expect(systemPrompt).not.toContain("大纲偏离检测");
 
       // User prompt injects the memo for drift-checking.

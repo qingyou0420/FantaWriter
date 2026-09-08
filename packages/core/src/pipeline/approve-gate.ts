@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { AuditIssue, AuditResult } from "../agents/continuity.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import { chapterRuntimeSlug } from "../utils/packet-snapshot.js";
+import { inferReviewCopyLanguage, toAuthorFacingReviewIssue } from "../utils/review-author-copy.js";
 
 export const ApproveOverrideSchema = z.object({
   who: z.string().min(1),
@@ -168,14 +169,17 @@ export async function buildReviewQueue(params: {
         }));
     for (const issue of issues) {
       if (params.severity && issue.severity !== params.severity) continue;
+      const language = inferReviewCopyLanguage(`${issue.category} ${issue.description}`);
+      const facing = toAuthorFacingReviewIssue(issue, language);
+      if (!facing) continue;
       items.push({
         chapterNumber: chapter.number,
         title: chapter.title,
         status: chapter.status,
-        severity: issue.severity,
-        category: issue.category,
-        description: issue.description,
-        suggestion: issue.suggestion,
+        severity: facing.severity,
+        category: facing.category,
+        description: facing.description,
+        suggestion: facing.suggestion,
       });
     }
   }

@@ -47,7 +47,7 @@ describe("analyzeHookHealth", () => {
       maxActiveHooks: 4,
     });
 
-    expect(issues.some((issue) => issue.category === "Hook Debt" && issue.description.includes("5 active hooks"))).toBe(true);
+    expect(issues.some((issue) => issue.category === "Hook Debt" && issue.description.includes("5 unresolved threads"))).toBe(true);
   });
 
   it("does not count dormant seed aliases as active hook debt", () => {
@@ -150,7 +150,7 @@ describe("analyzeHookHealth", () => {
       newHookBurstThreshold: 2,
     });
 
-    expect(issues.some((issue) => issue.description.includes("Opened 2 new hooks"))).toBe(true);
+    expect(issues.some((issue) => issue.description.includes("Opened 2 new threads"))).toBe(true);
   });
 
   it("does not count absorbed duplicate-family upserts as genuinely new hooks", () => {

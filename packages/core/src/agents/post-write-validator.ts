@@ -133,8 +133,8 @@ export function validatePostWrite(
     violations.push({
       rule: "转折词密度",
       severity: "warning",
-      description: `转折/惊讶标记词共${totalMarkerCount}次（上限${markerLimit}次/${content.length}字），明细：${detail}`,
-      suggestion: "改用具体动作或感官描写传递突然性",
+      description: `「忽然」「仿佛」这类突然一转的词用了${totalMarkerCount}次（${detail}），读起来有点像在堆惊讶。`,
+      suggestion: "改用具体动作或感官写突然，少靠标记词自己喊“变了”。",
     });
   }
 
@@ -150,8 +150,8 @@ export function validatePostWrite(
       violations.push({
         rule: "高疲劳词",
         severity: "warning",
-        description: `高疲劳词"${word}"出现${count}次（上限1次/章）`,
-        suggestion: `替换多余的"${word}"为同义但不同形式的表达`,
+        description: `「${word}」在本章里反复出现了${count}次，容易让读者眼熟生厌。`,
+        suggestion: `把多出来的「${word}」换成别的说法，不要连着用同一个壳。`,
       });
     }
   }
@@ -182,7 +182,7 @@ export function validatePostWrite(
       rule: "报告术语",
       severity: "error",
       description: `正文中出现分析报告术语：${foundTerms.map(t => `"${t}"`).join("、")}`,
-      suggestion: "这些术语只能用于 PRE_WRITE_CHECK 内部推理，正文中用口语化表达替代",
+      suggestion: "这些词更像设定笔记，请改成角色自己会说、读者能看见的话。",
     });
   }
 
@@ -473,8 +473,8 @@ function validatePostWriteEnglish(
       violations.push({
         rule: "AI-tell word density",
         severity: "warning",
-        description: `"${word}" appears ${matches.length} times (limit: 1 per 3000 chars)`,
-        suggestion: `Replace with a more specific word`,
+        description: `"${word}" shows up ${matches.length} times, often enough to start sounding like a tic.`,
+        suggestion: `Swap it for a more specific word.`,
       });
     }
   }

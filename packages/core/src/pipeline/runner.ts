@@ -2325,6 +2325,7 @@ export class PipelineRunner {
         initialOutput: output,
         reducedControlInput,
         lengthSpec,
+        language: pipelineLang,
         initialUsage: totalUsage,
         createReviser: () => new ReviserAgent(this.agentCtxFor("reviser", bookId)),
         auditor,
@@ -2347,9 +2348,9 @@ export class PipelineRunner {
           // Phase 9-3: verify the draft acts on every hook the memo committed to.
           const memoBody = writeInput.chapterMemo?.body ?? "";
           const ledgerIssues = memoBody
-            ? validateHookLedger(memoBody, content)
+            ? validateHookLedger(memoBody, content, pipelineLang)
             : [];
-          return [...baseIssues, ...ledgerIssues, ...overdueHookAuditIssues(hooksForOverdue, chapterNumber)];
+          return [...baseIssues, ...ledgerIssues, ...overdueHookAuditIssues(hooksForOverdue, chapterNumber, pipelineLang)];
         },
         maxReviewIterations: this.config.writingReviewRetries,
         logWarn: (message) => this.logWarn(pipelineLang, message),

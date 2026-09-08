@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { buildApiUrl } from "../../hooks/use-api";
 import { tr } from "../../lib/app-language";
+import { formatReviewIssueCopy, humanizeReviewDescription, mapAuditSeverity } from "../../lib/copy-map";
 import { chatSelectors, useChatStore } from "../../store/chat";
 import { usePreferencesStore } from "../../store/preferences";
 import {
@@ -453,12 +454,24 @@ function ChapterAuditIssues({
   readonly issues: ReadonlyArray<ChapterRevisionIssueDetails>;
   readonly title: string;
 }) {
-  if (issues.length === 0) return null;
+  const visible = issues.flatMap((issue, index) => {
+    const isZh = /[\u4e00-\u9fff]/.test(`${issue.category}${issue.description}`);
+    const copy = formatReviewIssueCopy(issue, isZh);
+    if (!copy) return [];
+    return [{
+      key: `${issue.category}:${index}`,
+      severity: mapAuditSeverity(issue.severity, isZh),
+      category: copy.category,
+      description: copy.description,
+      suggestion: issue.suggestion ? humanizeReviewDescription(issue.suggestion, isZh) : undefined,
+    }];
+  });
+  if (visible.length === 0) return null;
   return (
     <div className="mt-2 space-y-1.5">
       <div className="text-[13px] font-medium text-foreground">{title}</div>
-      {issues.map((issue, index) => (
-        <div key={`${issue.category}:${index}`} className="rounded-lg border border-border/40 bg-background/55 px-2.5 py-2 text-[12px] leading-5 text-muted-foreground">
+      {visible.map((issue) => (
+        <div key={issue.key} className="rounded-lg border border-border/40 bg-background/55 px-2.5 py-2 text-[12px] leading-5 text-muted-foreground">
           <div className="font-medium text-foreground">[{issue.severity}] {issue.category}</div>
           <div>{issue.description}</div>
           {issue.suggestion && <div className="mt-0.5">{tr("建议", "Suggestion")}{tr("：", ": ")}{issue.suggestion}</div>}

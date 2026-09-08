@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@": resolve(__dirname, "src"),
       "@actalk/inkos-core/volume-map-tree": resolve(__dirname, "../core/src/volume-map-tree.ts"),
+      "@actalk/inkos-core/review-author-copy": resolve(__dirname, "../core/src/review-author-copy.ts"),
     },
   },
   server: {
