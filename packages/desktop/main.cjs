@@ -494,7 +494,7 @@ function showAbout() {
     detail: [
       "内核与工作台 fork 自 InkOS (https://github.com/Narcooo/inkos) v1.8.x。",
       "许可证：GNU Affero General Public License v3.0。",
-      "源码：https://github.com/qingyou0420/FantaWriter",
+      "源码：https://github.com/qingyou0420/Inkborne",
       `版本：${app.getVersion()}`,
       "检查更新：工作台「系统 → 检查更新」，或本对话框 / 菜单「帮助 → 检查更新」。",
     ].join("\n"),

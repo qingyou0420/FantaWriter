@@ -29,11 +29,11 @@ describe("updateActionsFromCheck", () => {
     });
     expect(updateActionsFromCheck({
       hasUpdate: true,
-      downloadUrl: "https://github.com/qingyou0420/FantaWriter/releases/download/v2.0.1/FantaWriter-Setup-2.0.1.exe",
+      downloadUrl: "https://github.com/qingyou0420/Inkborne/releases/download/v2.0.1/FantaWriter-Setup-2.0.1.exe",
     }).canDownload).toBe(true);
     expect(updateActionsFromCheck({
       hasUpdate: false,
-      downloadUrl: "https://github.com/qingyou0420/FantaWriter/releases/download/v2.0.1/FantaWriter-Setup-2.0.1.exe",
+      downloadUrl: "https://github.com/qingyou0420/Inkborne/releases/download/v2.0.1/FantaWriter-Setup-2.0.1.exe",
     }).canDownload).toBe(false);
   });
 

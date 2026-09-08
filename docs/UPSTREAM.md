@@ -31,7 +31,7 @@ git fetch inkos-upstream v1.8.0
 
 ## 品牌更名
 
-面向作者的产品名是 **墨生万象 / Inkborne**（原名幻想作家 / FantaWriter）。内部 npm 包仍为 `@fantawriter/*`，`appId` 仍为 `com.fantawriter.app`，以免更新链路与 userData 路径断裂。安装包现名为 `Inkborne-Setup-x.y.z.exe`，检查更新同时识别旧的 `FantaWriter-Setup-*`。
+面向作者的产品名是 **墨生万象 / Inkborne**（原名幻想作家 / FantaWriter）。GitHub 仓库为 [`qingyou0420/Inkborne`](https://github.com/qingyou0420/Inkborne)（原 `qingyou0420/FantaWriter`）。内部 npm 包仍为 `@fantawriter/*`，`appId` 仍为 `com.fantawriter.app`，以免更新链路与 userData 路径断裂。安装包现名为 `Inkborne-Setup-x.y.z.exe`，检查更新同时识别旧的 `FantaWriter-Setup-*`。
 
 ## P0 hunches（2026-09-01 实测）
 

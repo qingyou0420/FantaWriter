@@ -36,10 +36,10 @@ const {
 };
 
 describe("github latest release parsing", () => {
-  it("defaults to the public FantaWriter repo", () => {
-    expect(DEFAULT_GITHUB_REPO).toBe("qingyou0420/FantaWriter");
+  it("defaults to the public Inkborne repo", () => {
+    expect(DEFAULT_GITHUB_REPO).toBe("qingyou0420/Inkborne");
     expect(githubLatestApiUrl()).toBe(
-      "https://api.github.com/repos/qingyou0420/FantaWriter/releases/latest"
+      "https://api.github.com/repos/qingyou0420/Inkborne/releases/latest"
     );
   });
 
@@ -48,13 +48,13 @@ describe("github latest release parsing", () => {
       {
         name: "Fantasy-Writer-Setup-1.4.0.exe",
         browser_download_url:
-          "https://github.com/qingyou0420/FantaWriter/releases/download/v1.4.0/Fantasy-Writer-Setup-1.4.0.exe",
-        url: "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/2",
+          "https://github.com/qingyou0420/Inkborne/releases/download/v1.4.0/Fantasy-Writer-Setup-1.4.0.exe",
+        url: "https://api.github.com/repos/qingyou0420/Inkborne/releases/assets/2",
       },
       {
         name: "latest.yml",
         browser_download_url:
-          "https://github.com/qingyou0420/FantaWriter/releases/download/v1.4.0/latest.yml",
+          "https://github.com/qingyou0420/Inkborne/releases/download/v1.4.0/latest.yml",
       },
     ]);
     expect(picked?.name).toBe("Fantasy-Writer-Setup-1.4.0.exe");
@@ -66,20 +66,20 @@ describe("github latest release parsing", () => {
       {
         name: "Fantasy-Writer-Setup-1.4.0.exe",
         browser_download_url:
-          "https://github.com/qingyou0420/FantaWriter/releases/download/v1.4.0/Fantasy-Writer-Setup-1.4.0.exe",
-        url: "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/2",
+          "https://github.com/qingyou0420/Inkborne/releases/download/v1.4.0/Fantasy-Writer-Setup-1.4.0.exe",
+        url: "https://api.github.com/repos/qingyou0420/Inkborne/releases/assets/2",
       },
       {
         name: "FantaWriter-Setup-2.1.9.exe",
         browser_download_url:
-          "https://github.com/qingyou0420/FantaWriter/releases/download/v2.1.9/FantaWriter-Setup-2.1.9.exe",
-        url: "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/3",
+          "https://github.com/qingyou0420/Inkborne/releases/download/v2.1.9/FantaWriter-Setup-2.1.9.exe",
+        url: "https://api.github.com/repos/qingyou0420/Inkborne/releases/assets/3",
       },
       {
         name: "Inkborne-Setup-2.1.9.exe",
         browser_download_url:
-          "https://github.com/qingyou0420/FantaWriter/releases/download/v2.1.9/Inkborne-Setup-2.1.9.exe",
-        url: "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/4",
+          "https://github.com/qingyou0420/Inkborne/releases/download/v2.1.9/Inkborne-Setup-2.1.9.exe",
+        url: "https://api.github.com/repos/qingyou0420/Inkborne/releases/assets/4",
       },
     ]);
     expect(picked?.name).toBe("Inkborne-Setup-2.1.9.exe");
@@ -100,21 +100,21 @@ describe("github latest release parsing", () => {
   it("extracts Setup filename from a GitHub download URL", () => {
     expect(
       setupFileNameFromUrl(
-        "https://github.com/qingyou0420/FantaWriter/releases/download/v2.1.9/Inkborne-Setup-2.1.9.exe"
+        "https://github.com/qingyou0420/Inkborne/releases/download/v2.1.9/Inkborne-Setup-2.1.9.exe"
       )
     ).toBe("Inkborne-Setup-2.1.9.exe");
     expect(
       setupFileNameFromUrl(
-        "https://github.com/qingyou0420/FantaWriter/releases/download/v1.4.1/FantaWriter-Setup-1.4.1.exe"
+        "https://github.com/qingyou0420/Inkborne/releases/download/v1.4.1/FantaWriter-Setup-1.4.1.exe"
       )
     ).toBe("FantaWriter-Setup-1.4.1.exe");
     expect(
       setupFileNameFromUrl(
-        "https://github.com/qingyou0420/FantaWriter/releases/download/v1.4.0/Fantasy-Writer-Setup-1.4.0.exe"
+        "https://github.com/qingyou0420/Inkborne/releases/download/v1.4.0/Fantasy-Writer-Setup-1.4.0.exe"
       )
     ).toBe("Fantasy-Writer-Setup-1.4.0.exe");
     expect(
-      setupFileNameFromUrl("https://github.com/qingyou0420/FantaWriter/releases/download/v1.0.0/notes.md")
+      setupFileNameFromUrl("https://github.com/qingyou0420/Inkborne/releases/download/v1.0.0/notes.md")
     ).toBeNull();
   });
 });
@@ -123,12 +123,12 @@ describe("github download guards", () => {
   it("allows GitHub / objects hosts and rejects others", () => {
     expect(
       isAllowedDownloadUrl(
-        "https://github.com/qingyou0420/FantaWriter/releases/download/v1.0.0/Fantasy-Writer-Setup-1.0.0.exe"
+        "https://github.com/qingyou0420/Inkborne/releases/download/v1.0.0/Fantasy-Writer-Setup-1.0.0.exe"
       )
     ).toBe(true);
     expect(
       isAllowedDownloadUrl(
-        "https://api.github.com/repos/qingyou0420/FantaWriter/releases/assets/2"
+        "https://api.github.com/repos/qingyou0420/Inkborne/releases/assets/2"
       )
     ).toBe(true);
     expect(

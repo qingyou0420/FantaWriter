@@ -489,7 +489,7 @@ LOGO 源图由产品方提供（本次任务附图 4），放入仓库时在 `th
 
 ### F.4 内部包名是否保留
 
-**保留** `@fantawriter/*` npm 包名、仓库名 `qingyou0420/FantaWriter`、`appId`、`INKOS_*` 环境变量、`.inkos/` 目录。理由：全部不面向终端用户，改动只带来迁移成本与更新链路断裂风险。仅在用户可见层（UI、窗口、关于、安装包显示名、README）更名。
+**保留** `@fantawriter/*` npm 包名、`appId`、`INKOS_*` 环境变量、`.inkos/` 目录。GitHub 仓库现为 `qingyou0420/Inkborne`（原 `qingyou0420/FantaWriter`）。理由：内部标识不面向终端用户，改动只带来迁移成本与更新链路断裂风险。仅在用户可见层（UI、窗口、关于、安装包显示名、README、克隆地址）更名。
 
 ---
 

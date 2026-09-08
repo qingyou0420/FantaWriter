@@ -1,6 +1,6 @@
 # 更新日志
 
-本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/FantaWriter/releases) 下载。本软件中文名「墨生万象」，英文名 Inkborne（原名幻想作家 / FantaWriter）。
+本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录对用户可见的改动。安装包在 [Releases](https://github.com/qingyou0420/Inkborne/releases) 下载。本软件中文名「墨生万象」，英文名 Inkborne（原名幻想作家 / FantaWriter）。
 
 ## [2.1.9] - 2026-09-08
 
@@ -502,43 +502,43 @@ P1 硬闸（仍是开发快照，不是正式 2.0.0）。
 - 提供 Windows 安装包。
 - 从本仓 GitHub Release 检查更新。
 
-[2.1.9]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.9
-[2.1.8]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.8
-[2.1.7]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.7
-[2.1.6]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.6
-[2.1.5]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.5
-[2.1.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.4
-[2.1.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.3
-[2.1.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.2
-[2.1.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.1
-[2.1.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.1.0
-[2.0.15]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.15
-[2.0.14]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.14
-[2.0.13]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.13
-[2.0.12]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.12
-[2.0.11]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.11
-[2.0.10]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.10
-[2.0.9]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.9
-[2.0.8]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.8
-[2.0.7]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.7
-[2.0.6]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.6
-[2.0.5]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.5
-[2.0.4]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.4
-[2.0.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.3
-[2.0.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.2
-[2.0.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.1
-[2.0.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.0
-[2.0.0-dev.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v2.0.0-dev.1
-[1.7.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.7.1
-[1.7.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.7.0
-[1.6.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.6.0
-[1.5.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.1
-[1.5.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.5.0
-[1.4.3]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.4.3
-[1.4.2]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.4.2
-[1.4.1]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.4.1
-[1.4.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.4.0
-[1.3.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.3.0
-[1.2.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.2.0
-[1.1.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.1.0
-[1.0.0]: https://github.com/qingyou0420/FantaWriter/releases/tag/v1.0.0
+[2.1.9]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.9
+[2.1.8]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.8
+[2.1.7]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.7
+[2.1.6]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.6
+[2.1.5]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.5
+[2.1.4]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.4
+[2.1.3]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.3
+[2.1.2]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.2
+[2.1.1]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.1
+[2.1.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.1.0
+[2.0.15]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.15
+[2.0.14]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.14
+[2.0.13]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.13
+[2.0.12]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.12
+[2.0.11]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.11
+[2.0.10]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.10
+[2.0.9]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.9
+[2.0.8]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.8
+[2.0.7]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.7
+[2.0.6]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.6
+[2.0.5]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.5
+[2.0.4]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.4
+[2.0.3]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.3
+[2.0.2]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.2
+[2.0.1]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.1
+[2.0.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.0
+[2.0.0-dev.1]: https://github.com/qingyou0420/Inkborne/releases/tag/v2.0.0-dev.1
+[1.7.1]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.7.1
+[1.7.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.7.0
+[1.6.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.6.0
+[1.5.1]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.5.1
+[1.5.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.5.0
+[1.4.3]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.4.3
+[1.4.2]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.4.2
+[1.4.1]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.4.1
+[1.4.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.4.0
+[1.3.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.3.0
+[1.2.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.2.0
+[1.1.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.1.0
+[1.0.0]: https://github.com/qingyou0420/Inkborne/releases/tag/v1.0.0
