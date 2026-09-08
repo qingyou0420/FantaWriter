@@ -10,7 +10,7 @@ import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { deriveBookActivity, shouldRefetchBookView } from "../hooks/use-book-activity";
 import { bookManuscriptExportPath } from "../lib/work-export";
-import { hasPreviousChapterUnapprovedReason, isMustFixSeverity, mapAuditCategory, mapAuditSeverity } from "../lib/copy-map";
+import { formatReviewIssueCopy, hasPreviousChapterUnapprovedReason, isMustFixSeverity } from "../lib/copy-map";
 import { formatStudyWords, writeEmptyCopy } from "../lib/stage-copy";
 import type { BookStepState } from "../lib/book-stage";
 import { useBookStage } from "../hooks/use-book-stage";
@@ -510,14 +510,18 @@ export function BookDetail({
             )}
           </div>
           <ul className="space-y-1 text-sm">
-            {reviewQueue.slice(0, 12).map((item, index) => (
-              <li key={`${item.chapterNumber}-${item.category}-${index}`}>
-                <span className={isMustFixSeverity(item.severity) ? "text-seal-text font-medium" : "text-mark-text"}>
-                  {mapAuditSeverity(item.severity, isZh)}
-                </span>{" "}
-                {isZh ? "第" : "Ch."}{item.chapterNumber} · {mapAuditCategory(item.category, isZh)}: {item.description}
-              </li>
-            ))}
+            {reviewQueue.slice(0, 12).flatMap((item, index) => {
+              const copy = formatReviewIssueCopy(item, isZh);
+              if (!copy) return [];
+              return [(
+                <li key={`${item.chapterNumber}-${item.category}-${index}`}>
+                  <span className={isMustFixSeverity(item.severity) ? "text-seal-text font-medium" : "text-mark-text"}>
+                    {copy.severity}
+                  </span>{" "}
+                  {isZh ? "第" : "Ch."}{item.chapterNumber} · {copy.category}: {copy.description}
+                </li>
+              )];
+            })}
           </ul>
         </div>
       )}

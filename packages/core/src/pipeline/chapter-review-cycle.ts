@@ -49,6 +49,7 @@ export async function runChapterReviewCycle(params: {
   readonly initialOutput: Pick<WriteChapterOutput, "content" | "wordCount" | "postWriteErrors">;
   readonly reducedControlInput?: ChapterReviewCycleControlInput;
   readonly lengthSpec: LengthSpec;
+  readonly language?: "zh" | "en";
   readonly initialUsage: ChapterReviewCycleUsage;
   readonly createReviser: () => {
     reviseChapter: (
@@ -138,11 +139,17 @@ export async function runChapterReviewCycle(params: {
     const hasBlockedWords = sensitiveResult.found.some((item) => item.severity === "block");
     const wordCount = countChapterLength(content, params.lengthSpec.countingMode);
     const lengthInRange = !isOutsideHardRange(wordCount, params.lengthSpec);
+    const reviewLanguage = params.language
+      ?? (params.lengthSpec.countingMode === "en_words" ? "en" : "zh");
     const lengthIssues: AuditIssue[] = lengthInRange ? [] : [{
       severity: "critical",
       category: "length-budget",
-      description: `Chapter length ${wordCount} is outside the required range ${params.lengthSpec.hardMin}-${params.lengthSpec.hardMax}.`,
-      suggestion: `Repair only the scenes that are underdeveloped or redundant, then land near ${params.lengthSpec.target} without changing established facts.`,
+      description: reviewLanguage === "en"
+        ? `This chapter is about ${wordCount} words, outside the agreed ${params.lengthSpec.hardMin}–${params.lengthSpec.hardMax} range.`
+        : `本章大约 ${wordCount} 字，不在约定的 ${params.lengthSpec.hardMin}–${params.lengthSpec.hardMax} 字之间。`,
+      suggestion: reviewLanguage === "en"
+        ? `Only thicken thin scenes or trim padding, and try to land near ${params.lengthSpec.target} without changing facts already on the page.`
+        : `请只补写单薄的场面或删掉注水的段落，尽量落到 ${params.lengthSpec.target} 字左右，不要改已经写定的情节。`,
     }];
 
     // Deterministic post-write checks: run every round, not just the first.

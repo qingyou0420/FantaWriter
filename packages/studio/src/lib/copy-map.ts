@@ -4,6 +4,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import {
+  humanizeReviewText,
+  isHealthyReviewNoise,
+  mapReviewCategory,
+  toAuthorFacingReviewIssue,
+  type ReviewCopyIssue,
+} from "@actalk/inkos-core/review-author-copy";
+
 const SEVERITY_ZH: Record<string, string> = {
   critical: "须处理",
   error: "须处理",
@@ -26,32 +34,10 @@ const SEVERITY_EN: Record<string, string> = {
   minor: "Suggestion",
 };
 
-const CATEGORY_ZH: Record<string, string> = {
-  continuity: "连贯性",
-  character: "人物",
-  characters: "人物",
-  timeline: "时间线",
-  world: "世界规则",
-  "world-rule": "世界规则",
-  lore: "世界规则",
-  style: "文风",
-  voice: "文风",
-  hook: "伏笔",
-  plot: "情节",
-};
-
-const CATEGORY_EN: Record<string, string> = {
-  continuity: "Continuity",
-  character: "Character",
-  characters: "Character",
-  timeline: "Timeline",
-  world: "World rules",
-  "world-rule": "World rules",
-  lore: "World rules",
-  style: "Style",
-  voice: "Voice",
-  hook: "Hook",
-  plot: "Plot",
+export {
+  humanizeReviewText,
+  isHealthyReviewNoise,
+  toAuthorFacingReviewIssue,
 };
 
 const PLATFORM_LABELS: Record<string, { readonly zh: string; readonly en: string }> = {
@@ -78,9 +64,24 @@ export function mapAuditSeverity(severity: string, isZh: boolean): string {
 }
 
 export function mapAuditCategory(category: string, isZh: boolean): string {
-  const key = category.trim().toLowerCase();
-  if (isZh) return CATEGORY_ZH[key] ?? category;
-  return CATEGORY_EN[key] ?? category;
+  return mapReviewCategory(category, isZh ? "zh" : "en");
+}
+
+export function humanizeReviewDescription(text: string, isZh: boolean): string {
+  return humanizeReviewText(text, isZh ? "zh" : "en");
+}
+
+export function formatReviewIssueCopy(
+  issue: ReviewCopyIssue,
+  isZh: boolean,
+): { readonly severity: string; readonly category: string; readonly description: string } | null {
+  const facing = toAuthorFacingReviewIssue(issue, isZh ? "zh" : "en");
+  if (!facing) return null;
+  return {
+    severity: mapAuditSeverity(issue.severity, isZh),
+    category: facing.category,
+    description: facing.description,
+  };
 }
 
 export function isMustFixSeverity(severity: string): boolean {

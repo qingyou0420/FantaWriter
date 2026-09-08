@@ -136,8 +136,14 @@ describe("validateHookLedger", () => {
     const violations = validateHookLedger(ZH_MEMO, draft);
     expect(violations).toHaveLength(2);
     expect(violations.every((v) => v.severity === "warning")).toBe(true);
-    expect(violations.map((v) => v.description).join(" ")).toContain("H012");
-    expect(violations.map((v) => v.description).join(" ")).toContain("H003");
+    expect(violations.map((v) => v.category)).toEqual(["伏笔是否写到", "伏笔是否写到"]);
+    expect(violations.map((v) => v.description).join(" ")).toContain("雷架焦痕");
+    expect(violations.map((v) => v.description).join(" ")).toContain("杂役腰牌");
+    for (const violation of violations) {
+      expect(violation.category + violation.description + violation.suggestion).not.toMatch(
+        /Polisher|paragraph-shape|advance\/resolve|hook\s*账|确定性关键词/,
+      );
+    }
   });
 
   it("does not turn semantic near-misses into critical failures", () => {
@@ -149,7 +155,8 @@ advance:
     const violations = validateHookLedger(memo, draft);
     expect(violations).toHaveLength(1);
     expect(violations[0]!.severity).toBe("warning");
-    expect(violations[0]!.category).toContain("语义复核");
+    expect(violations[0]!.category).toBe("伏笔是否写到");
+    expect(violations[0]!.description).toContain("读数差额");
   });
 
   it("does NOT flag hooks that are only under defer", () => {
@@ -186,7 +193,8 @@ advance:
     const violations = validateHookLedger(memo, draft);
     expect(violations).toHaveLength(1);
     expect(violations[0]!.severity).toBe("warning");
-    expect(violations[0]!.description).toContain("H1");
+    expect(violations[0]!.description).toContain("某条伏笔");
+    expect(violations[0]!.description).not.toMatch(/\bH1\b/);
   });
 
   it("accepts english keyword match for en memos", () => {
@@ -206,7 +214,11 @@ resolve:
     const draft = "林秋翻看胖虎借条，随后摘下杂役腰牌。";
     const violations = validateHookLedger(memo, draft);
     expect(violations).toHaveLength(1);
-    expect(violations[0]!.category).toContain("揭 1 埋 1");
+    expect(violations[0]!.category).toBe("揭一埋一");
+    expect(violations[0]!.description).toContain("只揭不埋");
+    expect(`${violations[0]!.category}${violations[0]!.description}${violations[0]!.suggestion}`).not.toMatch(
+      /resolve|open 段|hook 账|memo/,
+    );
   });
 
   it("accepts 揭 1 埋 1 floor when a [new] line balances the resolved hook", () => {

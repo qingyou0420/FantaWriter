@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countUnifiedDiffLines,
+  formatReviewIssueCopy,
   formatVolumeArriveCopy,
   hasPreviousChapterUnapprovedReason,
   isMustFixSeverity,
@@ -20,7 +21,62 @@ describe("copy-map", () => {
     expect(mapAuditCategory("timeline", true)).toBe("时间线");
     expect(mapAuditCategory("world", true)).toBe("世界规则");
     expect(mapAuditCategory("style", true)).toBe("文风");
+    expect(mapAuditCategory("paragraph-shape", true)).toBe("段落太碎");
+    expect(mapAuditCategory("hook 账需语义复核", true)).toBe("伏笔是否写到");
+    expect(mapAuditCategory("词汇疲劳: AI 标记词密度检查", true)).toBe("用词习惯");
     expect(isMustFixSeverity("critical")).toBe(true);
+  });
+
+  it("formats 等你过目 cards without internal jargon", () => {
+    const jargon = /Polisher|paragraph-shape|advance\/resolve|hook\s*账/;
+    const hook = formatReviewIssueCopy({
+      severity: "warning",
+      category: "hook 账需语义复核",
+      description: "memo 在 advance/resolve 里声明要处理 H003，但确定性关键词检查没有找到对应落点",
+    }, true);
+    expect(hook?.severity).toBe("建议");
+    expect(hook?.category).toBe("伏笔是否写到");
+    expect(`${hook?.category}${hook?.description}`).not.toMatch(jargon);
+
+    const shape = formatReviewIssueCopy({
+      severity: "warning",
+      category: "paragraph-shape",
+      description: "连续出现5个不足35字的短段，容易形成短句堆砌。",
+    }, true);
+    expect(shape?.category).toBe("段落太碎");
+    expect(shape?.description).toContain("短段");
+
+    const polish = formatReviewIssueCopy({
+      severity: "info",
+      category: "文风检查",
+      description: "这是段落形状/排版问题，交由 Polisher 处理，不计入结构评分。",
+    }, true);
+    expect(polish?.category).toBe("文风");
+    expect(polish?.description).not.toMatch(jargon);
+
+    expect(formatReviewIssueCopy({
+      severity: "info",
+      category: "词汇疲劳: AI 标记词密度检查",
+      description: "密度低于每3000字1次的阈值上限，属健康区间，仅作记录供 Polisher 参考。",
+    }, true)).toBeNull();
+
+    const screenshotLines = [
+      formatReviewIssueCopy({
+        severity: "warning",
+        category: "hook 账需语义复核",
+        description: "memo 在 advance/resolve 里声明要处理 H003，但确定性关键词检查没有找到对应落点",
+      }, true),
+      formatReviewIssueCopy({
+        severity: "warning",
+        category: "paragraph-shape",
+        description: "连续出现5个不足35字的短段，容易形成短句堆砌。",
+      }, true),
+      polish,
+    ];
+    for (const line of screenshotLines) {
+      expect(line).not.toBeNull();
+      expect(`${line!.category}${line!.description}`).not.toMatch(jargon);
+    }
   });
 
   it("strips engine tokens from author-facing strings", () => {

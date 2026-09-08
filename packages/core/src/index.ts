@@ -42,6 +42,15 @@ export {
   type CommitTruthFileResult,
 } from "./interaction/truth-proposals.js";
 export {
+  mapReviewCategory,
+  humanizeReviewText,
+  isHealthyReviewNoise,
+  toAuthorFacingReviewIssue,
+  reviewCopyHasAuthorJargon,
+  type ReviewCopyIssue,
+  type ReviewCopyLanguage,
+} from "./utils/review-author-copy.js";
+export {
   classifyHookDue,
   selectDueHooks,
   selectOverdueHooks,

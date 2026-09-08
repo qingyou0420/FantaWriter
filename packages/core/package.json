@@ -40,6 +40,10 @@
     "./volume-map-tree": {
       "types": "./dist/volume-map-tree.d.ts",
       "import": "./dist/volume-map-tree.js"
+    },
+    "./review-author-copy": {
+      "types": "./dist/review-author-copy.d.ts",
+      "import": "./dist/review-author-copy.js"
     }
   },
   "files": [

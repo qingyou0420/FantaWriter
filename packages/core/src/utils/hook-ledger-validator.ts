@@ -123,6 +123,7 @@ export function parseHookLedger(memoBody: string): HookLedger {
 export function validateHookLedger(
   memoBody: string,
   draftContent: string,
+  language: "zh" | "en" = "zh",
 ): ReadonlyArray<HookLedgerViolation> {
   const ledger = parseHookLedger(memoBody);
   const violations: HookLedgerViolation[] = [];
@@ -131,11 +132,16 @@ export function validateHookLedger(
   const committed = dedupeById([...ledger.advance, ...ledger.resolve]);
   for (const entry of committed) {
     if (!draftEchoesEntry(draftContent, entry)) {
+      const label = hookAuthorLabel(entry, language);
       violations.push({
         severity: "warning",
-        category: "hook 账需语义复核",
-        description: `memo 在 advance/resolve 里声明要处理 ${entry.id}，但确定性关键词检查没有找到对应落点`,
-        suggestion: `复核正文是否已经用动作、对话、物件或信息变化推进了 ${entry.id}；若没有，请补具体场景，若已推进，可忽略这条确定性提示`,
+        category: language === "en" ? "Did this thread land" : "伏笔是否写到",
+        description: language === "en"
+          ? `This chapter meant to move ${label}, but the prose never shows that scene.`
+          : `本章打算推进${label}，但正文里还没看到对应的场面。`,
+        suggestion: language === "en"
+          ? `Check whether an action, line of dialogue, or object already carries ${label}. If not, add a concrete beat; if it already landed, you can ignore this note.`
+          : `请再看看正文里有没有用动作、对话或物件写到${label}。若还没有，补一场具体的戏；若已经写到，这条可以忽略。`,
       });
     }
   }
@@ -148,15 +154,38 @@ export function validateHookLedger(
   const resolvedCount = ledger.resolve.length;
   const openedCount = ledger.open.length + ledger.newOpenCount;
   if (resolvedCount > 0 && openedCount < resolvedCount) {
+    const missing = resolvedCount - openedCount;
     violations.push({
       severity: "critical",
-      category: "hook 账揭 1 埋 1 违规",
-      description: `本章 resolve 了 ${resolvedCount} 个钩子，但 open 只有 ${openedCount} 个新钩子。只揭不埋会让读者豁然开朗后索然无味，本书的前进拉力被削弱。`,
-      suggestion: `在 memo 的 open 段下至少再埋 ${resolvedCount - openedCount} 个与本章已揭钩子相关的新钩子。新钩子最好与已揭钩子彼此关联，不要凭空冒出来。`,
+      category: language === "en" ? "Close one, plant one" : "揭一埋一",
+      description: language === "en"
+        ? `This chapter closed ${resolvedCount} thread${resolvedCount === 1 ? "" : "s"} but only planted ${openedCount} new one${openedCount === 1 ? "" : "s"}. Paying off without planting something new leaves the reader with nowhere to lean next.`
+        : `本章收束了 ${resolvedCount} 条伏笔，却只新埋了 ${openedCount} 条。只揭不埋，读者会觉得后劲一下子空了。`,
+      suggestion: language === "en"
+        ? `Plant at least ${missing} new thread${missing === 1 ? "" : "s"} near the chapter end, preferably related to what just paid off, rather than a disconnected surprise.`
+        : `请在章末再埋 ${missing} 条与刚揭开的线索相关的新悬念，不要凭空另起一桩。`,
     });
   }
 
   return violations;
+}
+
+function hookAuthorLabel(entry: HookLedgerEntry, language: "zh" | "en"): string {
+  const quoted = entry.descriptor.match(/[""「『]([^""」』\n]+)[""」』]/);
+  const name = quoted?.[1]?.trim();
+  if (name) {
+    return language === "en" ? `the thread “${name}”` : `伏笔「${name}」`;
+  }
+  const cjk = entry.descriptor.match(/[\u4e00-\u9fff]{2,12}/);
+  if (cjk) {
+    return language === "en" ? `the thread “${cjk[0]}”` : `伏笔「${cjk[0]}」`;
+  }
+  const ascii = entry.descriptor.match(/[A-Za-z][A-Za-z0-9'’ ]{2,24}/);
+  if (ascii && !/^(planted|pressured|near|payoff|ready|stale)$/i.test(ascii[0]!.trim())) {
+    const token = ascii[0]!.trim();
+    return language === "en" ? `the thread “${token}”` : `伏笔「${token}」`;
+  }
+  return language === "en" ? "a planted thread" : "某条伏笔";
 }
 
 function extractLedgerSection(memoBody: string): string | undefined {

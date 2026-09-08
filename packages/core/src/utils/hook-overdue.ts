@@ -76,14 +76,35 @@ export function selectOverdueHooks(
 export function overdueHookAuditIssues(
   hooks: ReadonlyArray<HookWithTarget>,
   currentChapter: number,
+  language: "zh" | "en" = "zh",
 ): AuditIssue[] {
   return selectOverdueHooks(hooks, currentChapter).map((hook) => {
     const target = resolveHookTargetChapter(hook) ?? currentChapter;
+    const label = overdueHookAuthorLabel(hook, language);
     return {
       severity: "critical" as const,
       category: "hook-debt",
-      description: `Hook ${hook.hookId} is overdue (target chapter ${target}, now chapter ${currentChapter}).`,
-      suggestion: `Advance, resolve, or explicitly defer ${hook.hookId} in this chapter.`,
+      description: language === "en"
+        ? `${label} was due around chapter ${target} and is still open in chapter ${currentChapter}.`
+        : `${label}原定在第 ${target} 章回收，现在已经过了第 ${currentChapter} 章。`,
+      suggestion: language === "en"
+        ? `Move, close, or clearly set this thread aside in this chapter.`
+        : `请在本章推进、收束，或明确先按下不表。`,
     };
   });
+}
+
+function overdueHookAuthorLabel(hook: HookWithTarget, language: "zh" | "en"): string {
+  const payoff = "expectedPayoff" in hook && typeof hook.expectedPayoff === "string"
+    ? hook.expectedPayoff.trim()
+    : "";
+  if (payoff && payoff.length <= 24 && !/^[A-Za-z]?\d{1,4}$/.test(payoff)) {
+    return language === "en" ? `The thread “${payoff}”` : `伏笔「${payoff}」`;
+  }
+  const quoted = hook.notes?.match(/[""「『]([^""」』\n]{1,24})[""」』]/);
+  if (quoted?.[1]?.trim()) {
+    const name = quoted[1].trim();
+    return language === "en" ? `The thread “${name}”` : `伏笔「${name}」`;
+  }
+  return language === "en" ? "A planted thread" : "某条伏笔";
 }
