@@ -60,6 +60,6 @@ describe("desktop update chrome", () => {
 
     expect(yml).toMatch(/^\s*- update-panel\.html$/m);
     expect(firstRun).toMatch(/系统 → 检查更新/);
-    expect(DEFAULT_GITHUB_REPO).toBe("qingyou0420/FantaWriter");
+    expect(DEFAULT_GITHUB_REPO).toBe("qingyou0420/Inkborne");
   });
 });
