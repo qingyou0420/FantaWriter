@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 2.1.9
+
+用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.9.exe`（#124：等你过目建议改成白话）。
+
 ## 2.1.8
 
 用户向说明见根目录 [CHANGELOG.md](../CHANGELOG.md)。Windows 安装包 `Inkborne-Setup-2.1.8.exe`（#122：改写后刷新章节正文）。
